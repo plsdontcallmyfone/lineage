@@ -1,0 +1,11 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -66,7 +66,6 @@ def b58encode(
+     return alphabet[0:1] * (origlen - newlen) + result
+ 
+ 
+-@lru_cache()
+ def _get_base58_decode_map(alphabet: bytes,
+                            autofix: bool) -> Mapping[int, int]:
+     invmap = {char: index for index, char in enumerate(alphabet)}

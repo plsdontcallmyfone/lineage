@@ -1,0 +1,18 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -78,9 +78,12 @@ class RegexTokenizer(Tokenizer):
+     def decode(self, ids):
+         # given ids (list of integers), return Python string
+         part_bytes = []
++        get = self.vocab.get
++        append = part_bytes.append
+         for idx in ids:
+-            if idx in self.vocab:
+-                part_bytes.append(self.vocab[idx])
++            tok = get(idx)
++            if tok is not None:
++                append(tok)
+             elif idx in self.inverse_special_tokens:
+                 part_bytes.append(self.inverse_special_tokens[idx].encode("utf-8"))
+             else:

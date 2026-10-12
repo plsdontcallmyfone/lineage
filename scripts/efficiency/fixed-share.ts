@@ -7,8 +7,14 @@
 // taken on the whole count. Measured locally in the recipe's image; arm64 counts differ from the site's
 // amd64 counts, the share is what matters.
 //
+// A harness that takes `--inputs-only` (the heavy recipes, section 6) is also run that way per metric:
+// the same imports and the same inputs, stopped before the first library call. That count is everything
+// in the metric that is not the library's work (`not_library_ir`), a stricter figure than the imports.
+// --patches <dir>: applies every *.diff of a recipe's candidates directory named after --only (comma
+// list) on top, to measure an optimised tree without a tip.
+//
 //   bun scripts/efficiency/fixed-share.ts --recipe base58-py --tree <tree.json> [--seed 5eed] [--json out.json]
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { applyPatch, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { runnableImage } from "../../packages/sandbox/src/docker.ts";
@@ -41,15 +47,30 @@ try {
   materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, tree);
   for (const p of tip?.patches ?? []) if (!applyPatch(tree, p.patch)) throw new Error("a tip patch does not apply locally");
   if (!existsSync(join(tree, "lineage_bench.py"))) throw new Error("this script is for recipes whose harness is lineage_bench.py");
+  const extra: string[] = [];
+  if (opt("patches")) {
+    const only = opt("only")?.split(",");
+    for (const f of readdirSync(opt("patches")!).filter((f) => f.endsWith(".diff") && (!only || only.includes(f.slice(0, -5)))).sort()) {
+      if (!applyPatch(tree, readFileSync(join(opt("patches")!, f), "utf8"))) throw new Error(`${f} does not apply`);
+      extra.push(f.slice(0, -5));
+    }
+  }
+  const inputsOnly = readFileSync(join(tree, "lineage_bench.py"), "utf8").includes("--inputs-only");
   const start = ir(`${VG} python -c "pass"`);
   const imports = ir(`${VG} python -c "import lineage_bench"`);
   const rows = loaded.recipe.metrics
     .filter((m) => m.parser === "cachegrind-ir")
     .map((m) => {
       const total = ir(m.command);
-      return { metric: m.name, ir: total, interpreter_and_imports_ir: imports, fixed_share_pct: Number(((100 * imports) / total).toFixed(1)), min_effect_pct: m.min_effect * 100, min_effect_of_the_rest_pct: Number(((100 * m.min_effect * total) / (total - imports)).toFixed(2)) };
+      const notLib = inputsOnly ? ir(`${m.command} --inputs-only`) : null;
+      const fixed = notLib ?? imports;
+      return {
+        metric: m.name, ir: total, interpreter_and_imports_ir: imports, fixed_share_pct: Number(((100 * imports) / total).toFixed(1)),
+        ...(notLib === null ? {} : { not_library_ir: notLib, not_library_share_pct: Number(((100 * notLib) / total).toFixed(1)) }),
+        min_effect_pct: m.min_effect * 100, min_effect_of_the_rest_pct: Number(((100 * m.min_effect * total) / (total - fixed)).toFixed(2)),
+      };
     });
-  const out = { recipe, parent: tip ? `tip height ${tip.height}` : "gen 0", seed, arch: process.arch, interpreter_start_ir: start, interpreter_and_imports_ir: imports, metrics: rows };
+  const out = { recipe, parent: (tip ? `tip height ${tip.height}` : "gen 0") + (extra.length ? ` + ${extra.join(", ")}` : ""), seed, arch: process.arch, interpreter_start_ir: start, interpreter_and_imports_ir: imports, metrics: rows };
   console.log(JSON.stringify(out, null, 1));
   if (opt("json")) writeFileSync(opt("json")!, JSON.stringify(out, null, 1) + "\n");
 } finally {

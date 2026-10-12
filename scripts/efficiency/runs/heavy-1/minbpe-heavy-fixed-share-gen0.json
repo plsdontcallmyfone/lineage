@@ -1,0 +1,60 @@
+{
+ "recipe": "minbpe-heavy",
+ "parent": "gen 0",
+ "seed": "5eed",
+ "arch": "arm64",
+ "interpreter_start_ir": 36537458,
+ "interpreter_and_imports_ir": 185042988,
+ "metrics": [
+  {
+   "metric": "train_basic_ir",
+   "ir": 3782069920,
+   "interpreter_and_imports_ir": 185042988,
+   "fixed_share_pct": 4.9,
+   "not_library_ir": 197163657,
+   "not_library_share_pct": 5.2,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.05
+  },
+  {
+   "metric": "train_regex_ir",
+   "ir": 6065884024,
+   "interpreter_and_imports_ir": 185042988,
+   "fixed_share_pct": 3.1,
+   "not_library_ir": 197278811,
+   "not_library_share_pct": 3.3,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.03
+  },
+  {
+   "metric": "encode_ir",
+   "ir": 4478670279,
+   "interpreter_and_imports_ir": 185042988,
+   "fixed_share_pct": 4.1,
+   "not_library_ir": 200966501,
+   "not_library_share_pct": 4.5,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.05
+  },
+  {
+   "metric": "decode_ir",
+   "ir": 3654120843,
+   "interpreter_and_imports_ir": 185042988,
+   "fixed_share_pct": 5.1,
+   "not_library_ir": 300175524,
+   "not_library_share_pct": 8.2,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.09
+  },
+  {
+   "metric": "save_load_ir",
+   "ir": 3738665125,
+   "interpreter_and_imports_ir": 185042988,
+   "fixed_share_pct": 4.9,
+   "not_library_ir": 245260700,
+   "not_library_share_pct": 6.6,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.07
+  }
+ ]
+}

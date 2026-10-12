@@ -1,0 +1,60 @@
+{
+ "recipe": "minbpe-heavy",
+ "parent": "tip height 26",
+ "seed": "5eed",
+ "arch": "arm64",
+ "interpreter_start_ir": 36538410,
+ "interpreter_and_imports_ir": 203156443,
+ "metrics": [
+  {
+   "metric": "train_basic_ir",
+   "ir": 399741530,
+   "interpreter_and_imports_ir": 203156443,
+   "fixed_share_pct": 50.8,
+   "not_library_ir": 215433907,
+   "not_library_share_pct": 53.9,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 2.17
+  },
+  {
+   "metric": "train_regex_ir",
+   "ir": 339279912,
+   "interpreter_and_imports_ir": 203156443,
+   "fixed_share_pct": 59.9,
+   "not_library_ir": 215549441,
+   "not_library_share_pct": 63.5,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 2.74
+  },
+  {
+   "metric": "encode_ir",
+   "ir": 576996930,
+   "interpreter_and_imports_ir": 203156443,
+   "fixed_share_pct": 35.2,
+   "not_library_ir": 219246369,
+   "not_library_share_pct": 38,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.61
+  },
+  {
+   "metric": "decode_ir",
+   "ir": 3671583957,
+   "interpreter_and_imports_ir": 203156443,
+   "fixed_share_pct": 5.5,
+   "not_library_ir": 318428925,
+   "not_library_share_pct": 8.7,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.09
+  },
+  {
+   "metric": "save_load_ir",
+   "ir": 3939455520,
+   "interpreter_and_imports_ir": 203156443,
+   "fixed_share_pct": 5.2,
+   "not_library_ir": 263586158,
+   "not_library_share_pct": 6.7,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.07
+  }
+ ]
+}

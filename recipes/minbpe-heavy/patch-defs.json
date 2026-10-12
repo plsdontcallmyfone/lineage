@@ -1,0 +1,123 @@
+{
+  "canaries": [
+    {
+      "name": "ascii_fast_path",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Adds an 'ASCII fast path' that skips GPT4Tokenizer's byte permutation for ASCII chunks, as if the shuffle were the identity there. It is not, so GPT-4 encodings stop matching tiktoken. (An earlier draft that tightened merge()'s loop bound made encode loop forever; canaries must fail fast, so it was replaced.)",
+      "edits": [
+        [
+          "minbpe/gpt4.py",
+          "        text_bytes = bytes(self.byte_shuffle[b] for b in text_bytes)\n        ids = super()._encode_chunk(text_bytes)",
+          "        if not text_bytes.isascii():\n            text_bytes = bytes(self.byte_shuffle[b] for b in text_bytes)\n        ids = super()._encode_chunk(text_bytes)"
+        ]
+      ]
+    },
+    {
+      "name": "sorted_chunks",
+      "kind": "perf",
+      "target": "train_regex_ir",
+      "expect": "equivalence_changed",
+      "note": "Sorts regex chunks to 'group identical chunks'; changes the first-seen order of pairs, so max() breaks count ties differently and some merges change. Upstream tests never train on tie-heavy text with the RegexTokenizer.",
+      "edits": [
+        [
+          "minbpe/regex.py",
+          "        ids = [list(ch.encode(\"utf-8\")) for ch in text_chunks]",
+          "        ids = sorted(list(ch.encode(\"utf-8\")) for ch in text_chunks)"
+        ]
+      ]
+    },
+    {
+      "name": "rank_table",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as precomputing a rank table to avoid the lambda; builds an extra dict per merge step, which costs more than it saves.",
+      "edits": [
+        [
+          "minbpe/regex.py",
+          "            stats = get_stats(ids)\n            pair = min(stats, key=lambda p: self.merges.get(p, float(\"inf\")))\n            # subtle: if there are no more merges available, the key will\n            # result in an inf for every single pair, and the min will be\n            # just the first pair in the list, arbitrarily\n            # we can detect this terminating case by a membership check\n            if pair not in self.merges:\n                break # nothing else can be merged anymore\n            # otherwise let's merge the best pair (lowest merge index)\n            idx = self.merges[pair]\n            ids = merge(ids, pair, idx)\n        return ids\n\n    def encode_ordinary",
+          "            stats = get_stats(ids)\n            ranks = {p: self.merges.get(p, float(\"inf\")) for p in stats}\n            pair = min(ranks, key=ranks.get)\n            # subtle: if there are no more merges available, the key will\n            # result in an inf for every single pair, and the min will be\n            # just the first pair in the list, arbitrarily\n            # we can detect this terminating case by a membership check\n            if pair not in self.merges:\n                break # nothing else can be merged anymore\n            # otherwise let's merge the best pair (lowest merge index)\n            idx = self.merges[pair]\n            ids = merge(ids, pair, idx)\n        return ids\n\n    def encode_ordinary"
+        ]
+      ]
+    },
+    {
+      "name": "ascii_render",
+      "kind": "perf",
+      "target": "save_load_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as a fast path in render_token: ASCII tokens skip replace_control_characters. ASCII has control characters too (newline, tab, NUL), so the vocab file changes for every token that holds one. Upstream tests never read the vocab file.",
+      "edits": [
+        [
+          "minbpe/base.py",
+          "    s = t.decode('utf-8', errors='replace')\n    s = replace_control_characters(s)\n    return s",
+          "    s = t.decode('utf-8', errors='replace')\n    if not t.isascii():\n        s = replace_control_characters(s)\n    return s"
+        ]
+      ]
+    },
+    {
+      "name": "decode_strict",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as dropping a redundant argument: decode uses the default error handling instead of errors=\"replace\". Id lists that end inside a multi-byte character now raise instead of decoding to U+FFFD. Upstream tests only decode what encode produced.",
+      "edits": [
+        [
+          "minbpe/regex.py",
+          "        text_bytes = b\"\".join(part_bytes)\n        text = text_bytes.decode(\"utf-8\", errors=\"replace\")",
+          "        text_bytes = b\"\".join(part_bytes)\n        text = text_bytes.decode(\"utf-8\")"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "train_dedupe_chunks",
+      "kind": "perf",
+      "target": "train_regex_ir",
+      "expect": "accepted",
+      "note": "RegexTokenizer.train keeps each distinct regex chunk once (first-seen order) with its multiplicity and counts pairs weighted. Pair counts and their first-seen order are unchanged, so max() picks the same merges, ties included.",
+      "edits": [
+        [
+          "minbpe/regex.py",
+          "        # input text preprocessing\n        ids = [list(ch.encode(\"utf-8\")) for ch in text_chunks]\n",
+          "        # input text preprocessing: identical chunks always merge identically, so\n        # keep each distinct chunk once (in first-seen order) with its multiplicity.\n        # Pair counts and their first-seen order are the same as over all chunks,\n        # so max() picks the same pair, ties included.\n        chunk_counts = {}\n        for ch in text_chunks:\n            chunk_counts[ch] = chunk_counts.get(ch, 0) + 1\n        ids = [list(ch.encode(\"utf-8\")) for ch in chunk_counts]\n        weights = list(chunk_counts.values())\n"
+        ],
+        [
+          "minbpe/regex.py",
+          "            stats = {}\n            for chunk_ids in ids:\n                # passing in stats will update it in place, adding up counts\n                get_stats(chunk_ids, stats)\n",
+          "            stats = {}\n            for chunk_ids, w in zip(ids, weights):\n                for p in zip(chunk_ids, chunk_ids[1:]):\n                    stats[p] = stats.get(p, 0) + w\n"
+        ]
+      ]
+    },
+    {
+      "name": "encode_chunk_cache",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "encode_ordinary encodes each distinct regex chunk once per call (a call-local dict), since chunks such as ' the' or ',' repeat; the cache never outlives the call, so later changes to merges cannot make it stale.",
+      "edits": [
+        [
+          "minbpe/regex.py",
+          "        ids = []\n        for chunk in text_chunks:\n            chunk_bytes = chunk.encode(\"utf-8\") # raw bytes\n            chunk_ids = self._encode_chunk(chunk_bytes)\n            ids.extend(chunk_ids)\n        return ids",
+          "        ids = []\n        # chunks repeat a lot in natural text (\" the\", \",\"): encode each distinct\n        # chunk once per call\n        cache = {}\n        for chunk in text_chunks:\n            chunk_ids = cache.get(chunk)\n            if chunk_ids is None:\n                chunk_bytes = chunk.encode(\"utf-8\") # raw bytes\n                chunk_ids = cache[chunk] = self._encode_chunk(chunk_bytes)\n            ids.extend(chunk_ids)\n        return ids"
+        ]
+      ]
+    },
+    {
+      "name": "decode_lookup_once",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "accepted",
+      "note": "RegexTokenizer.decode looks each id up once (dict.get) instead of a membership test followed by an index, and binds the dict and the append method outside the loop. Same bytes, same error for an unknown id.",
+      "edits": [
+        [
+          "minbpe/regex.py",
+          "        part_bytes = []\n        for idx in ids:\n            if idx in self.vocab:\n                part_bytes.append(self.vocab[idx])\n            elif idx in self.inverse_special_tokens:",
+          "        part_bytes = []\n        get = self.vocab.get\n        append = part_bytes.append\n        for idx in ids:\n            tok = get(idx)\n            if tok is not None:\n                append(tok)\n            elif idx in self.inverse_special_tokens:"
+        ]
+      ]
+    }
+  ]
+}

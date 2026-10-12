@@ -1,0 +1,13 @@
+diff --git a/minbpe/base.py b/minbpe/base.py
+--- a/minbpe/base.py
++++ b/minbpe/base.py
+@@ -57,7 +57,8 @@ def replace_control_characters(s: str) -> str:
+ def render_token(t: bytes) -> str:
+     # pretty print a token, escaping control characters
+     s = t.decode('utf-8', errors='replace')
+-    s = replace_control_characters(s)
++    if not t.isascii():
++        s = replace_control_characters(s)
+     return s
+ 
+ # -----------------------------------------------------------------------------

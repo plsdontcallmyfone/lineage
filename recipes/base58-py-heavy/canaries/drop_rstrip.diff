@@ -1,0 +1,11 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -114,7 +114,6 @@ def b58decode(
+     """
+     Decode a Base58 encoded string
+     """
+-    v = v.rstrip()
+     v = scrub_input(v)
+ 
+     origlen = len(v)

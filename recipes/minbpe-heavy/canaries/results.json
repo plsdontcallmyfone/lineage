@@ -1,0 +1,314 @@
+{
+  "ascii_fast_path": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "7 stable tests fail: tests.test_tokenizer::test_encode_decode_identity[?-GPT4Tokenizer], tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-GPT4Tokenizer], tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-GPT4Tokenizer], tests.test_tokenizer::test_gpt4_tiktoken_equality[?], tests.test_tokenizer::test_gpt4_tiktoken_equality[FILE:taylorswift.txt], tests.test_tokenizer::test_gpt4_tiktoken_equality[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609], tests.test_tokenizer::test_gpt4_tiktoken_equality_special_tokens",
+    "effect": null,
+    "metrics": {
+      "train_basic_ir": {
+        "base": [
+          3807804751
+        ],
+        "cand": [
+          3808941559
+        ],
+        "ratio": 1.000298546820107
+      },
+      "train_regex_ir": {
+        "base": [
+          6084715713
+        ],
+        "cand": [
+          6084923784
+        ],
+        "ratio": 1.0000341956814114
+      },
+      "encode_ir": {
+        "base": [
+          4671713394
+        ],
+        "cand": [
+          4671469695
+        ],
+        "ratio": 0.9999478351988987
+      },
+      "decode_ir": {
+        "base": [
+          3677318024
+        ],
+        "cand": [
+          3677357497
+        ],
+        "ratio": 1.000010734181744
+      },
+      "save_load_ir": {
+        "base": [
+          3645037223
+        ],
+        "cand": [
+          3645371748
+        ],
+        "ratio": 1.0000917754688181
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d61",
+    "recipe_id": "6464c976c287a381bc4b27da8a5599a061275032824210ca51538924c7cab884",
+    "eval_seconds": 124.5,
+    "date": "2026-10-12T07:44:52.394Z",
+    "match": true
+  },
+  "sorted_chunks": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "train_basic_ir": {
+        "base": [
+          3854376066
+        ],
+        "cand": [
+          3854975804
+        ],
+        "ratio": 1.0001555992434912
+      },
+      "train_regex_ir": {
+        "base": [
+          6079469135
+        ],
+        "cand": [
+          6101426491
+        ],
+        "ratio": 1.0036117225883407
+      },
+      "encode_ir": {
+        "base": [
+          4187821913
+        ],
+        "cand": [
+          4189025813
+        ],
+        "ratio": 1.0002874764077867
+      },
+      "decode_ir": {
+        "base": [
+          3740843095
+        ],
+        "cand": [
+          3740859845
+        ],
+        "ratio": 1.0000044776002561
+      },
+      "save_load_ir": {
+        "base": [
+          3764998790
+        ],
+        "cand": [
+          3764328365
+        ],
+        "ratio": 0.9998219322136888
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d73",
+    "recipe_id": "6464c976c287a381bc4b27da8a5599a061275032824210ca51538924c7cab884",
+    "eval_seconds": 98.5,
+    "date": "2026-10-12T07:46:30.898Z",
+    "match": true
+  },
+  "rank_table": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0217 vs required 0.9900",
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 1.0217496975475457,
+      "ci_low": 1.0217496975475457,
+      "ci_high": 1.0217496975475457,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.0217496975475457,
+          "ci_low": 1.0217496975475457,
+          "ci_high": 1.0217496975475457,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "train_basic_ir": {
+        "base": [
+          3902066951
+        ],
+        "cand": [
+          3903627639
+        ],
+        "ratio": 1.0003999644341315
+      },
+      "train_regex_ir": {
+        "base": [
+          6081578680
+        ],
+        "cand": [
+          6081702660
+        ],
+        "ratio": 1.0000203861540766
+      },
+      "encode_ir": {
+        "base": [
+          4758928154
+        ],
+        "cand": [
+          4862433402
+        ],
+        "ratio": 1.0217496975475457
+      },
+      "decode_ir": {
+        "base": [
+          3727130693
+        ],
+        "cand": [
+          3727023561
+        ],
+        "ratio": 0.9999712561729587
+      },
+      "save_load_ir": {
+        "base": [
+          3708735466
+        ],
+        "cand": [
+          3708803441
+        ],
+        "ratio": 1.0000183283495474
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d72",
+    "recipe_id": "6464c976c287a381bc4b27da8a5599a061275032824210ca51538924c7cab884",
+    "eval_seconds": 132,
+    "date": "2026-10-12T07:48:42.870Z",
+    "match": true
+  },
+  "ascii_render": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "train_basic_ir": {
+        "base": [
+          3807804602
+        ],
+        "cand": [
+          3809632622
+        ],
+        "ratio": 1.000480071902597
+      },
+      "train_regex_ir": {
+        "base": [
+          6084715713
+        ],
+        "cand": [
+          6085002842
+        ],
+        "ratio": 1.0000471885645186
+      },
+      "encode_ir": {
+        "base": [
+          4671713602
+        ],
+        "cand": [
+          4670577879
+        ],
+        "ratio": 0.999756893701807
+      },
+      "decode_ir": {
+        "base": [
+          3677323209
+        ],
+        "cand": [
+          3677487791
+        ],
+        "ratio": 1.000044755924526
+      },
+      "save_load_ir": {
+        "base": [
+          3645045439
+        ],
+        "cand": [
+          3602666707
+        ],
+        "ratio": 0.9883736066643859
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d61",
+    "recipe_id": "6464c976c287a381bc4b27da8a5599a061275032824210ca51538924c7cab884",
+    "eval_seconds": 120.8,
+    "date": "2026-10-12T07:50:43.638Z",
+    "match": true
+  },
+  "decode_strict": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "train_basic_ir": {
+        "base": [
+          3547990099
+        ],
+        "cand": [
+          3547909372
+        ],
+        "ratio": 0.9999772471180168
+      },
+      "train_regex_ir": {
+        "base": [
+          5981986366
+        ],
+        "cand": [
+          5981750525
+        ],
+        "ratio": 0.9999605748014839
+      },
+      "encode_ir": {
+        "base": [
+          4597964089
+        ],
+        "cand": [
+          4599520623
+        ],
+        "ratio": 1.0003385267848708
+      },
+      "decode_ir": {
+        "base": [
+          3755289082
+        ],
+        "cand": [],
+        "ratio": null
+      },
+      "save_load_ir": {
+        "base": [
+          3731213208
+        ],
+        "cand": [
+          3730014323
+        ],
+        "ratio": 0.9996786876189682
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d64",
+    "recipe_id": "6464c976c287a381bc4b27da8a5599a061275032824210ca51538924c7cab884",
+    "eval_seconds": 91.2,
+    "date": "2026-10-12T07:52:14.883Z",
+    "match": true
+  }
+}

@@ -1,0 +1,12 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -38,7 +38,7 @@ def b58encode_int(
+     """
+     Encode an integer using Base58
+     """
+-    if not i and default_one:
++    if not i:
+         return alphabet[0:1]
+     string = b""
+     base = len(alphabet)

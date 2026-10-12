@@ -1,0 +1,12 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -41,7 +41,7 @@ class RegexTokenizer(Tokenizer):
+         text_chunks = re.findall(self.compiled_pattern, text)
+ 
+         # input text preprocessing
+-        ids = [list(ch.encode("utf-8")) for ch in text_chunks]
++        ids = sorted(list(ch.encode("utf-8")) for ch in text_chunks)
+ 
+         # iteratively merge the most common pairs to create new tokens
+         merges = {} # (int, int) -> int

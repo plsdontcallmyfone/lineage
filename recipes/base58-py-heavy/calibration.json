@@ -1,0 +1,107 @@
+{
+  "recipe_id": "a22c9c1739997af89873aa7ebe72bb1a22e042b429a4c7709966ecc990dd98b1",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "test_base45::test_autofix_check_str",
+    "test_base45::test_autofix_decode_bytes",
+    "test_base45::test_autofix_not_applicable_check_str",
+    "test_base45::test_check_failure",
+    "test_base45::test_check_str",
+    "test_base45::test_empty_decode",
+    "test_base45::test_empty_decode_bytes",
+    "test_base45::test_encode_empty",
+    "test_base45::test_invalid_input",
+    "test_base45::test_leadingz_decode",
+    "test_base45::test_leadingz_decode_bytes",
+    "test_base45::test_leadingz_encode",
+    "test_base45::test_simple_decode",
+    "test_base45::test_simple_decode_bytes",
+    "test_base45::test_simple_encode",
+    "test_base58::test_autofix_check_str",
+    "test_base58::test_autofix_decode_bytes",
+    "test_base58::test_autofix_not_applicable_check_str",
+    "test_base58::test_check_failure",
+    "test_base58::test_check_identity[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:]",
+    "test_base58::test_check_identity[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]",
+    "test_base58::test_check_identity[rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz]",
+    "test_base58::test_check_str",
+    "test_base58::test_decode_random[1024]",
+    "test_base58::test_decode_random[256]",
+    "test_base58::test_decode_random[32]",
+    "test_base58::test_decode_random[8]",
+    "test_base58::test_empty_decode",
+    "test_base58::test_empty_decode_bytes",
+    "test_base58::test_encode_empty",
+    "test_base58::test_encode_random[1024]",
+    "test_base58::test_encode_random[256]",
+    "test_base58::test_encode_random[32]",
+    "test_base58::test_encode_random[8]",
+    "test_base58::test_invalid_input",
+    "test_base58::test_large_integer",
+    "test_base58::test_leadingz_decode",
+    "test_base58::test_leadingz_decode_bytes",
+    "test_base58::test_leadingz_encode",
+    "test_base58::test_round_trips[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:]",
+    "test_base58::test_round_trips[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]",
+    "test_base58::test_round_trips[rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz]",
+    "test_base58::test_simple_decode",
+    "test_base58::test_simple_decode_bytes",
+    "test_base58::test_simple_encode",
+    "test_base58::test_simple_integers[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:]",
+    "test_base58::test_simple_integers[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]",
+    "test_base58::test_simple_integers[rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz]"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "encode_ir": {
+      "enabled": true,
+      "cv": 0.0000012211273628178954,
+      "base_value": 3842646347
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 1.4670053747009495e-7,
+      "base_value": 3046283902
+    },
+    "encode_long_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 2585986361
+    },
+    "decode_long_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 3630833747
+    },
+    "check_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 2748750046
+    },
+    "int_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 3079088308
+    }
+  },
+  "median_eval_seconds": 25,
+  "seed": "ca11b7a7e",
+  "recipe_name": "base58-py-heavy",
+  "repo": "https://github.com/keis/base58",
+  "commit": "2fae7065e3446e69e5d748c767011f05eee8400e",
+  "deps_digest": "bf8eadf96685027444c94a8e6d337ce70fe263c32fb28f83aa198e13125b8946",
+  "image_digest": "sha256:78ac1636b987212d31b3c05d00c5f1fcbb6c9c2a81fc9e92c9b6fa07c9a118fe",
+  "date": "2026-10-12T07:42:46.315Z",
+  "calibration_wall_seconds": 74.6,
+  "counts": {
+    "stable": 48,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 75 s"
+  ]
+}

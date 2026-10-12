@@ -1,0 +1,70 @@
+{
+ "recipe": "base58-py-heavy",
+ "parent": "gen 0",
+ "seed": "5eed",
+ "arch": "arm64",
+ "interpreter_start_ir": 36489172,
+ "interpreter_and_imports_ir": 120305105,
+ "metrics": [
+  {
+   "metric": "encode_ir",
+   "ir": 3823781670,
+   "interpreter_and_imports_ir": 120305105,
+   "fixed_share_pct": 3.1,
+   "not_library_ir": 139737518,
+   "not_library_share_pct": 3.7,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.04
+  },
+  {
+   "metric": "decode_ir",
+   "ir": 3061265420,
+   "interpreter_and_imports_ir": 120305105,
+   "fixed_share_pct": 3.9,
+   "not_library_ir": 167086329,
+   "not_library_share_pct": 5.5,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.06
+  },
+  {
+   "metric": "encode_long_ir",
+   "ir": 2621660683,
+   "interpreter_and_imports_ir": 120305105,
+   "fixed_share_pct": 4.6,
+   "not_library_ir": 129922192,
+   "not_library_share_pct": 5,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.05
+  },
+  {
+   "metric": "decode_long_ir",
+   "ir": 4440374920,
+   "interpreter_and_imports_ir": 120305105,
+   "fixed_share_pct": 2.7,
+   "not_library_ir": 127764996,
+   "not_library_share_pct": 2.9,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.03
+  },
+  {
+   "metric": "check_ir",
+   "ir": 2726250881,
+   "interpreter_and_imports_ir": 120305105,
+   "fixed_share_pct": 4.4,
+   "not_library_ir": 138726038,
+   "not_library_share_pct": 5.1,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.05
+  },
+  {
+   "metric": "int_ir",
+   "ir": 2998902827,
+   "interpreter_and_imports_ir": 120305105,
+   "fixed_share_pct": 4,
+   "not_library_ir": 128698293,
+   "not_library_share_pct": 4.3,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.04
+  }
+ ]
+}

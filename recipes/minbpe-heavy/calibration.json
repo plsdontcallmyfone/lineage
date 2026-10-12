@@ -1,0 +1,75 @@
+{
+  "recipe_id": "6464c976c287a381bc4b27da8a5599a061275032824210ca51538924c7cab884",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "tests.test_tokenizer::test_encode_decode_identity[-BasicTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[-GPT4Tokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[-RegexTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[?-BasicTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[?-GPT4Tokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[?-RegexTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-BasicTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-GPT4Tokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-RegexTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-BasicTokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-GPT4Tokenizer]",
+    "tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-RegexTokenizer]",
+    "tests.test_tokenizer::test_gpt4_tiktoken_equality[?]",
+    "tests.test_tokenizer::test_gpt4_tiktoken_equality[FILE:taylorswift.txt]",
+    "tests.test_tokenizer::test_gpt4_tiktoken_equality[]",
+    "tests.test_tokenizer::test_gpt4_tiktoken_equality[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609]",
+    "tests.test_tokenizer::test_gpt4_tiktoken_equality_special_tokens",
+    "tests.test_tokenizer::test_save_load[special_tokens0]",
+    "tests.test_tokenizer::test_save_load[special_tokens1]",
+    "tests.test_tokenizer::test_wikipedia_example[BasicTokenizer]",
+    "tests.test_tokenizer::test_wikipedia_example[RegexTokenizer]"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "train_basic_ir": {
+      "enabled": true,
+      "cv": 3.934471853410899e-7,
+      "base_value": 3840635408.5
+    },
+    "train_regex_ir": {
+      "enabled": true,
+      "cv": 7.03572243758749e-7,
+      "base_value": 6034162308
+    },
+    "encode_ir": {
+      "enabled": true,
+      "cv": 4.944729602084485e-8,
+      "base_value": 4518866770
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 2.6115247757601983e-8,
+      "base_value": 3763618997.5
+    },
+    "save_load_ir": {
+      "enabled": true,
+      "cv": 0.0000012968868619785256,
+      "base_value": 3850442344
+    }
+  },
+  "median_eval_seconds": 40,
+  "seed": "ca11b7a7e",
+  "recipe_name": "minbpe-heavy",
+  "repo": "https://github.com/karpathy/minbpe",
+  "commit": "1acefe89412b20245db5a22d2a02001e547dc602",
+  "deps_digest": "076e7423a87aae50c8f5609f52b4a86733ffff28bce3d07fb80cf07a8a139fa8",
+  "image_digest": "sha256:78ac1636b987212d31b3c05d00c5f1fcbb6c9c2a81fc9e92c9b6fa07c9a118fe",
+  "date": "2026-10-12T07:41:21.311Z",
+  "calibration_wall_seconds": 114,
+  "counts": {
+    "stable": 21,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 114 s"
+  ]
+}

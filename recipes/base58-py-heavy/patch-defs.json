@@ -1,0 +1,104 @@
+{
+  "canaries": [
+    {
+      "name": "zero_shortcut",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Looks like a branch simplification in b58encode_int; drops the default_one guard, so b58encode(b'') returns b'1' and leading-zero inputs gain a digit.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "    if not i and default_one:\n        return alphabet[0:1]",
+          "    if not i:\n        return alphabet[0:1]"
+        ]
+      ]
+    },
+    {
+      "name": "latin1_scrub",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Claims latin-1 is a cheaper codec than ascii for str input; non-ASCII str input is now silently accepted instead of raising UnicodeEncodeError. Upstream tests only pass ASCII strings.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "        v = v.encode('ascii')",
+          "        v = v.encode('latin-1')"
+        ]
+      ]
+    },
+    {
+      "name": "no_map_cache",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as removing lru_cache hashing overhead; actually rebuilds the decode map on every call, so decode does more work.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "@lru_cache()\ndef _get_base58_decode_map(",
+          "def _get_base58_decode_map("
+        ]
+      ]
+    },
+    {
+      "name": "drop_rstrip",
+      "kind": "perf",
+      "target": "decode_long_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as removing a duplicate strip: b58decode no longer strips trailing whitespace itself because b58decode_int does. b58decode_int strips only when the alphabet has no space, so with an alphabet that contains a space (Base45) trailing spaces are now decoded as digits.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "    Decode a Base58 encoded string\n    \"\"\"\n    v = v.rstrip()\n    v = scrub_input(v)",
+          "    Decode a Base58 encoded string\n    \"\"\"\n    v = scrub_input(v)"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "encode_chunked",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "b58encode_int peels five digits per big-integer divmod (base**5 fits one internal int digit, so each division costs the same as a division by base) and builds the output in a bytearray instead of prepending to bytes.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "    if not i and default_one:\n        return alphabet[0:1]\n    string = b\"\"\n    base = len(alphabet)\n    while i:\n        i, idx = divmod(i, base)\n        string = alphabet[idx:idx+1] + string\n    return string",
+          "    if not i and default_one:\n        return alphabet[0:1]\n    base = len(alphabet)\n    # Peel off five digits per big-integer division: base**5 still fits in\n    # one internal int digit, so each divmod costs the same as one by base.\n    big = base ** 5\n    out = bytearray()\n    while i >= big:\n        i, rem = divmod(i, big)\n        for _ in range(5):\n            rem, idx = divmod(rem, base)\n            out.append(alphabet[idx])\n    while i:\n        i, idx = divmod(i, base)\n        out.append(alphabet[idx])\n    out.reverse()\n    return bytes(out)"
+        ]
+      ]
+    },
+    {
+      "name": "decode_chunked",
+      "kind": "perf",
+      "target": "decode_long_ir",
+      "expect": "accepted",
+      "note": "b58decode_int accumulates five digits in a small int and folds them into the big integer with one multiply-add, so the number of big-integer operations drops five-fold. Submitted on the long-blob target: on address-sized strings (decode_ir) the per-call work dominates and the same change measured 0.9935, under the 1% minimum.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "    try:\n        for char in v:\n            decimal = decimal * base + map[char]\n    except KeyError as e:",
+          "    try:\n        # Accumulate five digits in a small int, then fold them into the\n        # big integer with a single multiply-add.\n        n = len(v)\n        head = n % 5\n        for char in v[:head]:\n            decimal = decimal * base + map[char]\n        big = base ** 5\n        for j in range(head, n, 5):\n            a, b, c, d, e = v[j:j + 5]\n            decimal = decimal * big + (\n                (((map[a] * base + map[b]) * base + map[c]) * base + map[d])\n                * base + map[e])\n    except KeyError as e:"
+        ]
+      ]
+    },
+    {
+      "name": "encode_long_chunked",
+      "kind": "perf",
+      "target": "encode_long_ir",
+      "expect": "accepted",
+      "note": "The same change as encode_chunked, submitted on the long-blob target: five digits per big-integer division and a bytearray instead of prepending to bytes.",
+      "edits": [
+        [
+          "base58/__init__.py",
+          "    if not i and default_one:\n        return alphabet[0:1]\n    string = b\"\"\n    base = len(alphabet)\n    while i:\n        i, idx = divmod(i, base)\n        string = alphabet[idx:idx+1] + string\n    return string",
+          "    if not i and default_one:\n        return alphabet[0:1]\n    base = len(alphabet)\n    # Peel off five digits per big-integer division: base**5 still fits in\n    # one internal int digit, so each divmod costs the same as one by base.\n    big = base ** 5\n    out = bytearray()\n    while i >= big:\n        i, rem = divmod(i, big)\n        for _ in range(5):\n            rem, idx = divmod(rem, base)\n            out.append(alphabet[idx])\n    while i:\n        i, idx = divmod(i, base)\n        out.append(alphabet[idx])\n    out.reverse()\n    return bytes(out)"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+diff --git a/minbpe/gpt4.py b/minbpe/gpt4.py
+--- a/minbpe/gpt4.py
++++ b/minbpe/gpt4.py
+@@ -80,7 +80,8 @@ class GPT4Tokenizer(RegexTokenizer):
+ 
+     def _encode_chunk(self, text_bytes):
+         # before we start processing bytes, we have to permute them
+-        text_bytes = bytes(self.byte_shuffle[b] for b in text_bytes)
++        if not text_bytes.isascii():
++            text_bytes = bytes(self.byte_shuffle[b] for b in text_bytes)
+         ids = super()._encode_chunk(text_bytes)
+         return ids
+ 
