@@ -7,6 +7,8 @@ import { genGithubOf } from "./gen-github.ts";
 import { hiddenOf } from "./hidden.ts";
 import { gainOf, providerOf, WINDOWS as BASE_WINDOWS } from "./leaderboard.ts";
 import { learningsOf } from "./learnings.ts";
+import { prepayOf } from "./prepay.ts";
+import { revenueOf } from "./revenue.ts";
 import { runtimeSpendOf } from "./runtime-spend.ts";
 import { sessionsOf } from "./sessions.ts";
 import { socialOf } from "./social.ts";
@@ -1775,6 +1777,188 @@ export class Analytics {
           .filter((s) => s.agent)
           .map((s) => ({ session_id: s.session_id as string, agent: s.agent as string, name: this.nameOf(s.agent as string), project: projOf.get(s.lineage_id as string) ?? null, started_at: s.started_at as number, desktop: !!s.desktop, viewers: vNow ? (vBy.get(s.session_id as string) ?? 0) : null }))
           .sort((a, c) => (c.viewers ?? 0) - (a.viewers ?? 0) || a.started_at - c.started_at),
+      };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------- protocol revenue
+
+  /**
+   * GET /v1/analytics/revenue?window=24h|7d|30d|all&hidden=1 (plan section 7): what flowed to
+   * protocol-controlled accounts, from records only, in the denomination each was paid in (the quote
+   * token, or SOL for units accounts). Nothing is priced here. Sources with a time per record are
+   * bucketed like the dashboard (a window is its buckets, `prev` is the same number of buckets before):
+   *   creator_fees     the treasury's share of each crank_pump_fees (the indexer's FeesCranked events)
+   *   slashes          bond slashed into the reserve (Core's slashes; in chain mode once sent; a slash
+   *                    a challenge reversed is left out)
+   *   challenge_bonds  the bond of a failed challenge, kept by the reserve
+   *   identity         units account payments in SOL (the identity service's records)
+   * The compute sink (debit_compute) has only a running total per token on chain (AgentLaunch.debited):
+   * it is served as that total, outside the windowed figures. A launch on the hidden list is left out
+   * unless hidden=1. A source Core has no copy of is `available: false`, never a zero.
+   */
+  revenue(q: { window?: string; hidden?: boolean }) {
+    const { win, now } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`revenue:${win}:${include ? 1 : 0}`, () => {
+      const rev = revenueOf(this.core);
+      const off = this.hiddenSet(include);
+      const offMints = include ? new Set<string>() : hiddenOf(this.core).mints();
+      const listed = (agent: string, mint?: string | null) => !off.has(agent) && !(mint && offMints.has(mint));
+      const idx = rev.source("indexer");
+      const idn = rev.source("identity");
+      const decRaw = idx?.meta?.quote_decimals;
+      const dec = typeof decRaw === "number" ? decRaw : null;
+      const big = (v: string | null | undefined) => (v && /^\d+$/.test(v) ? BigInt(v) : 0n);
+      const uiQ = (v: bigint) => (dec === null ? null : Number(v) / 10 ** dec);
+      const uiSol = (v: bigint) => Number(v) / 1e9;
+      const has = (t: string) => !!this.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+
+      // records with a time (ms) and an amount, per source
+      type Ev = { t: number | null; v: bigint; agent: string };
+      const cranks = rev.cranks().filter((c) => listed(c.agent, c.mint));
+      const fees: Ev[] = cranks.map((c) => ({ t: c.time === null ? null : c.time * 1000, v: big(c.to_protocol), agent: c.agent }));
+      const slashRows = this.core.chainMode
+        ? this.db
+            .query<{ id: number; agent_id: string; amount: string; at: number }, []>(
+              "SELECT s.id, s.agent_id, s.amount, COALESCE(c.posted_at, s.at) AS at FROM slashes s JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NOT NULL ORDER BY s.id",
+            )
+            .all()
+        : this.db.query<{ id: number; agent_id: string; amount: string; at: number }, []>("SELECT id, agent_id, amount, at FROM slashes ORDER BY id").all();
+      const reversed = new Set(has("slash_reversals") ? this.db.query<{ slash_row: number }, []>("SELECT slash_row FROM slash_reversals").all().map((r) => r.slash_row) : []);
+      const slashes: Ev[] = slashRows.filter((r) => !reversed.has(r.id) && big(r.amount) > 0n && listed(r.agent_id)).map((r) => ({ t: r.at, v: big(r.amount), agent: r.agent_id }));
+      const bonds: Ev[] = has("challenges")
+        ? this.db
+            .query<{ challenger: string; bond: string; opened_at: number; resolved_at: number | null }, []>(
+              "SELECT challenger, bond, opened_at, resolved_at FROM challenges WHERE status = 'failed' AND (source != 'chain' OR chain_status = 'failed') ORDER BY opened_at",
+            )
+            .all()
+            .filter((r) => listed(r.challenger))
+            .map((r) => ({ t: r.resolved_at ?? r.opened_at, v: big(r.bond), agent: r.challenger }))
+        : [];
+      const pays = rev.payments().filter((p) => listed(p.agent, p.mint));
+      const identity: Ev[] = pays.map((p) => ({ t: p.launched_at * 1000, v: big(p.lamports), agent: p.agent }));
+
+      let first: number | null = null;
+      for (const e of [...fees, ...slashes, ...bonds, ...identity]) if (e.t !== null && (first === null || e.t < first)) first = e.t;
+      const b = this.bucketsOf(win, now, first);
+      const from = b.start;
+      const to = b.start + b.n * b.size;
+      const prev = win === "all" ? null : { from: from - b.n * b.size, to: from };
+      const agg = (evs: Ev[]) => {
+        const series = Array.from({ length: b.n }, () => 0n);
+        let value = 0n, before = 0n, lifetime = 0n, records = 0, undated = 0;
+        for (const e of evs) {
+          lifetime += e.v;
+          if (e.t === null) {
+            undated++;
+            continue;
+          }
+          const i = this.slot(b, e.t);
+          if (i >= 0) (series[i]! += e.v), (value += e.v), records++;
+          else if (prev && e.t >= prev.from && e.t < prev.to) before += e.v;
+        }
+        return { series, value, before, lifetime, records, undated, lifetime_records: evs.length };
+      };
+      const chain = (this.core.chainMode ? this.core.chainView?.() : null) as { line_mint?: string; launch?: { agent_compute_bps?: number; protocol_bps?: number; compute_sink?: string } | null; vault_addresses?: { treasury?: string; reserve?: string } } | null;
+      const fronting = prepayOf(this.core).frontingView() as { identity_account_price_lamports?: string | null; identity_account_recipient?: string | null };
+      const accounts = {
+        treasury: chain?.vault_addresses?.treasury ?? null,
+        reserve: chain?.vault_addresses?.reserve ?? null,
+        compute_sink: chain?.launch?.compute_sink ?? null,
+        identity_recipient: fronting.identity_account_recipient ?? pays[0]?.recipient ?? null,
+      };
+      const quoteSrc = (id: string, account: string | null, evs: Ev[], available: boolean, as_of: number | null, error: string | null) => {
+        const a = agg(evs);
+        return {
+          id, denom: "quote" as const, account, available, as_of, error,
+          value: uiQ(a.value), value_raw: a.value.toString(), prev: prev ? uiQ(a.before) : null, prev_raw: prev ? a.before.toString() : null, records: a.records,
+          lifetime: uiQ(a.lifetime), lifetime_raw: a.lifetime.toString(), lifetime_records: a.lifetime_records, undated: a.undated,
+          series: a.series.map(uiQ), series_raw: a.series.map(String),
+        };
+      };
+      const feeSrc = quoteSrc("creator_fees", accounts.treasury, fees, !!idx?.ok_at, idx?.ok_at ?? null, idx?.ok_at ? idx.error : (idx?.error ?? "no market indexer configured for this Core (UNITS_INDEXER_URL)"));
+      const slashSrc = quoteSrc("slashes", accounts.reserve, slashes, true, now, null);
+      const bondSrc = quoteSrc("challenge_bonds", accounts.reserve, bonds, true, now, null);
+      const ia = agg(identity);
+      const idSrc = {
+        id: "identity", denom: "sol" as const, account: accounts.identity_recipient, available: !!idn?.ok_at, as_of: idn?.ok_at ?? null,
+        error: idn?.ok_at ? idn.error : (idn?.error ?? "no identity service configured for this Core (UNITS_IDENTITY_URL)"),
+        value: uiSol(ia.value), value_raw: ia.value.toString(), prev: prev ? uiSol(ia.before) : null, prev_raw: prev ? ia.before.toString() : null, records: ia.records,
+        lifetime: uiSol(ia.lifetime), lifetime_raw: ia.lifetime.toString(), lifetime_records: ia.lifetime_records, undated: 0,
+        series: ia.series.map(uiSol), series_raw: ia.series.map(String),
+        price_lamports: fronting.identity_account_price_lamports ?? null,
+      };
+      const qs = [feeSrc, slashSrc, bondSrc];
+      const sumRaw = (k: "value_raw" | "prev_raw" | "lifetime_raw") => qs.reduce((t, x) => t + big(x[k]), 0n);
+      const qSeries = Array.from({ length: b.n }, (_, i) => qs.reduce((t, x) => t + big(x.series_raw[i]), 0n));
+
+      // where creator fees went: compute vaults, the treasury, and what a crank routed elsewhere (pool, GitHub)
+      const split = Array.from({ length: b.n }, () => ({ fees: 0n, to_compute: 0n, to_protocol: 0n }));
+      const tot = { fees: 0n, to_compute: 0n, to_protocol: 0n, cranks: 0 };
+      const life = { fees: 0n, to_compute: 0n, to_protocol: 0n, cranks: cranks.length };
+      const perToken = new Map<string, { mint: string; agent: string; cranks: number; fees: bigint; to_compute: bigint; to_protocol: bigint }>();
+      for (const c of cranks) {
+        const f = big(c.fees), tc = big(c.to_compute), tp = big(c.to_protocol);
+        life.fees += f;
+        life.to_compute += tc;
+        life.to_protocol += tp;
+        const i = c.time === null ? -1 : this.slot(b, c.time * 1000);
+        if (i < 0) continue;
+        const x = split[i]!;
+        x.fees += f;
+        x.to_compute += tc;
+        x.to_protocol += tp;
+        tot.fees += f;
+        tot.to_compute += tc;
+        tot.to_protocol += tp;
+        tot.cranks++;
+        const t = perToken.get(c.mint) ?? perToken.set(c.mint, { mint: c.mint, agent: c.agent, cranks: 0, fees: 0n, to_compute: 0n, to_protocol: 0n }).get(c.mint)!;
+        t.cranks++;
+        t.fees += f;
+        t.to_compute += tc;
+        t.to_protocol += tp;
+      }
+      const routed = (x: { fees: bigint; to_compute: bigint; to_protocol: bigint }) => (x.fees > x.to_compute + x.to_protocol ? x.fees - x.to_compute - x.to_protocol : 0n);
+      const part = (x: { fees: bigint; to_compute: bigint; to_protocol: bigint }) => ({
+        fees: uiQ(x.fees), fees_raw: x.fees.toString(), to_compute: uiQ(x.to_compute), to_compute_raw: x.to_compute.toString(),
+        to_protocol: uiQ(x.to_protocol), to_protocol_raw: x.to_protocol.toString(), routed: uiQ(routed(x)), routed_raw: routed(x).toString(),
+      });
+      const tokens = rev.tokens().filter((t) => listed(t.agent, t.mint));
+      const symbolOf = new Map(tokens.map((t) => [t.mint, t.symbol]));
+      const debited = tokens.filter((t) => big(t.debited) > 0n);
+      const debitedTotal = debited.reduce((t, x) => t + big(x.debited), 0n);
+      const stateAt = tokens.reduce<number | null>((m, t) => (t.state_at !== null && (m === null || t.state_at > m) ? t.state_at : m), null);
+
+      return {
+        now, window: win, hidden: include,
+        axis: this.axis(b), range: { from, to }, prev, first_record_at: first,
+        quote: { symbol: typeof idx?.meta?.quote === "string" ? idx.meta.quote : null, mint: (typeof idx?.meta?.quote_mint === "string" ? idx.meta.quote_mint : null) ?? chain?.line_mint ?? null, decimals: dec },
+        split_bps: chain?.launch ? { agent_compute: chain.launch.agent_compute_bps ?? null, protocol: chain.launch.protocol_bps ?? null } : this.core.chainMode ? null : { agent_compute: this.core.cfg.agent_compute_bps, protocol: this.core.cfg.protocol_bps },
+        accounts,
+        kpi: {
+          quote: { value: uiQ(sumRaw("value_raw")), value_raw: sumRaw("value_raw").toString(), prev: prev ? uiQ(sumRaw("prev_raw")) : null, prev_raw: prev ? sumRaw("prev_raw").toString() : null, series: qSeries.map(uiQ), lifetime: uiQ(sumRaw("lifetime_raw")), lifetime_raw: sumRaw("lifetime_raw").toString() },
+          sol: { available: idSrc.available, value: idSrc.value, value_raw: idSrc.value_raw, prev: idSrc.prev, series: idSrc.series, lifetime: idSrc.lifetime, lifetime_raw: idSrc.lifetime_raw },
+        },
+        sources: [feeSrc, slashSrc, bondSrc, idSrc],
+        creator_fees: {
+          available: feeSrc.available, cranks: tot.cranks, ...part(tot),
+          series: split.map(part),
+          lifetime: { cranks: life.cranks, ...part(life) },
+          tokens: [...perToken.values()]
+            .sort((x, y) => (y.to_protocol > x.to_protocol ? 1 : y.to_protocol < x.to_protocol ? -1 : x.mint.localeCompare(y.mint)))
+            .slice(0, 12)
+            .map((t) => ({ mint: t.mint, agent: t.agent, name: this.nameOf(t.agent), symbol: symbolOf.get(t.mint) ?? null, cranks: t.cranks, ...part(t) })),
+        },
+        // lifetime only: the chain keeps a running total per token, no record per debit with a time
+        compute_sink: {
+          available: !!idx?.ok_at, as_of: stateAt === null ? null : stateAt * 1000, account: accounts.compute_sink,
+          debited: uiQ(debitedTotal), debited_raw: debitedTotal.toString(), tokens: debited.length,
+          by_token: debited
+            .sort((x, y) => (big(y.debited) > big(x.debited) ? 1 : big(y.debited) < big(x.debited) ? -1 : x.mint.localeCompare(y.mint)))
+            .slice(0, 12)
+            .map((t) => ({ mint: t.mint, agent: t.agent, name: this.nameOf(t.agent), symbol: t.symbol, debited: uiQ(big(t.debited)), debited_raw: t.debited })),
+        },
       };
     });
   }

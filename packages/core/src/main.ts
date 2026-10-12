@@ -14,6 +14,7 @@ import { Core } from "./core.ts";
 import { canaryDirIsPublic, loadCanaryDir } from "./hardening.ts";
 import { serve } from "./http.ts";
 import { GitTreeSource } from "./trees.ts";
+import { revenueOf } from "./revenue.ts";
 import { viewersOf } from "./viewers.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 import { agentWalletOf } from "./agent-wallet.ts";
@@ -183,6 +184,26 @@ const viewerTimer = gateUrl
     }, 60_000)
   : null;
 if (gateUrl) console.log(`viewer counts: sampling ${gateUrl}/gate/viewers every minute`);
+// protocol revenue records (revenue.ts): Core keeps a copy of the indexer's fee cranks and the identity
+// service's units account payments, read once a minute over loopback
+const revenueUrls = { indexer: process.env.UNITS_INDEXER_URL?.trim() || null, identity: process.env.UNITS_IDENTITY_URL?.trim() || null };
+const revenueErr: Record<string, string> = {};
+const sampleRevenue = () =>
+  void revenueOf(core)
+    .sample(revenueUrls)
+    .then((r) => {
+      for (const [k, v] of Object.entries(r as Record<string, { ok: boolean; error?: string }>)) {
+        const err = v.ok ? "" : String(v.error ?? "failed");
+        if (err && err !== revenueErr[k]) console.error(`[revenue] ${k} read failed: ${err}`);
+        revenueErr[k] = err;
+      }
+    })
+    .catch((e) => console.error("[revenue] sample failed", e));
+const revenueTimer = revenueUrls.indexer || revenueUrls.identity ? setInterval(sampleRevenue, 60_000) : null;
+if (revenueTimer) {
+  console.log(`protocol revenue records: reading ${[revenueUrls.indexer && `${revenueUrls.indexer}/market/flows`, revenueUrls.identity && `${revenueUrls.identity}/identity/payments`].filter(Boolean).join(" and ")} every minute`);
+  setTimeout(sampleRevenue, 5_000);
+}
 const timer = setInterval(() => {
   try {
     core.tick();
@@ -198,6 +219,7 @@ const stop = () => {
   if (chainTimer) clearInterval(chainTimer);
   if (beaconTimer) clearInterval(beaconTimer);
   if (viewerTimer) clearInterval(viewerTimer);
+  if (revenueTimer) clearInterval(revenueTimer);
   server.stop(true);
   core.close();
   process.exit(0);

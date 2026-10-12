@@ -247,6 +247,28 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         alerts: alerts()?.alerts.length ?? null,
       });
     }
+    // Protocol flows (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 7): every fee crank with what it
+    // paid the agent's compute vault and the registry treasury, and each token's counters as the
+    // AgentLaunch account carries them (debited: what debit_compute moved to the compute sink). Read only;
+    // raw base units of the quote token as strings. Hidden launches are left out unless hidden=1.
+    if (parts.length === 2 && parts[1] === "flows") {
+      const withHidden = q.get("hidden") === "1";
+      const hidden = new Set((db.query("SELECT mint FROM hidden_mints").all() as { mint: string }[]).map((r) => r.mint));
+      const toks = (db.query("SELECT * FROM tokens").all() as TokRow[]).filter((t) => withHidden || !hidden.has(t.mint));
+      const byMint = new Map(toks.map((t) => [t.mint, t]));
+      const cranks = (db.query("SELECT sig, idx, mint, slot, time, fees_raw, to_compute_raw, to_protocol_raw FROM fee_cranks ORDER BY slot, idx").all() as
+        { sig: string; idx: number; mint: string; slot: number; time: number | null; fees_raw: string; to_compute_raw: string; to_protocol_raw: string }[])
+        .filter((r) => byMint.has(r.mint));
+      return json({
+        quote: QUOTE,
+        quote_mint: (db.query("SELECT v FROM meta WHERE k = 'line_mint'").get() as { v: string } | null)?.v ?? null,
+        quote_decimals: lineDecimals(),
+        cranks: cranks.map((r) => ({ signature: r.sig, idx: r.idx, mint: r.mint, agent: byMint.get(r.mint)!.agent, venue: byMint.get(r.mint)!.venue === "pump" ? "pump" : "meteora",
+          slot: r.slot, time: r.time, fees_raw: r.fees_raw, to_compute_raw: r.to_compute_raw, to_protocol_raw: r.to_protocol_raw })),
+        tokens: toks.map((t) => ({ mint: t.mint, agent: t.agent, symbol: t.symbol, venue: t.venue === "pump" ? "pump" : "meteora", hosted: t.hosted == null ? null : t.hosted === 1,
+          hidden: hidden.has(t.mint), fees_claimed_raw: t.fees_claimed, to_compute_raw: t.to_compute, to_protocol_raw: t.to_protocol, debited_raw: t.debited, state_at: t.state_at })),
+      });
+    }
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
 
     if (parts.length === 2) {

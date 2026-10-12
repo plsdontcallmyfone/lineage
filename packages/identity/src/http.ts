@@ -92,6 +92,7 @@ export function handler(svc: IdentityService, log: Log, limiter = new Limiter())
         if (!limiter.take(ip, "read")) return json({ error: "rate_limited" }, 429);
         if (p === "/identity/health") return json({ ok: true, ...svc.summary() });
         if (p === "/identity/agents") return json(svc.views());
+        if (p === "/identity/payments") return json(svc.payments());
         const m = /^\/identity\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(p);
         if (m) return json(svc.view(m[1]!));
         return json({ error: "not_found" }, 404);

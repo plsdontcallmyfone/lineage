@@ -190,6 +190,22 @@ describe("ingest", () => {
     expect([f.body.cranks.length, f.body.cranks[0].source, f.body.cranks[0].to_vault_raw]).toEqual([1, "pump_curve_and_pool", "206934886454"]);
     expect(f.body.sweeps.map((s: any) => s.venue)).toEqual(["pool", "curve"]); // newest first
     expect(f.body.creator_fee_income_raw).toBe(FX.pda_line_after_sweeps.a2);
+    // protocol flows: the same crank as the token's fee route gives it, raw, with the token's counters;
+    // a hidden launch leaves the answer unless hidden=1
+    const pf = await get("/market/flows");
+    const fc = f.body.cranks[0];
+    expect(pf.body.cranks.map((x: any) => [x.signature, x.mint, x.agent, x.venue, x.fees_raw, x.to_compute_raw, x.to_protocol_raw])).toEqual([
+      [fc.signature, A2, by[A2].agent, "pump", fc.amount_raw, fc.to_vault_raw, fc.to_treasury_raw]]);
+    expect(pf.body.quote_decimals).toBe(6);
+    const stored = Object.fromEntries((db.query("SELECT mint, debited, to_protocol FROM tokens").all() as any[]).map((r) => [r.mint, r]));
+    expect(pf.body.tokens.length).toBe(list.body.tokens.length);
+    for (const t of pf.body.tokens) expect([t.debited_raw, t.to_protocol_raw, t.hidden]).toEqual([stored[t.mint].debited, stored[t.mint].to_protocol, false]);
+    db.query("INSERT INTO hidden_mints (mint, agent, reason, added_at) VALUES (?, ?, 'test launch', 1)").run(A2, by[A2].agent);
+    const pfOff = await get("/market/flows");
+    expect([pfOff.body.cranks.length, pfOff.body.tokens.some((t: any) => t.mint === A2)]).toEqual([0, false]);
+    const pfOn = await get("/market/flows?hidden=1");
+    expect([pfOn.body.cranks.length, pfOn.body.tokens.find((t: any) => t.mint === A2).hidden]).toEqual([1, true]);
+    db.query("DELETE FROM hidden_mints WHERE mint = ?").run(A2);
     const al = await get("/market/alerts");
     expect([al.body.alerts, al.body.baseline.maxCurveDepth]).toEqual([[], 1]);
     expect((await get("/market/summary")).body.alerts).toBe(0);

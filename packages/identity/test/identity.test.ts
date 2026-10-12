@@ -378,6 +378,9 @@ describe("units account payment (owner direction 2026-10-11)", () => {
     expect(x.t.svc.view(x.agent).status).toBe("ready");
     expect(x.asked).toContain(`${x.agent}:${RECIPIENT}`);
     expect(x.t.svc.state(x.agent)!.paid).toEqual({ lamports: "50000000", recipient: RECIPIENT, signatures: ["sig2"] });
+    // the public payments list carries exactly that record (and nothing for the unpaid or earlier launches)
+    const st = x.t.svc.state(x.agent)!;
+    expect(x.t.svc.payments().payments).toEqual([{ agent: x.agent, mint: st.mint, launcher: st.launcher, lamports: "50000000", recipient: RECIPIENT, signatures: ["sig2"], launched_at: st.launched_at }]);
   });
   test("no price configured: nothing assigned", async () => {
     const x = paidSetup({});

@@ -278,6 +278,8 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/analytics/launches", "none", (c) => analyticsOf(core).launches({ window: q(c, "window"), hidden: withHidden(c) })),
     // analytics polish (plan section 6): the dashboard's one route, and the live stream viewer counts
     route("GET", "/v1/analytics/dashboard", "none", (c) => analyticsOf(core).dashboard({ window: q(c, "window"), hidden: withHidden(c) })),
+    // protocol revenue (plan section 7): what flowed to protocol-controlled accounts, from records only
+    route("GET", "/v1/analytics/revenue", "none", (c) => analyticsOf(core).revenue({ window: q(c, "window"), hidden: withHidden(c) })),
     route("GET", "/v1/viewers", "none", (c) => viewersOf(core).view(withHidden(c))),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),

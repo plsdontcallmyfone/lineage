@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LEARNINGS_LIMITS } from "../src/learnings.ts";
 import { generateAgentKey } from "../src/protocol.ts";
+import { parseIdentityPayments, parseIndexerFlows, revenueOf } from "../src/revenue.ts";
 import { parseGateViewers, viewersOf, VIEWERS_FRESH_MS } from "../src/viewers.ts";
 import { authorLeaks, CALIB, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Env } from "./helpers.ts";
 
@@ -383,5 +384,126 @@ describe("analytics aggregates", () => {
     expect(await vw.sample("http://gate", (async () => new Response("no", { status: 502 })) as unknown as typeof fetch)).toMatchObject({ ok: false });
     expect(await vw.sample("http://gate", (async (u: string) => (expect(u).toBe("http://gate/gate/viewers"), Response.json({ at: 1, total: 2, sessions: { [sa]: 2 } }))) as unknown as typeof fetch)).toMatchObject({ recorded: true });
     expect((await expectOk(e.anon.get("/v1/viewers"))).total).toBe(2);
+  });
+
+  test("protocol revenue: figures equal the crank, slash, challenge and payment records; windows; hidden launches left out unless hidden=1", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const a = await makeAuthor(e);
+    const h = await makeAuthor(e);
+    const mintOf = async (x: typeof a) => (await expectOk(e.anon.get(`/v1/agents/${x.id}`))).mint as string;
+    const ma = await mintOf(a), mh = await mintOf(h);
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { add: [{ mint: mh, reason: "test launch" }] }));
+    const HOUR = 3_600_000, DAY = 24 * HOUR;
+    const rev = revenueOf(e.core);
+    const get = async (w: string, extra = "") => (e.clock.advance(CACHE), await expectOk(e.anon.get(`/v1/analytics/revenue?window=${w}${extra}`)));
+
+    // before any copy of the indexer or the identity service: not available, never a zero that reads as measured
+    const none = await get("7d");
+    expect(none.sources.map((x: any) => [x.id, x.denom, x.available])).toEqual([["creator_fees", "quote", false], ["slashes", "quote", true], ["challenge_bonds", "quote", true], ["identity", "sol", false]]);
+    expect([none.quote.decimals, none.kpi.quote.value, none.kpi.quote.value_raw, none.compute_sink.available]).toEqual([null, null, "0", false]);
+
+    // the records: three cranks of the listed token (36 h ago, 2 h ago, and one whose block time the RPC did
+    // not give), one of the hidden token; token counters; one units account payment each
+    const now = e.clock.now();
+    const sig = (n: number) => "S".repeat(60) + String(n).padStart(4, "1");
+    const s = (ms: number) => Math.floor(ms / 1000);
+    const cranks = [
+      { signature: sig(1), idx: 0, mint: ma, agent: a.id, venue: "pump", slot: 1, time: s(now - 36 * HOUR), fees_raw: "1000000", to_compute_raw: "700000", to_protocol_raw: "300000" },
+      // a crank with a routed slice: the compute vault got less than its 70%
+      { signature: sig(2), idx: 0, mint: ma, agent: a.id, venue: "pump", slot: 2, time: s(now - 2 * HOUR), fees_raw: "5000000", to_compute_raw: "3000000", to_protocol_raw: "1500000" },
+      { signature: sig(3), idx: 1, mint: ma, agent: a.id, venue: "pump", slot: 3, time: null, fees_raw: "100", to_compute_raw: "70", to_protocol_raw: "30" },
+      { signature: sig(4), idx: 0, mint: mh, agent: h.id, venue: "meteora", slot: 4, time: s(now - 3 * HOUR), fees_raw: "9000000", to_compute_raw: "6300000", to_protocol_raw: "2700000" },
+      { signature: "not a signature", idx: 0, mint: ma, agent: a.id, time: 5, fees_raw: "1", to_compute_raw: "1", to_protocol_raw: "x" },
+    ];
+    const tokens = [
+      { mint: ma, agent: a.id, symbol: "TA", venue: "pump", hosted: true, hidden: false, fees_claimed_raw: "6000100", to_compute_raw: "3700070", to_protocol_raw: "1800030", debited_raw: "4200000", state_at: s(now) - 30 },
+      { mint: mh, agent: h.id, symbol: "TH", venue: "meteora", hosted: true, hidden: true, fees_claimed_raw: "9000000", to_compute_raw: "6300000", to_protocol_raw: "2700000", debited_raw: "1000000", state_at: s(now) - 20 },
+    ];
+    const flows = parseIndexerFlows({ quote: "tUNITS", quote_mint: ma, quote_decimals: 6, cranks, tokens, extra: "dropped" })!;
+    expect(flows.cranks).toHaveLength(4); // the malformed row is dropped
+    expect(parseIndexerFlows({ cranks: [] })).toBeNull();
+    const REC = generateAgentKey().id;
+    const pays = parseIdentityPayments({ since: 1, payments: [
+      { agent: a.id, mint: ma, launcher: a.id, lamports: "50000000", recipient: REC, signatures: [sig(7)], launched_at: s(now - 30 * HOUR) },
+      { agent: h.id, mint: mh, launcher: h.id, lamports: "50000000", recipient: REC, signatures: [sig(8)], launched_at: s(now - 1 * HOUR) },
+      { agent: a.id, mint: ma, launcher: a.id, lamports: "-5", recipient: REC, signatures: [], launched_at: 1 },
+    ] })!;
+    expect(pays.payments).toHaveLength(2);
+    // the sampler reads both services over loopback and replaces Core's copy
+    const fetched: string[] = [];
+    const fake = (async (u: string) => (fetched.push(u), Response.json(u.includes("/market/") ? { quote: "tUNITS", quote_mint: ma, quote_decimals: 6, cranks, tokens } : { since: 1, payments: pays.payments }))) as unknown as typeof fetch;
+    expect(await rev.sample({ indexer: "http://ix/", identity: "http://id" }, fake)).toEqual({ indexer: { ok: true, cranks: 4, tokens: 2 }, identity: { ok: true, payments: 2 } });
+    expect(fetched).toEqual(["http://ix/market/flows?hidden=1", "http://id/identity/payments"]);
+    // Core's own records: a slash of the listed agent 5 h ago (into the reserve), one a challenge reversed, a
+    // failed challenge by the listed agent 26 h ago, an upheld one and an expired one (both refunded)
+    const db = e.core.db;
+    db.query("INSERT INTO slashes (agent_id, bps, amount, reason, ref, epoch, at) VALUES (?, 100, '40000', 'minority', 'r1', 0, ?)").run(a.id, now - 5 * HOUR);
+    const rs = db.query("INSERT INTO slashes (agent_id, bps, amount, reason, ref, epoch, at) VALUES (?, 100, '77777', 'minority', 'r2', 0, ?)").run(a.id, now - 4 * HOUR);
+    db.query("INSERT INTO slash_reversals (slash_row, challenge_id, amount, at) VALUES (?, 'c0', '77777', ?)").run(Number(rs.lastInsertRowid), now - HOUR);
+    const ch = db.query(
+      "INSERT INTO challenges (challenge_id, kind, subject, subject_hex, epoch, challenger, claim_digest, bond, status, opened_at, deadline, resolved_at, source) VALUES (?, 'verdict', ?, ?, 0, ?, 'd', ?, ?, ?, ?, ?, 'sim')",
+    );
+    ch.run("c1", "s1", "s1", a.id, "1000000", "failed", now - 27 * HOUR, now, now - 26 * HOUR);
+    ch.run("c2", "s2", "s2", a.id, "1000000", "upheld", now - 27 * HOUR, now, now - 26 * HOUR);
+    ch.run("c3", "s3", "s3", a.id, "1000000", "expired", now - 27 * HOUR, now, now - 26 * HOUR);
+    ch.run("c4", "s4", "s4", h.id, "2000000", "failed", now - 27 * HOUR, now, now - 3 * HOUR);
+
+    const sum = (xs: (number | null)[]) => xs.reduce<number>((n, x) => n + (x ?? 0), 0);
+    const src = (r: any, id: string) => r.sources.find((x: any) => x.id === id);
+    // 7 d, listed launches only: every figure is the sum of the listed records, in its own denomination
+    const w = await get("7d");
+    expect(w.axis.t).toHaveLength(7);
+    expect(w.quote).toEqual({ symbol: "tUNITS", mint: ma, decimals: 6 });
+    expect(src(w, "creator_fees")).toMatchObject({ available: true, value_raw: "1800000", value: 1.8, records: 2, lifetime_raw: "1800030", lifetime_records: 3, undated: 1, prev_raw: "0" });
+    expect(src(w, "slashes")).toMatchObject({ value_raw: "40000", records: 1, lifetime_records: 1 });
+    expect(src(w, "challenge_bonds")).toMatchObject({ value_raw: "1000000", records: 1 });
+    expect(src(w, "identity")).toMatchObject({ denom: "sol", available: true, value_raw: "50000000", value: 0.05, records: 1 });
+    expect(w.accounts.identity_recipient).toBe((await expectOk(e.anon.get("/v1/launch-fronting"))).identity_account_recipient ?? REC);
+    expect(w.kpi.quote).toMatchObject({ value_raw: "2840000", value: 2.84, prev: 0, lifetime_raw: "2840030" });
+    expect(sum(w.kpi.quote.series)).toBeCloseTo(2.84, 9);
+    for (const x of w.sources) expect(sum(x.series)).toBeCloseTo(x.value, 9);
+    expect(w.kpi.sol).toMatchObject({ available: true, value: 0.05, lifetime_raw: "50000000" });
+    // where creator fees went: compute vaults, the treasury, and the rest a crank routed elsewhere
+    expect(w.creator_fees).toMatchObject({ cranks: 2, fees_raw: "6000000", to_compute_raw: "3700000", to_protocol_raw: "1800000", routed_raw: "500000" });
+    expect(w.creator_fees.lifetime).toMatchObject({ cranks: 3, fees_raw: "6000100", to_protocol_raw: "1800030" });
+    expect(w.creator_fees.tokens).toEqual([expect.objectContaining({ mint: ma, agent: a.id, symbol: "TA", cranks: 2, to_protocol_raw: "1800000" })]);
+    expect(sum(w.creator_fees.series.map((x: any) => x.to_compute))).toBeCloseTo(3.7, 9);
+    // the compute sink: the chain's running totals of the listed tokens, no window
+    expect(w.compute_sink).toMatchObject({ available: true, debited_raw: "4200000", debited: 4.2, tokens: 1, as_of: (s(now) - 30) * 1000 });
+    expect(w.split_bps).toEqual({ agent_compute: e.core.cfg.agent_compute_bps, protocol: e.core.cfg.protocol_bps });
+
+    // 24 h: hours; the records of the day before are the period before
+    const d = await get("24h");
+    expect([d.axis.unit, d.axis.t.length]).toEqual(["hour", 24]);
+    expect(d.prev).toEqual({ from: d.range.from - 24 * HOUR, to: d.range.from });
+    expect(src(d, "creator_fees")).toMatchObject({ value_raw: "1500000", prev_raw: "300000", records: 1 });
+    expect(src(d, "challenge_bonds")).toMatchObject({ value_raw: "0", prev_raw: "1000000" });
+    expect(src(d, "identity")).toMatchObject({ value_raw: "0", prev_raw: "50000000" });
+    expect(d.kpi.quote).toMatchObject({ value_raw: "1540000", prev_raw: "1300000" });
+    // 30 d and all time hold everything dated; all time has no period before and starts at the first record
+    const m = await get("30d");
+    expect([m.axis.t.length, m.kpi.quote.value_raw]).toEqual([30, "2840000"]);
+    const all = await get("all");
+    expect(all.prev).toBeNull();
+    expect(all.kpi.quote).toMatchObject({ value_raw: "2840000", prev: null });
+    expect(all.first_record_at).toBe(s(now - 36 * HOUR) * 1000);
+    expect(all.axis.t[0]).toBe(Math.floor(all.first_record_at / DAY) * DAY);
+
+    // hidden=1 adds the hidden launch's crank, challenge bond, payment and compute total
+    const on = await get("7d", "&hidden=1");
+    expect(src(on, "creator_fees")).toMatchObject({ value_raw: "4500000", records: 3 });
+    expect(src(on, "challenge_bonds").value_raw).toBe("3000000");
+    expect(src(on, "identity")).toMatchObject({ value_raw: "100000000", value: 0.1, records: 2 });
+    expect(on.compute_sink).toMatchObject({ debited_raw: "5200000", tokens: 2 });
+    expect(on.creator_fees.tokens.map((x: any) => x.mint).sort()).toEqual([ma, mh].sort());
+    expect(JSON.stringify(w).includes(h.id)).toBe(false);
+
+    // a source that stops answering keeps its copy and says so; an answer without a record removes it here
+    expect(await rev.sample({ indexer: "http://ix" }, (async () => new Response("no", { status: 502 })) as unknown as typeof fetch)).toEqual({ indexer: { ok: false, error: "answered 502" } });
+    const kept = await get("7d");
+    expect(src(kept, "creator_fees")).toMatchObject({ available: true, value_raw: "1800000", error: "answered 502" });
+    rev.recordIndexer({ ...flows, cranks: flows.cranks.slice(0, 1) });
+    expect(src(await get("7d"), "creator_fees")).toMatchObject({ value_raw: "300000", error: null });
+    expect((await e.anon.get("/v1/analytics/revenue?window=1y")).status).toBe(400);
   });
 });

@@ -131,6 +131,22 @@ export class IdentityService {
     return this.store.list("state").map((a) => this.view(a));
   }
 
+  /**
+   * GET /identity/payments: the units account payments found in launch transactions (public chain
+   * facts: who paid how many lamports to which recipient, in which signatures, for which launch).
+   * `launched_at` is the launch's chain time in unix seconds; the payment rides in the launch transactions.
+   */
+  payments(): { since: number | null; payments: { agent: string; mint: string; launcher: string; lamports: string; recipient: string; signatures: string[]; launched_at: number }[] } {
+    const out = [];
+    for (const a of this.store.list("state")) {
+      const s = this.state(a);
+      if (!s?.paid || !/^\d+$/.test(s.paid.lamports)) continue;
+      out.push({ agent: s.agent, mint: s.mint, launcher: s.launcher, lamports: s.paid.lamports, recipient: s.paid.recipient, signatures: s.paid.signatures, launched_at: s.launched_at });
+    }
+    out.sort((x, y) => x.launched_at - y.launched_at || (x.agent < y.agent ? -1 : 1));
+    return { since: this.o.payment?.since ?? null, payments: out };
+  }
+
   summary() {
     const counts: Record<string, number> = {};
     for (const a of this.store.list("state")) {
