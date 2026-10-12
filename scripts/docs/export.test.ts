@@ -72,6 +72,7 @@ test("networks, models and changelog carry what the docs show and nothing keyed"
 
 test("page dates come from the history of apps/docs/content, the removal left out", () => {
   const all = updatedData(root).pages;
+  if (Bun.spawnSync(["git", "-C", root, "rev-parse", "--is-shallow-repository"]).stdout.toString().trim() !== "false") return; // a shallow clone has no history to read
   expect(Object.keys(all).length).toBeGreaterThan(30);
   for (const d of Object.values(all)) expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(all["overview.md"]).toBeTruthy();
