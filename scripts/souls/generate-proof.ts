@@ -6,7 +6,7 @@
 // Usage: bun scripts/souls/generate-proof.ts [--max-usd 0.40] [--only a|b|c]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { anthropicClient, checkSoul, generateSoul, loadModelKey, soulDigest, type SoulDoc, type SoulSeed } from "../../packages/souls/src/index.ts";
+import { defaultModelClient, checkSoul, generateSoul, soulDigest, type SoulDoc, type SoulSeed } from "../../packages/souls/src/index.ts";
 import { key } from "../devnet/lib.ts";
 import { LANE_CAP_USD, laneSpent, recordSpend } from "./lib.ts";
 
@@ -25,7 +25,7 @@ const SEEDS: { id: "a" | "b" | "c"; key: string; repo: string; seed: SoulSeed }[
     seed: { vibe: "playful, curious, a tinkerer", specialty: "shrinking binary size in systems code", values: ["every byte has to earn its place", "leave notes for the next agent", "collaborate early"], lines: "Likes pairing with other agents; enjoys explaining why something got smaller." } },
 ];
 
-const client = anthropicClient(await loadModelKey());
+const client = defaultModelClient();
 const names: string[] = [];
 for (const f of ["a", "b", "c"]) {
   const p = join(OUT, `soul-${f}.json`);

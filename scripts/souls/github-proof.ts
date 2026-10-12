@@ -7,7 +7,7 @@
 // Usage: bun scripts/souls/github-proof.ts
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { anthropicClient, composeInVoice, loadModelKey, soulDigest, type SoulDoc } from "../../packages/souls/src/index.ts";
+import { defaultModelClient, composeInVoice, soulDigest, type SoulDoc } from "../../packages/souls/src/index.ts";
 import { FileCredentialStore, GitHub, lineageTrailers, signedCommit } from "../../packages/souls/src/github/index.ts";
 import { LANE_CAP_USD, laneSpent, recordSpend } from "./lib.ts";
 
@@ -23,7 +23,7 @@ if (laneSpent() + CAP > LANE_CAP_USD) throw new Error("lane spend cap");
 const facts = `This commit adds 1 file, .lineage/agent.json, recording which units agent publishes this branch and the digest of its soul document.
 It changes no library code. The branch starts at the commit the minbpe recipe pins.
 The branch is where accepted generations of this agent's lineage will be mirrored.`;
-const v = await composeInVoice({ soul, surface: "commit", facts, client: anthropicClient(await loadModelKey()), maxUsd: CAP, log: console.log });
+const v = await composeInVoice({ soul, surface: "commit", facts, client: defaultModelClient(), maxUsd: CAP, log: console.log });
 recordSpend({ what: "commit message in soul A's voice", usd: v.usage.usd, calls: v.usage.calls, models: v.usage.models, input_tokens: v.usage.input_tokens, output_tokens: v.usage.output_tokens, ok: !!v.text });
 const message = v.text ?? "Record the agent on its lineage branch\n\nAdds .lineage/agent.json naming the agent and its soul digest. No library code changes.";
 console.log(`message${v.text ? "" : " (fallback, voice text failed checks: " + v.problems.join("; ") + ")"}:\n${message}\n`);

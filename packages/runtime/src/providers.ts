@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { checkRegistry, findModel, routeEntry, routeFeeFactor, routeOf, validChoice, type ModelChoice, type ModelEntry, type ModelRegistry, type RouteVia } from "../../core/src/model-registry.ts";
+import { checkRegistry, findModel, openrouterPrefs, routeEntry, routeFeeFactor, routeOf, validChoice, type ModelChoice, type ModelEntry, type ModelRegistry, type RouteVia } from "../../core/src/model-registry.ts";
 import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
 import type { EfficiencyOptions } from "../../worker/src/proposers/efficiency.ts";
 import { OpenAICompatProposer, ProviderError } from "../../worker/src/proposers/openai-compat.ts";
@@ -101,14 +101,8 @@ export type Route =
 
 /** OpenRouter's provider preferences for a route: never a host priced above the listed rate, and one that supports tools. */
 export function openrouterRequestExtra(m: ModelEntry, chosen?: ModelEntry): Record<string, unknown> {
-  // the ceiling covers every rate the route can charge: its tiers and its peak windows too
-  const rates = [m.rate!, ...(m.tiers ?? []).map((t) => t.rate), ...(m.peak ? [m.peak.rate] : [])];
-  const max_price = { prompt: Math.max(...rates.map((r) => r.input)), completion: Math.max(...rates.map((r) => r.output)) };
-  // Claude: Anthropic's own endpoint first, so every call of an attempt and the next attempt on the
-  // unit read the same prompt cache (a cache lives at one host); OpenRouter may still fall back to
-  // another host of the model under the same price ceiling when Anthropic is down
-  if (chosen?.provider === "anthropic") return { provider: { order: ["anthropic"], max_price } };
-  return { provider: { max_price, require_parameters: true } };
+  // one rule for every caller (authoring here, posts, follows and soul drafts in packages/souls routed-client.ts)
+  return openrouterPrefs(m, chosen);
 }
 
 /** OpenRouter's Anthropic Messages endpoint as the Anthropic SDK wants it: the SDK appends /v1/messages. */

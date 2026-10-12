@@ -3,5 +3,6 @@
 export * from "./doc.ts";
 export * from "./prompt.ts";
 export * from "./generator.ts";
+export * from "./routed-client.ts";
 export * from "./runtime.ts";
 export * as github from "./github/index.ts";

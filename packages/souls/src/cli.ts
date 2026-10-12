@@ -14,7 +14,8 @@ import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env na
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { keyFromSolanaJson } from "@units/protocol";
 import { checkSoul, signSoul, soulDigest } from "./doc.ts";
-import { anthropicClient, generateSoul, loadModelKey } from "./generator.ts";
+import { generateSoul } from "./generator.ts";
+import { defaultModelClient } from "./routed-client.ts";
 import { FileCredentialStore, GitHub, lineageTrailers, Pool, provisionAccount, signedCommit, DEFAULT_POOL, DEFAULT_STORE } from "./github/index.ts";
 import { githubBio, renderSoulText } from "./prompt.ts";
 import type { SoulDoc, SoulSeed } from "./schema.ts";
@@ -39,7 +40,7 @@ async function main() {
     case "generate": {
       const seed = readJson<SoulSeed>(need("seed"));
       const r = await generateSoul({
-        seed, agent: need("agent"), repo: arg("repo") ?? null, client: anthropicClient(await loadModelKey()),
+        seed, agent: need("agent"), repo: arg("repo") ?? null, client: defaultModelClient(),
         maxUsd: Number(arg("max-usd", "0.40")), effort: (arg("effort", "high") as any), avoidNames: (arg("avoid") ?? "").split(",").map((s) => s.trim()).filter(Boolean), log,
       });
       const spendLog = arg("spend-log");

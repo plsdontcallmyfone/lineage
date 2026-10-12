@@ -306,7 +306,7 @@ users_setup() {
   local sd=/home/units/.lineage/web/soul-drafts.jsonl
   if [ -f "$sd" ] && [ ! -f "$WEB/.lineage/web/soul-drafts.jsonl" ]; then install -m 600 -o units-web -g units-web "$sd" "$WEB/.lineage/web/soul-drafts.jsonl"; fi
   ( umask 077
-    { env_line "$LH/rpc.env" HELIUS_DEVNET_RPC UNITS_DEVNET_RPC; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; } > /etc/units/web.env
+    { env_line "$LH/rpc.env" HELIUS_DEVNET_RPC UNITS_DEVNET_RPC; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; env_line "$LH/providers.env" OPENROUTER_API_KEY OPENROUTER_API_KEY; } > /etc/units/web.env
     env_line "$LH/rpc.env" HELIUS_DEVNET_RPC UNITS_DEVNET_RPC > /etc/units/indexer.env )
   chmod 600 /etc/units/web.env /etc/units/indexer.env
   # monitor: what to watch (public keys and names only; alert sinks are the owner's /etc/units/alert.env)

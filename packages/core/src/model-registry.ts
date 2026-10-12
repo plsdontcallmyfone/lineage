@@ -341,6 +341,19 @@ export function routeEntry(r: ModelRegistry, m: ModelEntry, via: RouteVia): Mode
   return { ...m, id: o.id, provider: "openrouter", status: "verified", rate: o.rate, tiers: o.tiers ?? null, peak: o.peak ?? null };
 }
 
+/**
+ * OpenRouter's provider preferences for a route entry (routeEntry of via "openrouter"): never a host
+ * priced above the route's highest listed rate (tiers and peak windows included), with no tolerance.
+ * A Claude model names Anthropic's own endpoint first, so every call reads the same prompt cache;
+ * the other models require a host that supports every request parameter (tools).
+ */
+export function openrouterPrefs(entry: ModelEntry, chosen?: ModelEntry): { provider: Record<string, unknown> } {
+  const rates = [entry.rate!, ...(entry.tiers ?? []).map((t) => t.rate), ...(entry.peak ? [entry.peak.rate] : [])];
+  const max_price = { prompt: Math.max(...rates.map((r) => r.input)), completion: Math.max(...rates.map((r) => r.output)) };
+  if (chosen?.provider === "anthropic") return { provider: { order: ["anthropic"], max_price } };
+  return { provider: { max_price, require_parameters: true } };
+}
+
 /** Funding fee multiplier of a route (1 for direct). */
 export function routeFeeFactor(r: ModelRegistry, via: RouteVia): number {
   return via === "openrouter" ? 1 + (r.routing?.openrouter?.funding_fee_bps ?? 0) / 10_000 : 1;

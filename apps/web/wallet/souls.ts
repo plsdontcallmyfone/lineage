@@ -8,7 +8,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { anthropicClient, generateSoul, loadModelKey, type ModelClient, type SoulSeed } from "@units/souls";
+import { defaultModelClient, generateSoul, type ModelClient, type SoulSeed } from "@units/souls";
 
 export interface SoulDraftsOptions {
   /** USD cap of one soul (all calls) */
@@ -42,7 +42,8 @@ export class SoulDrafts {
   }
 
   private async model(): Promise<ModelClient | null> {
-    if (this.client === undefined) this.client = await loadModelKey().then(anthropicClient).catch(() => null);
+    // routed by the model registry's rule (owner 2026-10-12: OpenRouter first, Anthropic's own key only without it)
+    if (this.client === undefined) this.client = await Promise.resolve().then(() => defaultModelClient()).catch(() => null);
     return this.client;
   }
 

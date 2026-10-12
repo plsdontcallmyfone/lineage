@@ -169,7 +169,8 @@ export class AgentFollower {
     const p = PRICES[model] ?? price;
     const usage: Usage = {
       input_tokens: u.input_tokens ?? 0, output_tokens: u.output_tokens ?? 0, cache_read_tokens: u.cache_read_input_tokens ?? 0, cache_write_tokens: u.cache_creation_input_tokens ?? 0,
-      usd: ((u.input_tokens ?? 0) * p.input + (u.output_tokens ?? 0) * p.output + (u.cache_read_input_tokens ?? 0) * p.cache_read + (u.cache_creation_input_tokens ?? 0) * p.cache_write) / 1e6,
+      // the routed client meters the call itself (registry price direct, OpenRouter's reported cost plus its fee); a bare client is priced here
+      usd: typeof u.usd === "number" && Number.isFinite(u.usd) && u.usd >= 0 ? u.usd : ((u.input_tokens ?? 0) * p.input + (u.output_tokens ?? 0) * p.output + (u.cache_read_input_tokens ?? 0) * p.cache_read + (u.cache_creation_input_tokens ?? 0) * p.cache_write) / 1e6,
       calls: 1, models: [model],
     };
     this.d.meter(agent, usage);

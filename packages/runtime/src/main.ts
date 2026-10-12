@@ -29,7 +29,8 @@ import { JupiterPrice } from "./price.ts";
 import type { AgentRoute } from "./runtime.ts";
 import { bindHandler, chainCosign, serveBind } from "./bind.ts";
 import { withGenesis } from "./genesis.ts";
-import { anthropicClient } from "../../souls/src/generator.ts";
+import type { ModelClient } from "../../souls/src/generator.ts";
+import { routedModelClient } from "../../souls/src/routed-client.ts";
 import { desktopPool, startRecordingPublisher, withDesktops } from "./desktops.ts";
 import { installAgentFirewall } from "./firewall.ts";
 import { guardKey, Rpc } from "@units/chain";
@@ -113,10 +114,22 @@ export function claudeProposer(cfg: RuntimeConfig) {
     prices: railPrices(r), efficiency: cfg.efficiency }, railClient(r));
 }
 
-/** Agent posts (plan S): written with our Anthropic key (the global daily cap covers them); none without a key. */
-function postClient() {
-  const k = process.env.ANTHROPIC_API_KEY;
-  return k ? anthropicClient(k) : undefined;
+/**
+ * The model client of agent posts and the follow step (plan S). It follows the registry's route rule
+ * like authoring (owner 2026-10-12: every call through OpenRouter): OpenRouter with its key, else
+ * Anthropic with its own, read from the live keys at every call. A provider that answers "no credit"
+ * is not called again for 15 minutes, and for OpenRouter the balance gate is marked empty. None
+ * without either key.
+ */
+export function postClient(keys: Record<string, string>, reg: RegistrySource, providerBalance: OpenRouterBalance | undefined, log: (m: string) => void): ModelClient | undefined {
+  if (!keys.openrouter && !keys.anthropic) return undefined;
+  return routedModelClient({
+    registry: () => reg.get(),
+    keys,
+    providers: loadProviderSpecs(),
+    log: (m) => log(`model calls: ${m}`),
+    onNoCredits: (p) => void (p === "openrouter" && providerBalance?.markNoCredits()),
+  });
 }
 
 async function main() {
@@ -159,7 +172,7 @@ async function main() {
         : undefined;
       const reporter = new CoreClient(cfg.core, loadKey(cfg.runtime_key));
       const rt = new Runtime(cfg, {
-        backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), desktop: desktops ?? undefined,
+        backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(keys, reg, providerBalance, log), desktop: desktops ?? undefined,
         route: (cfg.rail ?? "anthropic") === "anthropic" ? routeResolver(cfg.core, keys, reg) : undefined,
         providerBalance, price,
         report: async (body) => {

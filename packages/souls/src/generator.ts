@@ -39,6 +39,7 @@ export interface ModelClient {
   create(params: Record<string, unknown>): Promise<{ model?: string; stop_reason: string | null; content: { type: string; text?: string }[]; usage: Record<string, number | null | undefined> }>;
 }
 
+/** Anthropic's own API with its key. The product's calls use routedModelClient (routed-client.ts), which follows the registry's route rule. */
 export function anthropicClient(apiKey: string): ModelClient {
   const client = new Anthropic({ apiKey, maxRetries: 2 });
   return {
@@ -250,7 +251,8 @@ function addUsage(u: Usage, r: Record<string, number | null | undefined>, model:
   u.output_tokens += d.output;
   u.cache_read_tokens += d.cr;
   u.cache_write_tokens += d.cw;
-  u.usd += (d.input * p.input + d.output * p.output + d.cr * p.cache_read + d.cw * p.cache_write) / 1e6;
+  // the routed client (routed-client.ts) meters the call itself: the registry price direct, the cost OpenRouter reported plus its fee through OpenRouter
+  u.usd += typeof r.usd === "number" && Number.isFinite(r.usd) && r.usd >= 0 ? r.usd : (d.input * p.input + d.output * p.output + d.cr * p.cache_read + d.cw * p.cache_write) / 1e6;
   u.calls += 1;
   u.models.push(model);
 }

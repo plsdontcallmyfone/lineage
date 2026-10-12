@@ -27,6 +27,10 @@ export interface PostsConfig {
   model: string;
   /** USD cap of one post's model call */
   max_usd_per_post: number;
+  /** after a failed post the agent's next try waits this long, doubling with every failure in a row (default 60 s) */
+  retry_base_s?: number;
+  /** the longest such wait (default 3600 s) */
+  retry_max_s?: number;
   /** a cadence post at most this often per agent, and only when its public record changed */
   cadence_s: number;
   /** hard cap of posts per agent per UTC day */
@@ -123,6 +127,29 @@ export class AgentPoster {
     return st.day[agent]!.n < this.d.cfg.max_per_day;
   }
 
+  /** failures in a row per agent and when its next try may start (in memory: a restart tries once again) */
+  private backoff = new Map<string, { n: number; until: number }>();
+
+  /** When `agent`'s next post may be tried after failures (ms), or null. */
+  retryAt(agent: string): number | null {
+    return this.backoff.get(agent)?.until ?? null;
+  }
+
+  /**
+   * A failed post: the agent waits retry_base_s, doubled with every failure in a row, at most
+   * retry_max_s; a provider without credit (the routed client's mark) at least as long as that mark.
+   * It used to be tried again on every tick (5 s on the site): a log line and a refused call each time.
+   */
+  private failed(agent: string, e: unknown): void {
+    const n = (this.backoff.get(agent)?.n ?? 0) + 1;
+    const base = (this.d.cfg.retry_base_s ?? 60) * 1000;
+    const max = (this.d.cfg.retry_max_s ?? 3600) * 1000;
+    const provider = (e as { noCredits?: boolean; retryAfterMs?: number | null }).noCredits ? ((e as { retryAfterMs?: number | null }).retryAfterMs ?? 0) : 0;
+    const wait = Math.max(Math.min(max, base * 2 ** Math.min(n - 1, 20)), provider);
+    this.backoff.set(agent, { n, until: this.d.now() + wait });
+    this.d.log(`${agent.slice(0, 6)} post skipped: ${(e as Error).message}; next try in ${Math.round(wait / 1000)} s (failure ${n} in a row)`);
+  }
+
   /** One pass for the given bound agents: media folding, then at most one post per agent. */
   async tick(agents: string[]): Promise<void> {
     for (const agent of agents) {
@@ -132,10 +159,13 @@ export class AgentPoster {
         this.d.log(`${agent.slice(0, 6)} media not folded: ${(e as Error).message}`);
       }
       if (!this.d.cfg.enabled) continue;
+      const b = this.backoff.get(agent);
+      if (b && this.d.now() < b.until) continue;
       try {
         await this.postFor(agent);
+        this.backoff.delete(agent);
       } catch (e) {
-        this.d.log(`${agent.slice(0, 6)} post skipped: ${(e as Error).message}`);
+        this.failed(agent, e);
       }
     }
   }
