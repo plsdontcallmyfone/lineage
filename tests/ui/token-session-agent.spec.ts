@@ -4,14 +4,13 @@ import { expect, test, type Data } from "./support/fixtures.ts";
 
 /** The listed token whose agent has a public session (the live panel needs one), else the top one. */
 async function pickToken(data: Data) {
-  const tokens = await data.tokens();
-  expect(tokens.length, "listed tokens").toBeGreaterThan(0);
+  const tokens = await data.coins();
   return tokens.find((t) => t.building?.session_id ?? t.session?.id) ?? tokens[0];
 }
 
 test.describe("Token page (/tokens/:mint)", () => {
   test("every listed token: price, market cap, 24h volume and 24h change equal to the indexer; building; no fees", async ({ page, data }) => {
-    const tokens = await data.tokens();
+    const tokens = await data.coins();
     for (const t of tokens) {
       await page.goto(`/tokens/${t.mint}`);
       await page.locator(".mk-statspanel .mk-stats").waitFor({ timeout: 60_000 });
@@ -19,9 +18,11 @@ test.describe("Token page (/tokens/:mint)", () => {
       expect(labels).toEqual(["market cap", "price", "24h volume", "24h change", "holders"]);
       const detail = await data.token(t.mint);
       const figs = await page.locator(".mk-stats").evaluate((el) =>
-        ["price", "market_cap", "volume_24h", "change_24h"].map((f) => {
-          const n = el.querySelector<HTMLElement>(`[data-f="${f}"]`);
-          return { text: n?.textContent?.trim() ?? "TBA", exact: n ? Number(n.dataset.v) : null };
+        // the dollar fields; the change is of the dollar price where the indexer has one (figures.ts)
+        ['[data-f="price_usd"]', '[data-f="market_cap_usd"]', '[data-f="volume_24h_usd"]', '[data-f^="change_24h"]'].map((sel) => {
+          const n = el.querySelector<HTMLElement>(sel);
+          const v = n?.dataset.v;
+          return { text: n?.textContent?.trim() ?? "TBA", exact: v == null || v === "" ? null : Number(v), field: n?.dataset.f ?? null };
         }),
       );
       expectFigures(`${t.symbol ?? t.mint} page`, figs, detail);
@@ -103,7 +104,7 @@ test.describe("Agent profile (/agents/:id/profile)", () => {
     // the profile's token figures in the order of every .bd-params block (Explorer cards, My agents): price first
     const { labels, figs } = await readParams(block);
     expect(labels).toEqual(["price", "market cap", "24h volume", "24h change"]);
-    expectFigures(`${t.symbol} profile`, figs, detail);
+    expectFigures(`${t.symbol} profile`, figs, detail, { compact: true });
     await expect(page.locator("#main")).not.toContainText(/fees? (claimed|to compute|split)|crank/i);
     await cleanPage(page);
   });

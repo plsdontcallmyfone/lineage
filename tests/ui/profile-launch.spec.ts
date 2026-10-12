@@ -7,7 +7,7 @@ import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 
 // Profile and Launch with the mock Wallet Standard wallet (support/wallet.ts). Nothing here signs or
 // sends a transaction: the wallet refuses, the write guard aborts sends, and the wizard stops at its
-// review step (a devnet simulation, which is a read).
+// review step (a simulation, which is a read). Costs lead in US dollars; the wording follows the site's network.
 
 const ONE_PX_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
@@ -112,7 +112,8 @@ test.describe("Profile (/profile)", () => {
 });
 
 test.describe("Launch (/launch)", () => {
-  test("every wizard step up to the review, with the mock wallet; nothing is sent", async ({ page, wallet }, info) => {
+  test("every wizard step up to the review, with the mock wallet; nothing is sent", async ({ page, wallet, data }, info) => {
+    const net = await data.network();
     const narrow = (info.project.use.viewport?.width ?? 1280) < 600;
     // the soul draft is answered here with a stored soul document: no model is paid for
     const persona = JSON.parse(readFileSync(join(__dirname, "../../scripts/launch-e2e/STATE.json"), "utf8")).soul_core.doc.persona;
@@ -134,6 +135,9 @@ test.describe("Launch (/launch)", () => {
     await page.locator('[name="l_image"]').setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: ONE_PX_PNG });
     await page.fill('[name="l_links"]', "https://example.com");
     await page.locator('[data-act="lz-next"]:not([disabled])').waitFor({ timeout: 10_000 });
+    // the coin's on-chain name carries the TEST prefix on devnet only, and the form says so only there
+    if (net === "mainnet") await expect(page.locator('[data-step="0"]')).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
+    else await expect(page.locator('[data-step="0"]')).toContainText('"TEST " + this');
     await cleanPage(page);
     await page.click('[data-act="lz-next"]');
 
@@ -179,18 +183,26 @@ test.describe("Launch (/launch)", () => {
     const fund = page.locator('[data-step="4"]');
     await expect(fund).toContainText("Credits (USD)");
     await expect(fund).toContainText("paid in SOL with one signature");
-    await expect(page.locator("[data-fronting-total]")).toContainText("SOL", { timeout: 120_000 });
+    // the total in US dollars with the SOL beside it once the launch is simulated; the chain refuses the
+    // simulation for a wallet with no SOL (the test wallet is funded on devnet only), and the step says so
+    await expect(page.locator("[data-fronting-total]")).not.toHaveText(/simulating/, { timeout: 120_000 });
+    const simulated = (await page.locator("[data-fronting-total]").innerText()).startsWith("$");
+    if (net === "devnet" && wallet.stored) expect(simulated, "the funded test wallet's launch simulates on devnet").toBe(true);
+    if (simulated) await expect(page.locator("[data-fronting-sol]")).toHaveText(/^[\d.]+ SOL$/);
+    else await expect(page.locator("[data-fronting-short]")).toContainText(/Launch disabled: .+/);
     await expect(fund).not.toContainText(/Pay with|Launch parameters|fee split|protocol treasury|to the protocol/i);
+    if (net === "mainnet") await expect(fund).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
     await expect(fund).not.toContainText(/\bt?UNITS\b/);
     await cleanPage(page);
 
-    // 6 review: a devnet simulation (needs the stored, funded test wallet)
+    // 6 review: a simulation on the site's network (needs the stored test wallet, funded on devnet)
     test.skip(!wallet.stored, "no stored test wallet (UI_WALLET_KEY): the review simulation needs a funded launcher");
     await page.locator('[data-act="lz-next"]:not([disabled])').click();
     await page.locator(".lz-review").first().waitFor(); // the summary; the cost breakdown is a second .lz-review block
     await page.locator("#w-launch-out .mark.good, #w-launch-out [data-err]").first().waitFor({ timeout: 120_000 });
     const review = page.locator('[data-step="5"]');
-    await expect(review).toContainText(/simulation succeeded on devnet/i);
+    if (simulated) await expect(review).toContainText(new RegExp(`simulation succeeded on ${net}`, "i"));
+    else await expect(review).toContainText(/Launch disabled: .+/);
     await expect(review).toContainText(/Model credits/i);
     await expect(review).not.toContainText(/temperament/i); // no temperament row while the choice is not offered
     await expect(page.locator('[data-act="launch-sign"]')).toHaveCount(1);

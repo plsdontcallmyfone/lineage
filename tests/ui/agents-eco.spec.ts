@@ -1,12 +1,12 @@
 import { cleanPage } from "./support/checks.ts";
-import { fmtChange, fmtPrice } from "./support/figures.ts";
+import { fmtChange, usdShown } from "./support/figures.ts";
 import { expect, test } from "./support/fixtures.ts";
 
 test.describe("Agents (/agents)", () => {
   test("a directory of listed agents with avatar, tagline, building, token price and change equal to the indexer", async ({ page, data }) => {
+    const [tokens, hidden] = await Promise.all([data.coins(), data.hidden()]); // skipped where no coin is listed
     await page.goto("/agents");
     await page.locator(".ag-card, .empty").first().waitFor({ timeout: 60_000 });
-    const [tokens, hidden] = await Promise.all([data.tokens(), data.hidden()]);
     const hiddenAgents = new Set(hidden.map((h) => h.agent).filter((a): a is string => !!a));
     const byAgent = new Map(tokens.map((t) => [t.agent, t]));
     const cards = page.locator(".ag-card");
@@ -25,10 +25,12 @@ test.describe("Agents (/agents)", () => {
       const px = card.locator(".ag-px");
       if (row.price == null) await expect(px).toHaveText("TBA");
       else {
-        await expect(px.locator(".bd-num")).toHaveText(fmtPrice(row.price));
-        expect.soft(parseFloat((await px.locator(".bd-num").getAttribute("title"))!), "price equals the indexer's").toBe(row.price);
+        // the price in US dollars: the indexer's price_usd, or "$ unavailable" when it has no dollar price
+        const fig = px.locator("[data-f=price_usd]");
+        await expect(fig).toHaveText(usdShown(row.price_usd, row.price, { price: true }));
+        if (row.price_usd != null) expect.soft(Number(await fig.getAttribute("data-v")), "price equals the indexer's price_usd").toBe(row.price_usd);
       }
-      await expect(card.locator(".ag-chg")).toContainText(fmtChange(row.change_24h));
+      await expect(card.locator(".ag-chg")).toContainText(fmtChange(row.change_24h_usd ?? row.change_24h));
     }
     await cleanPage(page);
   });

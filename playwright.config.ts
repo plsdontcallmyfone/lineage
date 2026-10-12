@@ -1,14 +1,24 @@
 import { defineConfig, devices } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-// The units app's UI suite (docs/UI-TESTS.md). By default Playwright starts the dashboard built from
-// this tree on 127.0.0.1:<UI_PORT> against the deployed site's live Core and market indexer:
+// The units app's UI suite (docs/UI-TESTS.md). The default site is the mainnet site (the repository's
+// default network, config/sites.json mainnet_site_url). By default Playwright starts the dashboard built
+// from this tree on 127.0.0.1:<UI_PORT> against that site's live Core and market indexer:
 //
-//   bun apps/web/server.ts --port 9661 --core <site> --market <site> --upstream <site>
+//   UNITS_NETWORK=<network> bun apps/web/server.ts --port 9661 --site <site> --core <site> --market <site> --upstream <site>
 //
-// UI_BASE_URL points the suite at a running app instead (for example the deployed site itself) and
-// skips the local server. UI_SITE picks the site the local server reads from.
+// UI_BASE_URL points the suite at a running app instead (for example a deployed site itself) and skips
+// the local server. UI_SITE picks the site the local server reads from: UI_SITE=devnet (or the devnet
+// site's URL) for the devnet site, which has listed coins; UI_NETWORK names the network of any other
+// site. The data-driven specs skip, with the reason, on a site that lists no agent coin.
 
-const SITE = (process.env.UI_SITE ?? "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
+const sites = JSON.parse(readFileSync(join(__dirname, "config/sites.json"), "utf8")) as { mainnet_site_url: string; devnet_site_url: string };
+const named: Record<string, string> = { mainnet: sites.mainnet_site_url, devnet: sites.devnet_site_url };
+const pick = process.env.UI_SITE ?? "mainnet";
+const SITE = (named[pick] ?? pick).replace(/\/+$/, "");
+// the local dashboard's network profile must be the site's (apps/web/server.ts reads UNITS_NETWORK)
+const NETWORK = process.env.UI_NETWORK ?? (SITE === sites.devnet_site_url.replace(/\/+$/, "") ? "devnet" : "mainnet");
 const PORT = Number(process.env.UI_PORT ?? 9661);
 const EXTERNAL = process.env.UI_BASE_URL?.replace(/\/+$/, "");
 const BASE = EXTERNAL ?? `http://127.0.0.1:${PORT}`;
@@ -45,7 +55,8 @@ export default defineConfig({
   webServer: EXTERNAL
     ? undefined
     : {
-        command: `bun apps/web/server.ts --port ${PORT} --core ${SITE} --market ${SITE} --upstream ${SITE}`,
+        command: `bun apps/web/server.ts --port ${PORT} --site ${SITE} --core ${SITE} --market ${SITE} --upstream ${SITE}`,
+        env: { ...(process.env as Record<string, string>), UNITS_NETWORK: NETWORK },
         url: `${BASE}/chain/config`,
         // a developer's own dashboard already on the port is reused locally; CI always starts a fresh one
         reuseExistingServer: !CI && process.env.UI_REUSE !== "0",

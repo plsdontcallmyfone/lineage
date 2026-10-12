@@ -74,12 +74,12 @@ export async function installMockWallet(ctx: BrowserContext, w: TestWallet, log:
   await ctx.addInitScript(({ address, pub, name }: { address: string; pub: number[]; name: string }) => {
     const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
     const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-    const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet"], features: ["solana:signTransaction", "solana:signMessage"], label: "ui test" };
+    const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet", "solana:mainnet"], features: ["solana:signTransaction", "solana:signMessage"], label: "ui test" };
     const w = {
       version: "1.0.0",
       name,
       icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="#2a78d6"/></svg>'),
-      chains: ["solana:devnet"],
+      chains: ["solana:devnet", "solana:mainnet"],
       accounts: [] as unknown[],
       features: {
         "standard:connect": { version: "1.0.0", connect: async () => { w.accounts = [account]; return { accounts: [account] }; } },

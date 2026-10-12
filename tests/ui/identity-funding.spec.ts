@@ -8,7 +8,8 @@ import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 // The launch wizard's Identity, Funding and Review steps (owner direction 2026-10-11): two identity
 // choices (A units account, the default, and Your own token), everything paid in SOL, a compact
 // Funding total with a one-line breakdown that expands, the full breakdown once in Review, and one
-// signature. Nothing is signed or sent: the mock wallet refuses and the write guard aborts sends.
+// signature. Every cost leads in US dollars (owner 2026-10-12) with the SOL the wallet pays beside it.
+// The wording follows the site's network (data.network()): no devnet text on the mainnet site. Nothing is signed or sent: the mock wallet refuses and the write guard aborts sends.
 // Screenshots go to UI_SHOTS when set.
 
 const SHOTS = process.env.UI_SHOTS ?? null;
@@ -23,7 +24,9 @@ const shot = async (page: Page, name: string, w: number) => {
   if (SHOTS) await page.screenshot({ path: join(SHOTS, `${name}-${w}.png`), fullPage: true });
 };
 
-test("identity, funding and review: two choices, SOL only, one signature; nothing is sent", async ({ page, wallet }, info) => {
+test("identity, funding and review: two choices, SOL only, one signature; nothing is sent", async ({ page, wallet, data }, info) => {
+  const net = await data.network();
+  const usd = /\$[\d,]*\.?\d+/; // a dollar figure
   const w = info.project.use.viewport?.width ?? 1280;
   const persona = JSON.parse(readFileSync(join(__dirname, "../../scripts/launch-e2e/STATE.json"), "utf8")).soul_core.doc.persona;
   await page.route("**/souls/draft", async (route) => {
@@ -56,8 +59,11 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   const id = page.locator('[data-step="3"]');
   await expect(id.locator("b").filter({ hasText: /^A units account$/ })).toHaveCount(1);
   await expect(id).toContainText("a member of the units-agents organization");
-  await expect(page.locator("#w-id-price")).toHaveText("0.05 SOL");
+  // the price in US dollars with the SOL beside it; an instance that sells no units account says so
+  await expect(page.locator("#w-id-price")).toHaveText(net === "devnet" ? /^\$[\d,]*\.?\d+, 0\.05 SOL$/ : /^\$[\d,]*\.?\d+, [\d.]+ SOL$|^not offered here$/);
+  const sold = (await page.locator("#w-id-price").innerText()) !== "not offered here";
   await expect(id).not.toContainText(/App identity|lineage-app|Price TBA|devnet charges nothing/);
+  if (net === "mainnet") await expect(id).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
   await cleanPage(page);
   await shot(page, "identity", w);
   await page.click('[data-act="lz-next"]');
@@ -66,13 +72,28 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   const fund = page.locator('[data-step="4"]');
   await expect(page.locator('[name="l_deposit"]')).toHaveValue("10");
   await expect(fund).not.toContainText(/Pay with|Trading allocation|Launch parameters|First-run budget|\bt?UNITS\b/);
-  await expect(page.locator("[data-fronting-total]")).toContainText("SOL", { timeout: 120_000 });
-  await expect(page.locator(".lz-sum-more summary")).toHaveText("Token creation · Model credits · Initial buy 1% · A units account");
   await expect(fund).toContainText("one signature");
-  await expect(fund).toContainText("Devnet test tokens, no value");
+  await expect(page.locator(".lz-sum-more summary")).toHaveText(`Token creation · Model credits · Initial buy 1%${sold ? " · A units account" : ""}`);
+  if (net === "devnet") await expect(fund).toContainText("Devnet test tokens, no value");
+  else await expect(fund).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
+  // the total: US dollars, the SOL the wallet pays beside it. It comes from a simulation, which the chain
+  // refuses for a wallet with no SOL (the test wallet is funded on devnet only): the step then says why
+  // in one line and shows no figure, never a guessed one
+  await expect(page.locator("[data-fronting-total]")).not.toHaveText(/simulating/, { timeout: 120_000 });
+  const total = await page.locator("[data-fronting-total]").innerText();
+  const simulated = total.startsWith("$");
+  if (net === "devnet" && wallet.stored) expect(simulated, `the funded test wallet's launch simulates on devnet (total reads "${total}")`).toBe(true);
+  if (simulated) {
+    await expect(page.locator("[data-fronting-total]")).toHaveText(usd);
+    await expect(page.locator("[data-fronting-sol]")).toHaveText(/^[\d.]+ SOL$/);
+  } else {
+    expect(total).toBe("after the simulation");
+    await expect(page.locator("[data-fronting-short]")).toContainText(/Launch disabled: .+/);
+  }
   await page.click(".lz-sum-more summary");
-  await expect(page.locator('.lz-sum-lines [data-fronting="A units account"]')).toContainText("0.05 SOL");
-  await expect(page.locator('.lz-sum-lines [data-fronting="Model credits"]')).toContainText("10 USD of credits");
+  if (sold && simulated) await expect(page.locator('.lz-sum-lines [data-fronting="A units account"]')).toContainText(/\$[\d,]*\.?\d+ [\d.]+ SOL/);
+  await expect(page.locator('.lz-sum-lines [data-fronting="Model credits"]')).toContainText("$10.00 of credits");
+  for (const line of await page.locator(".lz-sum-lines .lz-rr b").allInnerTexts()) expect(line, "a cost line is a dollar figure, or says it is not simulated").toMatch(simulated ? /^\$/ : /^not simulated$/);
   await cleanPage(page);
   await shot(page, "funding", w);
 
@@ -81,9 +102,13 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   await page.click('[data-act="lz-next"]');
   await page.locator("#w-launch-out .mark.good, #w-launch-out [data-err]").first().waitFor({ timeout: 120_000 });
   const review = page.locator('[data-step="5"]');
-  await expect(review).toContainText(/simulation succeeded on devnet/i);
-  await expect(review).toContainText("A units account");
-  await expect(review.locator('.lz-fronting [data-fronting="Total"]')).toContainText("SOL");
+  if (simulated) {
+    await expect(review).toContainText(new RegExp(`simulation succeeded on ${net}`, "i"));
+    await expect(review.locator('.lz-fronting [data-fronting="Total"] b')).toHaveText(usd);
+    await expect(review.locator('.lz-fronting [data-fronting="Total"]')).toContainText("SOL");
+  } else await expect(review.locator("#w-launch-out [data-err]").first()).toBeVisible();
+  if (sold) await expect(review).toContainText("A units account");
+  if (net === "mainnet") await expect(review.locator(".lz-fronting")).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
   await expect(review).toContainText("one signature");
   await expect(page.locator('[data-act="launch-sign"]')).toHaveText("Launch (one signature)");
   await cleanPage(page);

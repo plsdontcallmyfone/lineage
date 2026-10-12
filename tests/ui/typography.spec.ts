@@ -13,8 +13,8 @@ const PAGES: [string, (d: Data) => Promise<string | null>, string][] = [
   ["Eco", async () => "/eco", ".eco-page"],
   ["Profile", async () => "/profile", ".me-prompt"],
   ["Launch", async () => "/launch", ".lz-nav"],
-  ["Token page", async (d) => `/tokens/${(await d.tokens())[0].mint}`, ".mk-statspanel"],
-  ["Agent profile", async (d) => `/agents/${(await d.tokens())[0].agent}/profile`, ".pf-head"],
+  ["Token page", async (d) => ((await d.tokens())[0] ? `/tokens/${(await d.tokens())[0].mint}` : null), ".mk-statspanel"],
+  ["Agent profile", async (d) => ((await d.tokens())[0] ? `/agents/${(await d.tokens())[0].agent}/profile` : null), ".pf-head"],
   ["Session page", async (d) => {
     const t = (await d.tokens()).find((x) => x.building?.session_id ?? x.session?.id);
     return t ? `/sessions/${t.building?.session_id ?? t.session.id}` : null;
@@ -26,7 +26,7 @@ test.describe("no monospace on UI chrome", () => {
   for (const [name, path, ready] of PAGES) {
     test(name, async ({ page, data }) => {
       const p = await path(data);
-      test.skip(!p, "no page to open with the live data");
+      test.skip(!p, "no page to open with the live data (this site lists no agent coin, or none with a public session)");
       await page.goto(p!);
       await page.locator(ready).first().waitFor({ timeout: 60_000 });
       await page.evaluate(() => document.fonts.ready);

@@ -1,10 +1,12 @@
 import { cleanPage, monoChrome } from "./support/checks.ts";
+import { fmtUsd, USD_NA } from "./support/figures.ts";
 import { expect, test } from "./support/fixtures.ts";
 
 // The Analytics dashboard (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 6): headline figures
 // equal Core's GET /v1/analytics/dashboard, every chart is drawn with data or says in one line why
 // not, tooltips give exact values, legends and variants redraw, the window applies to everything;
-// protocol revenue equals Core's GET /v1/analytics/revenue (plan section 7), in the token it was paid in;
+// protocol revenue equals Core's GET /v1/analytics/revenue (plan section 7), in US dollars (its _usd
+// fields; "$ unavailable" without a dollar price, never the quote-coin sum);
 // the network status is one slim strip and the platform cap block is gone; test launches only with
 // ?hidden=1; no horizontal scroll, no em dash, no monospace chrome, no console error; at 1280 and 390.
 
@@ -214,19 +216,24 @@ for (const win of ["7d", "all"]) {
     const tile = page.locator('[data-kpi="revenue"]');
     await expect(tile.locator(".an-tile-l")).toHaveText("Protocol revenue");
 
-    // the headline figure: the quote-token inflows of the window (cranks only ever add to a window; the
-    // page may be a minute newer than our read), never a USD figure for the quote token
+    // the headline figure: the window's inflows in US dollars (Core's kpi.usd: every source at the
+    // indexer's dollar price). Cranks only ever add to a window and the price is read again every minute,
+    // so the page may be a little off our read; without a dollar price the tile says "$ unavailable",
+    // never the quote-coin sum
     if (fees.available && r.kpi.quote.value !== null) {
-      const shown = await tile.locator("b").innerText();
-      expect(shown).not.toContain("$");
-      const num = Number(shown.replace(/,/g, "").replace(/K$/, "e3").replace(/M$/, "e6").replace(/B$/, "e9"));
-      expect(num).toBeGreaterThanOrEqual(r.kpi.quote.value * 0.994);
-      expect(num).toBeLessThanOrEqual(r.kpi.quote.value * 1.25 + 1);
+      const shown = (await tile.locator("b").innerText()).trim();
+      if (r.kpi.usd?.value == null) expect(shown).toBe(USD_NA);
+      else if (shown !== USD_NA) {
+        expect(shown, "the revenue figure carries $").toMatch(/^\$/);
+        const num = Number(shown.replace(/[$,]/g, "").replace(/K$/, "e3").replace(/M$/, "e6").replace(/B$/, "e9"));
+        expect(num).toBeGreaterThanOrEqual(r.kpi.usd.value * 0.9 - 1e-12);
+        expect(num).toBeLessThanOrEqual(r.kpi.usd.value * 1.3 + 0.01);
+      }
       await expect(tile.locator("small")).toContainText("to the treasury and reserve");
     } else await expect(tile.locator("b")).toHaveText("not recorded");
-    // units account payments are SOL; USD appears only beside SOL, and only when there is an amount
+    // units account payments are paid in SOL: their dollar value leads, the SOL amount beside it
     await expect(tile.locator("small")).toContainText(idp.available ? /[\d.,]+ SOL/ : "not recorded on this instance");
-    if (!idp.available || !idp.value) await expect(tile.locator("small")).not.toContainText("$");
+    if (idp.available && (await tile.locator("b").innerText()).trim().startsWith("$") && (await tile.locator("b").innerText()).trim() !== USD_NA) await expect(tile.locator("small")).toContainText(/\$[\d.,]+[KMB]? of it for units accounts/);
 
     // the chart: stacked bars by source, or one line saying why nothing is drawn
     const card = page.locator('[data-card="revenue"]');
@@ -259,7 +266,20 @@ for (const win of ["7d", "all"]) {
       await expect(split.locator(".an-split > i")).toHaveCount(parts.filter(([, v]) => v > 0).length);
       // amounts only grow inside a window; when our read and the page's agree, the text is exact
       const again = await data.core(`analytics/revenue?window=${win}`);
-      if (again.creator_fees.fees_raw === cf.fees_raw) for (const [k, v] of parts) await expect(split.locator(`[data-part="${k}"] b`)).toHaveText(new RegExp(`^${amount(v).replace(/[.]/g, "\\.")} `));
+      // each part in US dollars (the API's _usd field of the part), its quote-coin amount in the title
+      if (again.creator_fees.fees_raw === cf.fees_raw)
+        for (const [k, v] of parts) {
+          const b = split.locator(`[data-part="${k}"] b`);
+          const shown = (await b.innerText()).trim();
+          const usd = again.creator_fees[`${k === "compute" ? "to_compute" : k === "protocol" ? "to_protocol" : "routed"}_usd`] as number | null;
+          if (usd == null) expect(shown).toBe(USD_NA);
+          else if (shown !== USD_NA) {
+            expect(shown, `${k}: carries $`).toMatch(/^\$/);
+            const num = Number(shown.replace(/[$,]/g, ""));
+            expect(Math.abs(num - usd), `${k}: ${shown} against the API's ${fmtUsd(usd)}`).toBeLessThanOrEqual(Math.abs(usd) * 0.1 + 1e-12);
+          }
+          await expect(b).toHaveAttribute("title", new RegExp(`^${amount(v).replace(/[.]/g, "\\.")} `));
+        }
     } else await expect(split.locator(".an-line")).toBeVisible();
     // every inflow with its account, folded closed; the compute sink is a running total outside the figure
     const fold = split.locator("#an-t-revenue");

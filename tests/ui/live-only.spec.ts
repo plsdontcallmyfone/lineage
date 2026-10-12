@@ -38,8 +38,7 @@ async function noReplay(page: Page, scope: string) {
 }
 
 async function pickToken(data: Data) {
-  const tokens = await data.tokens();
-  expect(tokens.length, "listed tokens").toBeGreaterThan(0);
+  const tokens = await data.coins();
   return tokens.find((t) => t.building?.session_id ?? t.session?.id) ?? tokens[0];
 }
 
@@ -85,7 +84,7 @@ test.describe("Live only: idle state, no replay", () => {
 
   test("explorer card hover shows the idle state, not a past session", async ({ page, data }, info) => {
     test.skip(info.project.name.startsWith("mobile"), "hover needs a pointer device");
-    expect((await data.tokens()).length, "listed tokens").toBeGreaterThan(0);
+    expect((await data.coins()).length, "listed tokens").toBeGreaterThan(0);
     await page.goto("/");
     const first = page.locator(".ex-card[data-agent]").first();
     await first.waitFor({ timeout: 60_000 });

@@ -18,9 +18,9 @@ test.describe("Explorer (/)", () => {
   });
 
   test("cards: only listed tokens, four figures equal to the indexer, what the agent is building, no fees", async ({ page, data }) => {
+    const [tokens, hidden] = await Promise.all([data.coins(), data.hidden()]); // skipped where no coin is listed
     await page.goto("/");
     await page.locator(".ex-card").first().waitFor({ timeout: 60_000 });
-    const [tokens, hidden] = await Promise.all([data.tokens(), data.hidden()]);
     const hiddenMints = new Set(hidden.map((h) => h.mint));
     const byMint = new Map(tokens.map((t) => [t.mint, t]));
     const cards = page.locator(".ex-card");
@@ -34,7 +34,7 @@ test.describe("Explorer (/)", () => {
       expect(row, `card ${mint} is a listed token of GET /market/tokens`).toBeTruthy();
       const { labels, figs } = await readParams(card.locator(".bd-params"));
       expect(labels).toEqual(["price", "market cap", "24h volume", "24h change"]);
-      expectFigures(`card ${row.symbol ?? mint}`, figs, row);
+      expectFigures(`card ${row.symbol ?? mint}`, figs, row, { compact: true }); // US dollars, written short on cards
       await expect(card.locator(".bd-building")).toHaveCount(1);
       const repo = row.building?.repo ?? row.repo_url;
       if (repo) await expect(card.locator(".bd-repo > span")).toHaveAttribute("title", repo);
@@ -46,7 +46,8 @@ test.describe("Explorer (/)", () => {
     await cleanPage(page);
   });
 
-  test("a card opens its token page", async ({ page }) => {
+  test("a card opens its token page", async ({ page, data }) => {
+    await data.coins(); // skipped where no coin is listed
     await page.goto("/");
     const card = page.locator(".ex-card").first();
     await card.waitFor({ timeout: 60_000 });

@@ -39,7 +39,7 @@ async function frames(page: Page) {
 test.describe("Honest screen", () => {
   test("a live agent's screen is its desktop video, moving, with nothing simulated around it", async ({ page, data }) => {
     const live = (await data.core("sessions?limit=40")) as any[];
-    const tokens = await data.tokens();
+    const tokens = await data.coins();
     const s = live.find((x) => x.state === "live" && x.desktop && tokens.some((t) => t.agent === x.agent));
     test.skip(!s, "no listed agent is live on a desktop right now");
     const t = tokens.find((x) => x.agent === s.agent)!;
@@ -66,7 +66,7 @@ test.describe("Honest screen", () => {
   });
 
   test("an idle agent's screen is lit text, not a black box", async ({ page, data }) => {
-    const t = (await data.tokens())[0];
+    const t = (await data.coins())[0];
     await page.route(/\/api\/sessions\?(.*&)?agent=/, async (route) => {
       const r = await route.fetch();
       const list = (await r.json().catch(() => [])) as any[];
@@ -91,7 +91,7 @@ test.describe("Honest screen", () => {
   test("the caption says how many are watching a live desktop, only when at least one is counted", async ({ page, data }) => {
     // a real session of a listed agent, served as live on a desktop for this page only; the count is the
     // answer of GET /v1/viewers (the gate's distinct viewers per stream), given here
-    const tokens = await data.tokens();
+    const tokens = await data.coins();
     const all = (await data.core("sessions?limit=40")) as any[];
     const s = all.find((x) => tokens.some((t) => t.agent === x.agent));
     test.skip(!s, "no listed agent has a public session");
@@ -125,7 +125,7 @@ test.describe("Honest screen", () => {
 
   test("a stream that is not there says why in words", async ({ page, data }) => {
     const live = (await data.core("sessions?limit=40")) as any[];
-    const tokens = await data.tokens();
+    const tokens = await data.coins();
     const s = live.find((x) => x.state === "live" && x.desktop && tokens.some((t) => t.agent === x.agent));
     test.skip(!s, "no listed agent is live on a desktop right now");
     const t = tokens.find((x) => x.agent === s.agent)!;

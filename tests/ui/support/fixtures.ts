@@ -103,7 +103,14 @@ export interface Data {
   hidden(): Promise<{ mint: string; agent: string | null; reason: string }[]>;
   core<T = any>(path: string): Promise<T>;
   get<T = any>(path: string): Promise<T>;
+  /** the network of the app under test, from its GET /chain/config profile ("mainnet" or "devnet") */
+  network(): Promise<"mainnet" | "devnet">;
+  /** the listed tokens, or the test is skipped with the reason when this site lists no agent coin yet */
+  coins(): Promise<any[]>;
 }
+
+/** Why a data-driven test is skipped on a site with no agent coin. */
+export const NO_COINS = "this site lists no agent coin yet (GET /market/tokens is empty): there is no card, token page or agent profile to compare with the API";
 
 async function getJson(request: APIRequestContext, path: string) {
   for (let i = 0; ; i++) {
@@ -179,8 +186,19 @@ export const test = base.extend<Fixtures>({
       if (!cache.has(p)) cache.set(p, getJson(request, p));
       return cache.get(p)!;
     };
+    const tokens = async () => (await once("/market/tokens?sort=market_cap&limit=200")).tokens as any[];
     await use({
-      tokens: async () => (await once("/market/tokens?sort=market_cap&limit=200")).tokens,
+      tokens,
+      network: async () => {
+        const c = await once("/chain/config");
+        // a server that predates the profile reads as devnet, as the app does (apps/web/wallet/chain.ts)
+        return (c.profile ? c.profile.network === "mainnet" : c.devnet === false) ? "mainnet" : "devnet";
+      },
+      coins: async () => {
+        const ts = await tokens();
+        base.skip(!ts.length, NO_COINS);
+        return ts;
+      },
       token: (mint) => getJson(request, `/market/tokens/${mint}`),
       hidden: async () => (await once("/api/hidden")).hidden ?? [],
       core: (path) => once(`/api/${path.replace(/^\/+/, "")}`),
