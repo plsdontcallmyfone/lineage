@@ -249,6 +249,113 @@ SIM
     console.log(ok ? 1 : 0);' "$HEADSHA")
   check "drained verifier restarted once, on the new release, after its old process exited" "$ok"
 fi
+echo "== second instance (UNITS_INSTANCE=mainnet) beside the devnet site"
+# docs/DEPLOY-SITE.md "Second instance (mainnet test)". There are no units programs on mainnet yet, so the
+# instance's "mainnet RPC" here is scripts/deploy/dryrun/stub-rpc.ts inside the container: it answers
+# getGenesisHash with mainnet's genesis and serves devnet's chain under the mainnet program ids, and its
+# chain state and profile overlay are stand-ins made from scripts/devnet/devnet.json. Nothing is sent
+# anywhere; no key leaves this machine. The URL carries a marker so a leak into a log or a readable
+# file is caught.
+MARK="DRYRUNSECRET$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+MH="main.localhost"; MU="https://$MH:$HTTPS_P"
+MC=(curl -sS -m 15 --cacert "$WORK/ca.crt" --resolve "$MH:$HTTPS_P:127.0.0.1")
+mcode() { "${MC[@]}" -o /dev/null -w '%{http_code}' "$@"; }
+bun -e '
+const d = JSON.parse(await Bun.file(process.argv[1] + "/scripts/devnet/devnet.json").text());
+const p = JSON.parse(await Bun.file(process.argv[1] + "/config/profile.json").text()).profiles.mainnet.programs;
+const keep = ["line_mint", "line_token_program", "line_decimals", "admin", "core_authority", "runtime_authority", "launch_lookup_table", "compute_sink", "agent_compute_bps", "protocol_bps"];
+await Bun.write(process.argv[2] + "/main-state.json", JSON.stringify({ mode: "mainnet", _note: "dry-run stand-in: devnet values under the mainnet program ids (stub RPC)", registry_program: p.registry, launch_program: p.launch, msg_program: p.msg, ...Object.fromEntries(keep.map((k) => [k, d[k]])) }, null, 2));
+await Bun.write(process.argv[2] + "/main-profile.json", JSON.stringify({ profiles: { mainnet: { quote: { source: "config", symbol: "DRYQ", mint: d.line_mint, decimals: d.line_decimals, token_program: d.line_token_program, status: "stand-in", units_mint: null }, swap: false } } }, null, 2));
+' "$REPO" "$WORK"
+MI=(env UNITS_INSTANCE=mainnet DEPLOY_REF="$HEADSHA" DRY_RUN_ORIGIN="$MU" DEPLOY_HEALTH_WAIT=420)
+# 1. staged before the programs exist: no chain state, no overlay, no RPC
+"${MI[@]}" INSTANCE_STATE_FILE="$WORK/absent.json" INSTANCE_PROFILE_FILE="$WORK/absent.json" UNITS_MAINNET_RPC= INSTANCE_RPC_ENV_FILE=/dev/null "$D" 127.0.0.1 stage > "$WORK/m1.log" 2>&1; rc=$?; tail -4 "$WORK/m1.log"
+check "mainnet instance: stage without chain state, overlay or RPC" "$([ $rc = 0 ] && grep -q 'staged and stopped' "$WORK/m1.log" && echo 1 || echo 0)" "exit $rc"
+mst=$(R "for u in units-main-core units-main-web units-main-gate units-main-indexer units-main-runtime; do printf '%s=%s/%s ' \$u \"\$(systemctl is-active \$u)\" \"\$(systemctl is-enabled \$u 2>/dev/null)\"; done")
+check "mainnet instance: staged units are installed, none active or enabled" "$(echo "$mst" | grep -qE '=active|/enabled' && echo 0 || { R 'test -f /etc/systemd/system/units-main-core.service' && echo 1 || echo 0; })" "$mst"
+"${MI[@]}" INSTANCE_STATE_FILE="$WORK/absent.json" INSTANCE_PROFILE_FILE="$WORK/absent.json" UNITS_MAINNET_RPC= INSTANCE_RPC_ENV_FILE=/dev/null "$D" 127.0.0.1 activate > "$WORK/m2.log" 2>&1; rc=$?
+check "mainnet instance: activate refused here while state, overlay and RPC are missing" "$([ $rc != 0 ] && grep -q 'NOT ACTIVATED' "$WORK/m2.log" && echo 1 || echo 0)" "exit $rc"
+ra=$(R "bash /root/lineage-deploy/remote-instance.sh mainnet activate $HEADSHA" 2>&1); rc=$?
+check "mainnet instance: activate refused on the server too" "$([ $rc != 0 ] && echo "$ra" | grep -q 'NOT ACTIVATED' && echo "$ra" | grep -q 'keyed RPC' && echo 1 || echo 0)" "exit $rc"
+check "devnet site untouched by the staging" "$([ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)"
+# 2. the stub RPC (from the devnet instance's release, as its unprivileged user), then activate
+R "systemctl stop units-dryrun-stubrpc 2>/dev/null; systemctl reset-failed units-dryrun-stubrpc 2>/dev/null; systemd-run -q --unit units-dryrun-stubrpc --uid=units --gid=units -p WorkingDirectory=/opt/units/current -E HOME=/tmp -E BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 /usr/local/bin/bun scripts/deploy/dryrun/stub-rpc.ts --port 9799"
+for i in $(seq 1 20); do g=$(R "curl -s -m 5 -X POST -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getGenesisHash\"}' http://127.0.0.1:9799" 2>/dev/null); echo "$g" | grep -q 5eykt4Us && break; sleep 1; done
+check "stub RPC answers with mainnet's genesis (devnet data behind it)" "$(echo "$g" | grep -q 5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d && echo 1 || echo 0)"
+s=$(date +%s); "${MI[@]}" INSTANCE_STATE_FILE="$WORK/main-state.json" INSTANCE_PROFILE_FILE="$WORK/main-profile.json" UNITS_MAINNET_RPC="http://127.0.0.1:9799/?api-key=$MARK" "$D" 127.0.0.1 activate > "$WORK/m3.log" 2>&1; rc=$?; tail -12 "$WORK/m3.log"
+check "mainnet instance: activate with state, overlay and RPC" "$([ $rc = 0 ] && grep -q 'active: mainnet instance' "$WORK/m3.log" && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
+check "mainnet instance: chain preflight passed before the start" "$(grep -q 'preflight mainnet\] READY' "$WORK/m3.log" && echo 1 || echo 0)" "$(grep -c 'preflight mainnet\] PASS' "$WORK/m3.log") checks"
+for u in units-main-core units-main-indexer units-main-web units-main-gate; do
+  st=$(R systemctl is-active $u); check "unit $u active" "$([ "$st" = active ] && echo 1 || echo 0)" "$st"
+done
+for u in units-core units-web units-gate units-indexer caddy; do
+  st=$(R systemctl is-active $u); check "devnet unit $u still active beside it" "$([ "$st" = active ] && echo 1 || echo 0)" "$st"
+done
+for u in units-main-bootstrap units-main-reference units-main-verifier@v1 units-main-verifier@v2 units-main-runtime; do
+  st=$(R systemctl is-active $u); check "sandbox unit $u skipped in the dry run" "$([ "$st" != active ] && echo 1 || echo 0)" "$st"
+done
+lp=$(R "lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | awk 'NR>1 {print \$9}' | sed 's/.*://' | sort -un | paste -sd' ' -")
+check "distinct ports: devnet 9660 9661 9662 9668, mainnet 9760 9761 9762 9768 all listening" "$(ok=1; for p in 9660 9661 9662 9668 9760 9761 9762 9768; do echo " $lp " | grep -q " $p " || ok=0; done; echo $ok)" "$lp"
+dd=$(R 'printf "%s %s | %s %s | %s %s" "$(readlink -f /opt/units/current | cut -d/ -f1-3)" "$(readlink -f /opt/units-main/current | cut -d/ -f1-3)" "$(stat -c %U:%i /var/lib/units/core/core.db)" "$(stat -c %U:%i /var/lib/units-main/core/core.db)" "$(stat -c %U /etc/units-core)" "$(stat -c %U /etc/units-main-core)"')
+check "distinct directories, databases and accounts" "$(echo "$dd" | grep -qE '^/opt/units /opt/units-main \| units-core:[0-9]+ units-main-core:[0-9]+ \| units-core units-main-core$' && echo 1 || echo 0)" "$dd"
+ug=$(R 'for u in units-main units-main-core units-main-web units-main-gate units-main-indexer; do printf "%s(%s) " $u "$(id -nG $u | tr " " ",")"; done')
+check "mainnet accounts: none in sudo, docker or a devnet service group (dry run: no docker group)" "$(echo "$ug" | grep -qE 'sudo|admin|[(,]units-core|[(,]units-web|[(,]units[,)]' && echo 0 || echo 1)" "$ug"
+mch=""; for i in $(seq 1 20); do mch=$("${MC[@]}" "$MU/v1/chain"); echo "$mch" | grep -q '"slot"' && break; sleep 3; done
+dch=$("${C[@]}" "$U/v1/chain")
+check "mainnet host answers its own Core (chain mode mainnet, mainnet program ids)" "$(echo "$mch" | grep -q '"mode":"mainnet"' && echo "$mch" | grep -q 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay && echo 1 || echo 0)" "$(echo "$mch" | head -c 90)"
+check "devnet host still answers its own Core (chain mode devnet)" "$(echo "$dch" | grep -q '"mode":"devnet"' && echo "$dch" | grep -q CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2 && echo 1 || echo 0)" "$(echo "$dch" | head -c 90)"
+check "mainnet Core does not sign in the dry run" "$(echo "$mch" | grep -q '"core_signing":false' && echo 1 || echo 0)"
+check "mainnet host: dashboard, wallet page, bundles" "$([ "$(mcode "$MU/")$(mcode "$MU/wallet")$(mcode "$MU/assets/app.js")$(mcode "$MU/assets/wallet.js")" = 200200200200 ] && echo 1 || echo 0)"
+mcc=$("${MC[@]}" "$MU/chain/config")
+mprof=$(echo "$mcc" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); const p=j.profile; console.log(JSON.stringify({devnet:j.devnet, network:p.network, faucet:p.faucet, test_labels:p.test_labels, swap:p.swap, quote:p.quote.symbol, faucet_addr:j.faucet, state_mint:j.state?.line_mint ?? null}))' 2>/dev/null)
+check "mainnet /chain/config: mainnet profile, no faucet, no TEST labels, the overlay's quote" "$([ "$(echo "$mprof" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(j.devnet===false && j.network==="mainnet" && j.faucet===false && j.test_labels===false && j.quote==="DRYQ" && j.faucet_addr===null && !!j.state_mint ? 1 : 0)' 2>/dev/null)" = 1 ] && echo 1 || echo 0)" "$mprof"
+check "mainnet /chain/config and /v1/chain: the RPC secret is not shown" "$(echo "$mcc$mch" | grep -q "$MARK" && echo 0 || echo 1)"
+mf=$("${MC[@]}" "$MU/chain/faucet"); check "mainnet faucet off" "$(echo "$mf" | grep -q '"enabled":false' && echo 1 || echo 0)" "$(echo "$mf" | head -c 80)"
+mh=$("${MC[@]}" "$MU/v1/hidden"); check "mainnet hidden list empty" "$([ "$(echo "$mh" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(j.count === 0 && j.hidden.length === 0 ? 1 : 0)' 2>/dev/null)" = 1 ] && echo 1 || echo 0)" "$(echo "$mh" | head -c 80)"
+mrpc=$("${MC[@]}" -X POST -H "origin: $MU" -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getGenesisHash","params":[]}' "$MU/chain/rpc")
+check "mainnet RPC proxy (same origin) reaches the instance's endpoint" "$(echo "$mrpc" | grep -q 5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d && echo 1 || echo 0)" "$(echo "$mrpc" | head -c 80)"
+check "mainnet admin API not public" "$([ "$(mcode "$MU/v1/admin/ledger")" = 404 ] && echo 1 || echo 0)"
+menv=$(R 'p=$(systemctl show -p MainPID --value units-main-core); tr "\0" "\n" < /proc/$p/environ | grep -E "^(UNITS_NETWORK|UNITS_INSTANCE|UNITS_PROFILE_LOCAL|UNITS_PORT_BLOCK)=" | sort | paste -sd" " -')
+check "mainnet Core's environment: UNITS_NETWORK=mainnet, its overlay, its port block" "$(echo "$menv" | grep -q 'UNITS_INSTANCE=mainnet UNITS_NETWORK=mainnet UNITS_PORT_BLOCK=9760-9769 UNITS_PROFILE_LOCAL=/etc/units-main/profile.local.json' && echo 1 || echo 0)" "$menv"
+denv=$(R 'p=$(systemctl show -p MainPID --value units-core); tr "\0" "\n" < /proc/$p/environ | grep -cE "^(UNITS_NETWORK|UNITS_INSTANCE|UNITS_PROFILE_LOCAL|UNITS_MAINNET_RPC)="')
+check "devnet Core's environment carries none of the mainnet settings" "$([ "$denv" = 0 ] && echo 1 || echo 0)" "$denv"
+caps=$(R "jq -c '{mode, core, global_max_usd, global_cap_scope, global_window_s, max_concurrent, max_concurrent_ceiling, trading: .trading.enabled, desktop_required, desktops_max, e2b_max, desktop_usd_per_day, shared: .desktop_shared, price: .price.source, bind_port}' /var/lib/units-main/site/runtime.json")
+check "mainnet runtime.json: 20 USD per UTC day counting all spend, 2 attempts, desktops required, shared E2B budget (strict), trading off" "$([ "$caps" = '{"mode":"mainnet","core":"http://127.0.0.1:9760","global_max_usd":20,"global_cap_scope":"all","global_window_s":86400,"max_concurrent":1,"max_concurrent_ceiling":2,"trading":false,"desktop_required":true,"desktops_max":0,"e2b_max":2,"desktop_usd_per_day":16,"shared":{"dir":"/var/lib/units-shared/e2b-spend","name":"mainnet","peers":["devnet"],"strict":true},"price":"config","bind_port":9767}' ] && echo 1 || echo 0)" "$caps"
+dcaps=$(R "jq -c '{mode, core, desktop_usd_per_day, shared: .desktop_shared}' /var/lib/units/site/runtime.json")
+check "devnet runtime.json names the same shared E2B budget (one cap, not two)" "$([ "$dcaps" = '{"mode":"devnet","core":"http://127.0.0.1:9660","desktop_usd_per_day":16,"shared":{"dir":"/var/lib/units-shared/e2b-spend","name":"devnet","peers":["mainnet"]}}' ] && echo 1 || echo 0)" "$dcaps"
+sh=$(R 'printf "%s %s %s" "$(stat -c "%U:%G %a" /var/lib/units-shared/e2b-spend)" "$(id -nG units | tr " " "\n" | grep -cx units-e2b)" "$(id -nG units-main | tr " " "\n" | grep -cx units-e2b)"')
+check "shared E2B budget directory: root:units-e2b 770, both runtime accounts in the group" "$([ "$sh" = 'root:units-e2b 770 1 1' ] && echo 1 || echo 0)" "$sh"
+# both runtime accounts publish and read each other's spend there (the runtimes themselves need Docker)
+sw=$(R 'cd /opt/units-main/current && for pair in units:devnet:mainnet units-main:mainnet:devnet; do IFS=: read -r u n peer <<< "$pair"; runuser -u $u -- env HOME=/tmp BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 /usr/local/bin/bun -e "
+import { SharedDesktopBudget } from \"./packages/runtime/src/desktops.ts\";
+const b = new SharedDesktopBudget({ dir: \"/var/lib/units-shared/e2b-spend\", name: \"$n\", peers: [\"$peer\"], strict: true }, 16);
+b.publish(\"$n\" === \"devnet\" ? 10 : 2); console.log(\"$n\", b.left());"; done; runuser -u units -- env HOME=/tmp BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 /usr/local/bin/bun -e "
+import { SharedDesktopBudget } from \"./packages/runtime/src/desktops.ts\";
+console.log(\"devnet-after\", new SharedDesktopBudget({ dir: \"/var/lib/units-shared/e2b-spend\", name: \"devnet\", peers: [\"mainnet\"] }, 16).left());"; rm -f /var/lib/units-shared/e2b-spend/*.json' 2>&1 | paste -sd' ' -)
+check "shared E2B budget across the two accounts: devnet spent 10 leaves mainnet 6, mainnet spent 2 leaves devnet 14" "$([ "$sw" = 'devnet 0 mainnet 6 devnet-after 14' ] && echo 1 || echo 0)" "$sw"
+# no secret (the RPC URL's marker) in any log, or in any file another account can read
+jl=$(R "journalctl --no-pager -o cat -u 'units-main-*' -u caddy -u units-dryrun-stubrpc 2>/dev/null | grep -c '$MARK'")
+ll=$(cat "$WORK"/m*.log | grep -c "$MARK")
+check "the RPC secret is in no journal and no deploy log" "$([ "$jl" = 0 ] && [ "$ll" = 0 ] && echo 1 || echo 0)" "journal $jl, deploy logs $ll"
+sf=$(R "grep -rlI '$MARK' /etc/units-main /etc/units-main-core /var/lib/units-main /opt/units-main /home/units-main /etc/units /var/lib/units /etc/caddy /etc/systemd/system /root/lineage-deploy 2>/dev/null | while read -r f; do printf '%s:%s:%s ' \"\$f\" \"\$(stat -c %a \"\$f\")\" \"\$(stat -c %U \"\$f\")\"; done")
+check "the RPC secret is only in root-owned mode 600 files of the mainnet instance" "$([ -n "$sf" ] && [ -z "$(echo "$sf" | tr ' ' '\n' | grep -v '^$' | grep -v '^/etc/units-main/[a-z]*\.env:600:root$')" ] && echo 1 || echo 0)" "$sf"
+"${MI[@]}" "$D" 127.0.0.1 status > "$WORK/mstatus.log" 2>&1; rc=$?; cat "$WORK/mstatus.log"
+check "mainnet instance status" "$([ $rc = 0 ] && grep -q '"ok":true' "$WORK/mstatus.log" && echo 1 || echo 0)"
+"${MI[@]}" "$D" 127.0.0.1 stop >/dev/null 2>&1
+st=$(R "systemctl is-active units-main-core units-main-gate units-core caddy | paste -sd' ' -")
+check "mainnet instance stop: its units stop, the devnet site and Caddy keep running" "$([ "$st" = 'inactive inactive active active' ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "$st"
+"${MI[@]}" "$D" 127.0.0.1 start >/dev/null 2>&1
+for i in $(seq 1 150); do [ "$(mcode "$MU/v1/health")" = 200 ] && break; sleep 2; done
+check "mainnet instance start" "$([ "$(mcode "$MU/v1/health")" = 200 ] && echo 1 || echo 0)"
+# a devnet deploy rewrites /etc/caddy/Caddyfile: the mainnet host must survive it
+DEPLOY_REF="$HEADSHA" "$D" 127.0.0.1 code > "$WORK/d5.log" 2>&1; rc=$?
+for i in $(seq 1 30); do [ "$(mcode "$MU/v1/health")" = 200 ] && break; sleep 2; done
+check "a devnet deploy keeps the mainnet host (Caddy imports its site block) and both answer" "$([ $rc = 0 ] && [ "$(mcode "$MU/v1/health")" = 200 ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "exit $rc"
+"${MI[@]}" "$D" 127.0.0.1 remove --purge > "$WORK/mremove.log" 2>&1; rc=$?; tail -3 "$WORK/mremove.log"
+gone=$(R 'ls /etc/systemd/system/units-main-*.service /etc/caddy/sites.d/units-main.caddy /opt/units-main /var/lib/units-main /etc/units-main /etc/units-main-core 2>/dev/null | wc -l; id units-main 2>/dev/null | wc -l')
+check "mainnet instance remove --purge: units, site block, directories and accounts gone; the devnet site answers" "$([ $rc = 0 ] && [ "$(echo $gone)" = '0 0' ] && [ "$(code "$U/v1/health")" = 200 ] && [ "$(R systemctl is-active caddy)" = active ] && echo 1 || echo 0)" "left: $(echo $gone)"
+R "systemctl stop units-dryrun-stubrpc 2>/dev/null; true"
+
 dfree=$(df -g / | tail -1 | awk '{print $4}')
 check "host disk still >= 4 GB free" "$([ "$dfree" -ge 4 ] && echo 1 || echo 0)" "$dfree GB"
 

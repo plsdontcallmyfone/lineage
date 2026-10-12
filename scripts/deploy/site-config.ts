@@ -21,40 +21,62 @@ import { join } from "node:path";
 import { canonicalJson, H } from "@units/protocol";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
+import { instanceLayout, SHARED_E2B_DIR } from "./instance.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-const OUT = opt("out") ?? "/var/lib/units/site";
+// A second instance on the same server (instance.ts; UNITS_INSTANCE=mainnet): its own directories,
+// ports and chain state file, mainnet chain mode and the mainnet test's safety values. Unset: the
+// devnet site, as before.
+const L = instanceLayout(process.env.UNITS_INSTANCE);
+const MAIN = L.network === "mainnet";
+const OUT = opt("out") ?? `${L.state}/site`;
 const HOME_CFG = join(homedir(), ".config", "lineage");
 mkdirSync(OUT, { recursive: true });
 
-const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
+const stateFile = process.env.UNITS_INSTANCE_STATE || (L.stateFile.startsWith("/") ? L.stateFile : join(ROOT, L.stateFile));
+if (!existsSync(stateFile)) {
+  // staged before the programs exist (docs/DEPLOY-SITE.md "Second instance"): nothing to configure yet
+  console.log(`no chain state at ${stateFile}: no configuration written; the ${L.name || "devnet"} instance cannot be activated until it is shipped`);
+  process.exit(0);
+}
+const devnet = JSON.parse(readFileSync(stateFile, "utf8"));
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
+// the instance's state file may carry Core config overrides (network_overrides: top-level keys replace,
+// the prepay block is merged key by key), e.g. the units account payment recipient on mainnet
+if (MAIN && devnet.network_overrides && typeof devnet.network_overrides === "object") {
+  const { prepay, ...rest } = devnet.network_overrides as Record<string, unknown>;
+  Object.assign(net, rest);
+  if (prepay && typeof prepay === "object") net.prepay = { ...net.prepay, ...(prepay as object) };
+}
 // The Core authority key: on a site with service users (remote.sh users_setup) it lives in
 // /etc/units-core, which this user cannot read, so remote.sh names it in UNITS_SITE_CORE_KEY;
 // otherwise the copy in this user's home (older layout, local dry runs).
 const coreKeyEnv = (process.env.UNITS_SITE_CORE_KEY ?? process.env.LINEAGE_SITE_CORE_KEY) || "";
-const coreKey = join(HOME_CFG, "devnet", "core-authority.json");
+const coreKey = join(HOME_CFG, L.keysDir, "core-authority.json");
 Object.assign(net, {
-  _note: "units public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
+  _note: MAIN
+    ? "units mainnet test instance (docs/MAINNET-RUNBOOK.md \"Mainnet test\"). TEST values from config/network.json with the state file's network_overrides; epoch length daily."
+    : "units public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
   epoch_length_s: Number((process.env.UNITS_SITE_EPOCH_S ?? process.env.LINEAGE_SITE_EPOCH_S) ?? 86400),
-  canaries_dir: "/var/lib/units/canaries",
+  canaries_dir: `${L.state}/canaries`,
   chain: {
-    mode: "devnet",
-    // the keyed RPC from ~/.config/lineage/rpc.env when deploy.sh copied it (Core publishes it redacted
-    // at /v1/chain); this file is mode 600 because of it
-    rpc_url: devnetRpcUrl(),
+    mode: L.network,
+    // devnet: the keyed RPC from ~/.config/lineage/rpc.env when deploy.sh copied it (Core publishes it
+    // redacted at /v1/chain); this file is mode 600 because of it. mainnet: never in a file here, Core
+    // takes UNITS_MAINNET_RPC from its unit's environment (packages/core main.ts)
+    rpc_url: MAIN ? "from-environment:UNITS_MAINNET_RPC" : devnetRpcUrl(),
     registry_program: devnet.registry_program,
     launch_program: devnet.launch_program,
     line_mint: devnet.line_mint,
-    ...(coreKeyEnv ? { core_authority_key: coreKeyEnv } : existsSync(coreKey) ? { core_authority_key: "~/.config/lineage/devnet/core-authority.json" } : {}),
+    ...(coreKeyEnv ? { core_authority_key: coreKeyEnv } : existsSync(coreKey) ? { core_authority_key: `~/.config/lineage/${L.keysDir}/core-authority.json` } : {}),
     poll_ms: Number((process.env.UNITS_SITE_POLL_MS ?? process.env.LINEAGE_SITE_POLL_MS) ?? 20000),
   },
 });
 writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { mode: 0o600 });
 chmodSync(join(OUT, "network.json"), 0o600);
-console.log(`network.json: chain mode devnet, rpc ${redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
+console.log(`network.json: chain mode ${L.network}, rpc ${MAIN ? "from the unit's environment" : redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
 
 const capsPath = join(OUT, "caps.json");
 if (!existsSync(capsPath) || argv.includes("--refresh-caps")) {
@@ -66,11 +88,11 @@ const caps = JSON.parse(readFileSync(capsPath, "utf8"));
 console.log(`caps.json: ${caps.arch}, ${caps.cpus} cpus, ${caps.memory_mb} MB, ${caps.gpus.length} gpus, digest ${H("caps", canonicalJson(caps)).slice(0, 16)}...`);
 
 writeFileSync(join(OUT, "runtime-authority.pub"), devnet.runtime_authority + "\n");
-const runtimeCfg = {
-  mode: "devnet",
-  core: "http://127.0.0.1:9660",
-  state_dir: "/var/lib/units/runtime",
-  runtime_key: join(HOME_CFG, "devnet", "runtime-authority.json"),
+const runtimeCfg: Record<string, any> = {
+  mode: L.network,
+  core: `http://127.0.0.1:${L.ports.core}`,
+  state_dir: `${L.state}/runtime`,
+  runtime_key: join(HOME_CFG, L.keysDir, "runtime-authority.json"),
   // no rpc_url: the runtime resolves it like Core (UNITS_DEVNET_RPC, the keyed rpc.env, else public devnet)
   _note:
     "Written by scripts/deploy/site-config.ts on every install and activate. Owner decisions 2026-10-09 and 2026-10-10: each hosted agent's model spend is paid by its own compute vault with no platform cap (attempt_max_usd per attempt, reserved from the vault first); the 10 USD per UTC day global cap (global_max_usd per global_window_s) counts only subsidized spend, the usage the vaults could not pay (global_cap_scope subsidized; set all to cap every USD again). Prices are TEST values.",
@@ -100,9 +122,9 @@ const runtimeCfg = {
   attempt_gap_s: 30,
   // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
   // owner 2026-10-10: agent trading off for now ("that shouldn't be enabled just yet"); set true to resume
-  trading: { enabled: false, poll_s: 60, market: "http://127.0.0.1:9668" },
+  trading: { enabled: false, poll_s: 60, market: `http://127.0.0.1:${L.ports.indexer}` },
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
-  bind_port: 9667,
+  bind_port: L.ports.bind,
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
   // (desktop_required: an attempt waits, short retry, until one is free). Desktop hosts first (the
   // hosts file that scripts/deploy/desktop-host/provision.sh fills; none until the owner creates one),
@@ -118,10 +140,39 @@ const runtimeCfg = {
   e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 3600 },
   desktop_required: true,
   desktop_hosts_file: "/home/units/.config/lineage/desktop-hosts/hosts.json",
+  // one E2B day budget for every instance on this server (packages/runtime desktops.ts): this one
+  // publishes its spend there and counts a second instance's; with no second instance (no directory,
+  // no peer file) nothing changes
+  desktop_shared: { dir: SHARED_E2B_DIR, name: "devnet", peers: ["mainnet"] },
   // owner direction 2026-10-10: live only. Desktops stream (sealed and redacted as before) but do not
   // record or publish a recording; the site shows only live work. true turns recordings back on.
   recordings: false,
 };
+if (MAIN) {
+  // The mainnet test instance's safety values (owner decisions 2026-10-11, docs/DEPLOY-SITE.md "Second
+  // instance (mainnet test)"). Every one is configuration in this file's output, none is in a program.
+  Object.assign(runtimeCfg, {
+    _note:
+      "Written by scripts/deploy/site-config.ts for the mainnet test instance on every install and activate. Owner decisions 2026-10-11: at most 20 USD of model spend per UTC day counting every dollar (vault-paid included: global_cap_scope all), at most 2 attempts at once, a live desktop required for every attempt, E2B desktops only, inside the one E2B day budget shared with the devnet site (desktop_shared, strict), agent trading off. The quote token is a throwaway stand-in, so its rate is the configured TEST rate (price.source config), the same figures Core publishes (config/network.json prepay with the state file's network_overrides).",
+    global_max_usd: 20,
+    global_cap_scope: "all",
+    global_window_s: 86400,
+    max_concurrent: 1,
+    max_concurrent_ceiling: 2,
+    trading: { enabled: false, poll_s: 60, market: `http://127.0.0.1:${L.ports.indexer}` },
+    attempt_max_usd: net.prepay.attempt_max_usd,
+    compute_price_line_per_usd: net.prepay.compute_price_line_per_usd,
+    compute_price_line_per_sandbox_s: net.prepay.compute_price_line_per_sandbox_s,
+    price: { source: "config" },
+    // this server's two local desktop slots stay with the devnet site; the test instance's desktops are
+    // E2B, at most one per attempt slot
+    desktops_max: 0,
+    e2b_max: 2,
+    desktop_required: true,
+    desktop_hosts_file: undefined,
+    desktop_shared: { dir: SHARED_E2B_DIR, name: "mainnet", peers: ["devnet"], strict: true },
+  });
+}
 const runtimePath = join(OUT, "runtime.json");
 const runtimeText = JSON.stringify(runtimeCfg, null, 2) + "\n";
 const prevRuntime = existsSync(runtimePath) ? readFileSync(runtimePath, "utf8") : null;
@@ -129,5 +180,5 @@ if (prevRuntime !== null && prevRuntime !== runtimeText) writeFileSync(`${runtim
 writeFileSync(runtimePath, runtimeText, { mode: 0o600 });
 chmodSync(runtimePath, 0o600);
 console.log(
-  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops: hosts from ${runtimeCfg.desktop_hosts_file}, ${runtimeCfg.desktops_max} here, ${runtimeCfg.e2b_max} E2B (${runtimeCfg.e2b.template}, ${runtimeCfg.desktop_usd_per_day} USD per UTC day), ${runtimeCfg.desktop_required ? "required" : "optional"}, recordings ${runtimeCfg.recordings ? "on" : "off"}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
+  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops: hosts from ${runtimeCfg.desktop_hosts_file}, ${runtimeCfg.desktops_max} here, ${runtimeCfg.e2b_max} E2B (${runtimeCfg.e2b.template}, ${runtimeCfg.desktop_usd_per_day} USD per UTC day), ${runtimeCfg.desktop_required ? "required" : "optional"}, recordings ${runtimeCfg.recordings ? "on" : "off"}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}${runtimeCfg.desktop_shared ? `; E2B budget shared as ${runtimeCfg.desktop_shared.name} with ${runtimeCfg.desktop_shared.peers.join(", ")}${runtimeCfg.desktop_shared.strict ? " (strict)" : ""}` : ""}; at most ${runtimeCfg.max_concurrent_ceiling} attempts at once; trading ${runtimeCfg.trading.enabled ? "on" : "off"}`,
 );

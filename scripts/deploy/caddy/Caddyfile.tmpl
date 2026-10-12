@@ -74,3 +74,7 @@
 		}
 	}
 }
+
+# other instances on this server (scripts/deploy/instance.ts; e.g. the mainnet test): each has its own site
+# block in /etc/caddy/sites.d, kept across deploys of this instance (no file there: nothing is imported)
+import /etc/caddy/sites.d/*.caddy

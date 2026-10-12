@@ -581,6 +581,7 @@ activate)
   SITES="${SITE_NAMES:-localhost}"
   if [ "$DRY_RUN" = 1 ]; then TLS="	tls internal"; GLOBAL="	local_certs"; else TLS=""; GLOBAL="${ACME_EMAIL:+	email $ACME_EMAIL}"; fi
   install -d -o caddy -g caddy /var/log/caddy
+  install -d -m 755 /etc/caddy/sites.d   # other instances' site blocks (scripts/deploy/instance.ts), imported by the template
   sed -e "s|@SITES@|${SITES//,/, }|" -e "s|@TLS@|$TLS|" -e "s|@GLOBAL@|$GLOBAL|" "$REL/scripts/deploy/caddy/Caddyfile.tmpl" > /etc/caddy/Caddyfile.new
   # Caddy before 2.8 (Ubuntu's package, provision.sh's fallback when the Caddy apt repository refuses)
   # takes the `|0600` socket mode as part of the file name, and its reloads then reach no admin socket;

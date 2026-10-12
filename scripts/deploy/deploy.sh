@@ -60,6 +60,9 @@
 # The code shipped is HEAD as a git bundle (commit first; the working tree is never shipped). Secrets
 # are never printed: keys are compared and reported by public key only.
 set -euo pipefail
+# a second instance on the same server (UNITS_INSTANCE=mainnet; docs/DEPLOY-SITE.md "Second instance
+# (mainnet test)") has its own script and modes; unset, everything below is the devnet site as before
+if [ -n "${UNITS_INSTANCE:-}" ]; then exec "$(dirname "$0")/instance.sh" "$@"; fi
 HOST="${1:-}"; MODE="${2:-full}"; EXTRA="${3:-}"
 [ -n "$HOST" ] || { sed -n '2,56p' "$0"; exit 2; }
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
