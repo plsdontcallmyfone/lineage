@@ -223,7 +223,10 @@ if (MAIN) {
     // this server's two local desktop slots stay with the devnet site; the test instance's desktops are
     // E2B, at most one per attempt slot
     desktops_max: 0,
-    e2b_max: 2,
+    // owner 2026-10-12 (E2B Professional plan bought: 100 sandboxes at once): 50 desktops at once and
+    // 200 USD of E2B time per UTC day (50 desktops all day: 50 x 24 x 0.1656 = 198.72)
+    e2b_max: 50,
+    desktop_usd_per_day: 200,
     desktop_required: true,
     desktop_hosts_file: undefined,
     desktop_shared: { dir: SHARED_E2B_DIR, name: "mainnet", peers: ["devnet"], strict: true },
