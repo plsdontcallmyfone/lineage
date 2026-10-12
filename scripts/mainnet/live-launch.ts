@@ -63,9 +63,11 @@ export function parsePlan(transactions: string, rows: { label: string; usd: stri
 /** Why this plan must not be signed, or null. */
 export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; unitsAccount?: boolean }): string | null {
   if (!p.built) return "the page shows no built launch (or still speaks of a simulation)";
-  if (p.txs.length !== 2) return `the plan has ${p.txs.length} transactions, expected 2 (launch + soul, then the purchase, initial buy, credits and tip)`;
+  // two transactions with the purchase on the quote coin's curve (or none); three when it is bought on its PumpSwap pool
+  if (p.txs.length !== 2 && p.txs.length !== 3) return `the plan has ${p.txs.length} transactions, expected 2 or 3 (launch + soul, then the purchase, initial buy, credits and tip)`;
   if (!p.txs[0]!.groups.includes("launch")) return "the first transaction does not carry the launch";
-  if (!p.txs[1]!.groups.includes("credits") || !p.txs[1]!.groups.includes("initial-buy")) return "the second transaction does not carry the credits and the initial buy";
+  const later = p.txs.slice(1).flatMap((t) => t.groups);
+  if (!later.includes("credits") || !later.includes("initial-buy")) return "the transactions after the launch do not carry the credits and the initial buy";
   const paysAccount = p.txs.some((t) => t.groups.includes("units-account"));
   if (paysAccount && !o.unitsAccount) return "the plan pays for a units account, which this run did not choose";
   if (!paysAccount && o.unitsAccount) return "the units account was chosen and no transaction of the plan pays its fee";
@@ -127,7 +129,14 @@ async function main() {
   if (!state?.test && !OFFICIAL) throw new Error("the active mainnet profile is not the TEST deployment (config/profile.json mainnet_deployment): refusing");
   if (OFFICIAL && state?.test === true) throw new Error("--official needs the official profile (UNITS_PROFILE_LOCAL): the active one is the TEST deployment");
   const rpc = Rpc.http(rpcUrlFor(profile), "confirmed");
-  if ((await rpc.call<string>("getGenesisHash")) !== "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d") throw new Error("the RPC endpoint is not mainnet");
+  // --fork: the same wizard run against a local instance on a FORK of mainnet (scripts/mainnet/fork-instance.ts), where --send
+  // spends nothing real. Only a loopback RPC whose genesis is NOT mainnet's is taken; the run ends once the launch landed.
+  const FORKED = process.argv.includes("--fork");
+  const GENESIS = await rpc.call<string>("getGenesisHash");
+  if (FORKED) {
+    if (GENESIS === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" || !rpcUrlFor(profile).startsWith("http://127.0.0.1:") || !BASE.startsWith("http://127.0.0.1:"))
+      throw new Error("--fork needs a local fork: UNITS_MAINNET_RPC and --site on 127.0.0.1, and a genesis that is not mainnet's");
+  } else if (GENESIS !== "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d") throw new Error("the RPC endpoint is not mainnet");
   const reader = new ChainReader(rpc);
   if (!state) throw new Error("no chain state for the active mainnet profile");
   const COIN = state.line_mint as string, DEC = Number(state.line_decimals);
@@ -165,25 +174,33 @@ async function main() {
     S.verify = { tx1: { err: one.err, units_consumed: one.unitsConsumed, units_limit: rows[0]!.units, wallet_spent_simulated: spent1?.toString() ?? null, page_fee_plus_rent: want1.toString() } };
     check("costs: the first transaction, simulated by this script, succeeds and spends exactly the fee and rent the page shows for it", !one.err && spent1 === want1, `simulated ${spent1} lamports, the page's fee + rent ${want1}${one.err ? `; error ${JSON.stringify(one.err)} ${(one.logs ?? []).slice(-3).join(" | ")}` : ""}`);
     check("limits: the first transaction uses at most two thirds of its fixed compute limit", !!one.unitsConsumed && one.unitsConsumed * 3 <= rows[0]!.units * 2, `${one.unitsConsumed} of ${rows[0]!.units}`);
-    // 2. the SOL purchase of the second transaction, alone (its first group)
-    const two = parseWire(new Uint8Array(Buffer.from(b64s[1]!, "base64")));
+    // 2. the SOL purchase, alone (the first group of the transaction that carries it)
+    const at = rows.findIndex((r) => r.groups[0] === "sol-to-units");
+    if (at < 0) {
+      // no purchase in the plan: the launch takes its $UNITS from the wallet (the quote coin on its pool, a wallet short of SOL that holds them)
+      S.verify.purchase = null;
+      save();
+      return check("costs: the plan has no SOL purchase (the credits and the initial buy come from the wallet's own UNITS); the page's purchase figure is zero", BigInt(head.purchase) === 0n, `groups ${rows.map((r) => r.groups.join(" + ")).join("; ")}`);
+    }
+    const two = parseWire(new Uint8Array(Buffer.from(b64s[at]!, "base64")));
     const raw = decodeMessage(two.message);
     const tables = new Map<string, string[]>();
     for (const l of raw.lookups) tables.set(l.table, (await rpc.call<any>("getAccountInfo", [l.table, { encoding: "jsonParsed" }])).value.data.parsed.info.addresses);
     const d = decodeMessage(two.message, tables);
     const body = d.instructions.filter((ix: any) => !String(ix.programId).startsWith("ComputeBudget"));
     const budget = d.instructions.filter((ix: any) => String(ix.programId).startsWith("ComputeBudget"));
-    if (rows[1]?.groups[0] !== "sol-to-units") return check("costs: the SOL purchase could be isolated", false, `the second transaction starts with ${rows[1]?.groups[0]}`);
-    // sol-to-units is the first two instructions after the budget: create the launcher's $UNITS account if missing, then buy_v3
-    const ixs = [...budget, ...body.slice(0, 2)].map((ix: any) => ({ programId: ix.programId, keys: ix.accounts, data: ix.data }));
+    // on the curve: create the launcher's $UNITS account if missing, then buy_v3 (two instructions). On the PumpSwap pool: that
+    // account, a temporary wrapped SOL account (create with seed, initialize), buy_v2, close (five; the second is a System instruction)
+    const onPool = String(body[1]?.programId) === "11111111111111111111111111111111";
+    const ixs = [...budget, ...body.slice(0, onPool ? 5 : 2)].map((ix: any) => ({ programId: ix.programId, keys: ix.accounts, data: ix.data }));
     const { blockhash } = await rpc.getLatestBlockhash();
     const alone = await sim(Buffer.from(unsignedWire(compileMessage(launcher, ixs, blockhash))).toString("base64"));
     const spent2 = alone.accounts?.[0] ? before - BigInt(alone.accounts[0].lamports) : null;
     // what this lone transaction pays beside the purchase: its own fee (same limit and price as the page's second transaction, one signature) and the rent of the wallet's accounts it creates
-    const fee2 = BigInt(rows[1]!.fee);
+    const fee2 = BigInt(rows[at]!.fee);
     const rent2 = rents.filter((r) => r.group === "sol-to-units").reduce((n, r) => n + BigInt(r.lamports), 0n);
     const trade = spent2 === null ? null : spent2 - fee2 - rent2;
-    S.verify.purchase = { err: alone.err, units_consumed: alone.unitsConsumed, wallet_spent_simulated: spent2?.toString() ?? null, fee: fee2.toString(), rent: rent2.toString(), trade_simulated: trade?.toString() ?? null, page_credits_plus_buy: head.purchase };
+    S.verify.purchase = { venue: onPool ? "pool" : "curve", err: alone.err, units_consumed: alone.unitsConsumed, wallet_spent_simulated: spent2?.toString() ?? null, fee: fee2.toString(), rent: rent2.toString(), trade_simulated: trade?.toString() ?? null, page_credits_plus_buy: head.purchase };
     save();
     // the curve moves with every trade on it: equal when nobody traded between the page's read and this simulation, else within the slippage bound
     const page2 = BigInt(head.purchase);
@@ -210,7 +227,7 @@ async function main() {
 
     const cc = (await j("/chain/config")).body;
     check("site: the mainnet TEST deployment (mainnet genesis, test program ids, the test coin as quote, no faucet)",
-      cc?.genesis === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" && cc?.profile?.network === "mainnet" && cc.profile.programs.registry === state!.registry_program && cc.profile.programs.launch === state!.launch_program &&
+      cc?.genesis === GENESIS && cc?.profile?.network === "mainnet" && cc.profile.programs.registry === state!.registry_program && cc.profile.programs.launch === state!.launch_program &&
       cc.profile.quote.mint === COIN && (OFFICIAL ? cc.state?.test !== true : cc.state?.test === true) && !cc.profile.faucet, `registry ${cc?.profile?.programs?.registry}, quote ${cc?.profile?.quote?.mint}`);
     if (!S.results.at(-1)!.ok) throw new Error("the site is not the mainnet TEST deployment; nothing was signed");
 
@@ -270,6 +287,14 @@ async function main() {
       }, 250);
     }, { address: wallet.id, pub: Array.from(wallet.secret.subarray(32)) });
     const page = await ctx.newPage();
+    // fork only: no hosted runtime runs beside the fork instance, so none reports which models can run; the registry's default
+    // is marked pickable in the page's view, as scripts/mainnet/wizard-fork.ts does (the launch itself does not depend on it)
+    if (FORKED) await page.route("**/api/models", async (route: any) => {
+      const r = await route.fetch();
+      const m = await r.json().catch(() => null);
+      if (m?.registry && Array.isArray(m.models)) for (const x of m.models) if (x.provider === m.registry.default.provider && x.id === m.registry.default.id) Object.assign(x, { pickable: true, available: true });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(m) });
+    });
     const errors: string[] = [];
     page.on("pageerror", (e: Error) => errors.push(e.message));
     page.on("console", (m: any) => { if (m.type() === "error") errors.push(`console: ${String(m.text()).slice(0, 300)}`); });
@@ -392,6 +417,7 @@ async function main() {
       const fork = JSON.parse(readFileSync(join(import.meta.dir, "WIZARD-FORK-LAST.json"), "utf8"));
       const forkSpent = Number(fork.launch?.wallet_sol_spent_fork_lamports ?? 0) / 1e9;
       log(`fork figures: the wizard on the fork spent ${forkSpent.toFixed(9)} SOL at the fork's rent; the instruction rehearsal measured 0.097173597 SOL at mainnet rent (docs/MAINNET-COSTS.md), 1,082 and 1,101 bytes`);
+      const pageTotal = ((await page.locator("#w-launch-out .lz-tech").evaluate((e: HTMLElement) => e.dataset.launchTotal ?? null).catch(() => null)) as string | null);
       const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9, unitsAccount: SEED.identity === "units" });
       check("wizard, Review: the launch is built with its cost lines (nothing simulated) and the plan is within the limits (2 transactions, each within a packet, total under --max-sol)", !problem, problem ?? `${plan.txs.length} transactions of ${plan.txs.map((t) => t.bytes).join(" and ")} bytes; total ${plan.total_sol} SOL = ${plan.total_usd} USD; limit ${MAX_SOL} SOL`);
       const disabled = await page.locator('[data-act="launch-sign"]').isDisabled();
@@ -425,6 +451,12 @@ async function main() {
       check("launch: one approval carried every transaction of the launch (one signTransaction request)", signed.length - n0 >= 1 && signed[n0]!.txs.length === plan.txs.length, `requests ${JSON.stringify(signed.slice(n0).map((r) => r.txs.length))}`);
       if (!confirmed) throw new Error(`the launch did not confirm: ${S.launch.error}`);
       log(`LANDED: ${sigs.join(", ")}`);
+      // what the wallet paid against the total the page showed before signing (read before anything else is signed)
+      const balLanded = await rpc.getBalance(wallet.id);
+      S.launch.spent_lamports = (bal0 - balLanded).toString();
+      S.launch.page_total_lamports = pageTotal;
+      save();
+      check("launch: the launcher's SOL spend equals the total the page showed before signing, to the lamport", pageTotal !== null && bal0 - balLanded === BigInt(pageTotal), `spent ${bal0 - balLanded} lamports, the page's total ${pageTotal}`);
       const mine = (await reader.launches()).filter((l) => l.launcher === wallet.id).sort((a, b) => Number(b.createdAt - a.createdAt));
       if (mine[0]) {
         S.agent = mine[0].agent;
@@ -436,6 +468,19 @@ async function main() {
       const fresh = mine.filter((l) => Number(l.createdAt) * 1000 >= T0 - 60_000);
       check("launch: one new AgentLaunch for the launcher on mainnet, made in this run", fresh.length === 1 && fresh[0] === mine[0], `agent ${S.agent}, mint ${S.mint}; ${mine.length} launches by this key in all`);
 
+      if (FORKED) {
+        // the fork instance has no hosted runtime and no identity service: what the launch wrote is read from the fork and the run ends
+        const l = mine[0]!;
+        const curve = decodeBondingCurve((await rpc.getAccountInfo(pumpPdas.bondingCurve(l.mint)))!.data);
+        const bought = (await reader.tokenBalance(ata(l.agent, l.mint, T22))) ?? 0n, vault = (await reader.tokenBalance(launchPdas.computeVault(l.agent))) ?? 0n;
+        const la = await reader.agentLaunch(l.mint);
+        S.fork = { quote_mint: curve.quoteMint, initial_buy_held: bought.toString(), vault: vault.toString(), awake: la?.awake ?? null };
+        save();
+        check("fork: the agent coin exists quoted in the quote coin with the agent's PDA as creator, the 1% initial buy is in the agent key's account, the vault holds the credits and the agent is awake",
+          curve.quoteMint === COIN && curve.creator === launchPdas.pumpCreator(l.agent) && bought === curve.tokenTotalSupply / 100n && vault > 0n && la?.awake === true, `bought ${bought}, vault ${vault} base units`);
+        check("no page errors during the launch", errors.length === 0, errors.slice(0, 4).join(" ; "));
+        return;
+      }
       // the agent key exists only in this tab: keep it beside the launcher key (mode 600, never printed)
       const dl = page.waitForEvent("download", { timeout: 20_000 }).catch(() => null);
       await page.locator('[data-act="download-agent-key"]').click({ timeout: 60_000 }).catch(() => {});

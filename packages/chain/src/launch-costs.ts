@@ -38,13 +38,20 @@ export const LAUNCH_CU: Record<string, number> = {
   "fee-route": 150_000,
   pool: 150_000,
 };
+/**
+ * The SOL purchase on $UNITS's PumpSwap pool (create the $UNITS account, a temporary wrapped SOL account,
+ * buy_v2, close): 93,807 measured on the mainnet fork with the real $UNITS pool cloned, both the $UNITS
+ * account and the PumpSwap volume account made (scripts/mainnet/POOL-LAUNCH-FORK-LAST.json, 2026-10-12).
+ */
+export const LAUNCH_CU_POOL_PURCHASE = 160_000;
 const CU_UNKNOWN_GROUP = 150_000;
 const CU_BUDGET_IXS = 1_000;
 export const CU_MAX = 1_400_000;
 
-/** The compute unit limit of a transaction carrying these groups. */
-export function launchTxUnits(groups: string[]): number {
-  return Math.min(CU_MAX, CU_BUDGET_IXS + groups.reduce((n, g) => n + (LAUNCH_CU[g] ?? CU_UNKNOWN_GROUP), 0));
+/** The compute unit limit of a transaction carrying these groups. `purchase`: where the SOL purchase runs ($UNITS's curve, or its PumpSwap pool once migrated). */
+export function launchTxUnits(groups: string[], purchase: "curve" | "pool" = "curve"): number {
+  const of = (g: string) => (g === "sol-to-units" && purchase === "pool" ? LAUNCH_CU_POOL_PURCHASE : (LAUNCH_CU[g] ?? CU_UNKNOWN_GROUP));
+  return Math.min(CU_MAX, CU_BUDGET_IXS + groups.reduce((n, g) => n + of(g), 0));
 }
 
 export const LAMPORTS_PER_SIGNATURE = 5_000n;
@@ -62,6 +69,8 @@ export const LAUNCH_SIZES = {
   pumpCurve: 166,
   /** pump.fun's per-wallet volume account, made on a wallet's first buy */
   pumpUserVolume: 137,
+  /** PumpSwap's per-wallet volume account, made on a wallet's first pool trade (read on the mainnet fork, 2026-10-12) */
+  pumpAmmUserVolume: 137,
   /** an associated Token-2022 account (with the immutable owner extension) */
   ata: 170,
   /** a Token-2022 account a program creates at its own address */
@@ -98,7 +107,7 @@ export function launchCreates(o: {
   symbol: string;
   uri: string;
   /** the launcher's $UNITS account and pump.fun volume account (the SOL purchase creates them when missing); omitted when no purchase runs on the curve */
-  purchase?: { launcherLine: Address; launcherVolume: Address };
+  purchase?: { launcherLine: Address; launcherVolume: Address; venue?: "curve" | "pool" };
   /**
    * the initial buy: the agent treasury's account is always new; the buyback recipient's account only when the builder adds its create;
    * `launcherVolume`: the launcher's pump.fun volume account, named when no SOL purchase runs before the buy (the buy is then the
@@ -120,12 +129,14 @@ export function launchCreates(o: {
   ];
   if (o.purchase) {
     out.push({ what: "your $UNITS account", size: S.ata, group: "sol-to-units", address: o.purchase.launcherLine });
-    out.push({ what: "your pump.fun volume account", size: S.pumpUserVolume, group: "sol-to-units", address: o.purchase.launcherVolume });
+    out.push(o.purchase.venue === "pool"
+      ? { what: "your PumpSwap volume account", size: S.pumpAmmUserVolume, group: "sol-to-units", address: o.purchase.launcherVolume }
+      : { what: "your pump.fun volume account", size: S.pumpUserVolume, group: "sol-to-units", address: o.purchase.launcherVolume });
   }
   if (o.buy) {
     out.push({ what: "the agent's coin account", size: S.ata, group: "initial-buy" });
     if (o.buy.createsBuyback) out.push({ what: "pump.fun's buyback $UNITS account", size: S.ata, group: "initial-buy" });
-    if (o.buy.launcherVolume && !o.purchase) out.push({ what: "your pump.fun volume account", size: S.pumpUserVolume, group: "initial-buy", address: o.buy.launcherVolume });
+    if (o.buy.launcherVolume && (!o.purchase || o.purchase.venue === "pool")) out.push({ what: "your pump.fun volume account", size: S.pumpUserVolume, group: "initial-buy", address: o.buy.launcherVolume });
   }
   if (o.feeRoute) {
     out.push({ what: "the fee route", size: S.feeRoute, group: "fee-route" });

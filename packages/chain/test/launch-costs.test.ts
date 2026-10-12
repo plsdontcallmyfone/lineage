@@ -2,7 +2,7 @@
 // launch on mainnet: the TEST launch TBASALT of 2026-10-12 (transactions nxxUtfKr... and 5NCfFmJ8...,
 // read back with getTransaction: fees, balances before and after, and the size of each new account).
 import { describe, expect, test } from "bun:test";
-import { CU_MAX, LAUNCH_CU, launchCostDetail, launchCreates, launchTxUnits, mintSize, rentLamports, txFeeLamports } from "../src/launch-costs.ts";
+import { CU_MAX, LAUNCH_CU, LAUNCH_CU_POOL_PURCHASE, launchCostDetail, launchCreates, launchTxUnits, mintSize, rentLamports, txFeeLamports } from "../src/launch-costs.ts";
 import { launchUnitsCosts, solShortfall, unitsShortfall } from "../src/launch-bundle.ts";
 
 // getMinimumBalanceForRentExemption(0) on mainnet and devnet, 2026-10-12
@@ -87,6 +87,25 @@ describe("the whole launch", () => {
     expect(unitsShortfall(launchCostDetail({ txs, rent0: RENT0, creates, existing: new Set(), purchase: null, hasBuy: true, identity: 0n }).costs, 0n, fmt)).toBeNull();
     // the second transaction's limit: no purchase group
     expect(launchTxUnits(["initial-buy", "credits", "units-account", "tip"])).toBe(1_000 + 190_000 + 35_000 + 1_000 + 1_000);
+  });
+  test("the SOL purchase on the quote coin's PumpSwap pool: its own volume account and limit, the temporary account's rent is held and not spent", () => {
+    const c3 = launchCreates({ name: NAME, symbol: SYMBOL, uri: URI, purchase: { launcherLine: "LINE", launcherVolume: "AMMVOL", venue: "pool" }, buy: { createsBuyback: false, launcherVolume: "VOL" } });
+    expect(c3.filter((c) => c.address).map((c) => [c.what, c.group, c.size])).toEqual([["your $UNITS account", "sol-to-units", 170], ["your PumpSwap volume account", "sol-to-units", 137],
+      ["your pump.fun volume account", "initial-buy", 137]]);
+    const t3 = [txs[0]!, { groups: ["sol-to-units"], signatures: 1, units: launchTxUnits(["sol-to-units"], "pool"), price: 1 },
+      { groups: ["initial-buy", "credits", "units-account", "tip"], signatures: 1, units: launchTxUnits(["initial-buy", "credits", "units-account", "tip"], "pool"), price: 1 }];
+    // the fork launch of 2026-10-12 (scripts/mainnet/POOL-LAUNCH-FORK-LAST.json): the purchase used 93,807 units
+    expect(launchTxUnits(["sol-to-units"], "pool")).toBe(1_000 + LAUNCH_CU_POOL_PURCHASE);
+    expect(LAUNCH_CU_POOL_PURCHASE).toBeGreaterThanOrEqual(Math.ceil(93_807 * 1.6));
+    expect(launchTxUnits(["sol-to-units"])).toBe(1_000 + LAUNCH_CU["sol-to-units"]!);
+    const rentToken = rentLamports(165, RENT0), whole = 128_905_574n, bound = 1_289_056n;
+    const d = launchCostDetail({ txs: t3, rent0: RENT0, creates: c3, existing: new Set(), purchase: { whole, credits: 50_394n }, hasBuy: true, identity: 30_000_000n, tip: 4_549n, headroom: bound + rentToken });
+    expect(d.costs.total).toBe(d.fees.reduce((n, f) => n + f, 0n) + d.rent + whole + 30_000_000n + 4_549n);
+    expect(d.costs.needed - d.costs.total).toBe(bound + rentToken);
+    expect(d.costs.credits).toBe(50_394n);
+    expect(d.costs.buy).toBe(whole - 50_394n);
+    expect(d.costs.units).toBeUndefined();
+    expect(d.rents.length).toBe(7 + 2 + 1 + 1);
   });
   test("the optional groups charge their own accounts, the shared ones only when absent", () => {
     const c = launchCreates({ name: NAME, symbol: SYMBOL, uri: URI, feeRoute: { escrow: "E", vault: "V" }, pool: { pool: "P", vault: "PV" } });

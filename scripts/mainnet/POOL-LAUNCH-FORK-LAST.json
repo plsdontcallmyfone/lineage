@@ -1,0 +1,681 @@
+{
+  "fork_genesis": "3RC4WhkGiZv6sEuLVWk4o2Hc66oPWB1JGF53gg1yJYki",
+  "line_mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+  "line_pool": {
+    "pool": "8swjg8ZxS6HNNMTMzymHgUpQeHTLQaSEbSgW7A3L1ieX",
+    "baseVault": "8rTTTBkcaRTTxYMkhAkr93Wvok8P2AKaSY25wGB2CfBz",
+    "quoteVault": "3rYF7vGr9PVYhpjNPx5H1UtN6pWkJQzGw3BwR9rvihbg"
+  },
+  "table": "6dj2UbcMsYY4BHQNnQmXkkcNs5b4sa7h3C8q6Gj3Fkrc",
+  "rent0": "890880",
+  "standalone_pool_buy": {
+    "inputs": {
+      "base_reserve": "268014082345560",
+      "quote_vault": "49583311596",
+      "virtual_quote_reserves": "17367691646",
+      "lp_fee_bps": "2",
+      "protocol_fee_bps": "93",
+      "creator_fee_bps": "30"
+    },
+    "pool_leg": "151480344",
+    "lp_fee": "30297",
+    "protocol_fee": "1408768",
+    "creator_fee": "454442",
+    "spent_lamports": "157297332",
+    "units": "605027760742",
+    "quote_lamports": "153373851",
+    "cu": 92306,
+    "bytes": 824,
+    "created_bytes": [
+      170,
+      137
+    ]
+  },
+  "units": {
+    "mode": "units",
+    "agent": "PSYXykbJZ9hHmKimrC3Rkfa4mitdSiCw5nB7PumE4rX",
+    "mint": "m6z9dwaAq67EoLtJ4U2oeezHZddz3JxWJVm6fPudirC",
+    "deposit": "200000000",
+    "initial_buy": {
+      "amount_out": "10000000000000",
+      "quote": "502351192342",
+      "max_in": "507374704266"
+    },
+    "txs": [
+      {
+        "groups": [
+          "launch"
+        ],
+        "size": 1166,
+        "limit": 421000,
+        "cu": 240784,
+        "fee": 15001,
+        "created": [
+          {
+            "address": "m6z9dwaAq67EoLtJ4U2oeezHZddz3JxWJVm6fPudirC",
+            "bytes": 539,
+            "forkRent": "4642320",
+            "mainnetRent": "3388360"
+          },
+          {
+            "address": "DtAaRCsynAa5LazwEfn6pA7dixY36ttSDwyv4SnkAwPo",
+            "bytes": 166,
+            "forkRent": "2046240",
+            "mainnetRent": "1493520"
+          },
+          {
+            "address": "94DsAFcDnVAo2MeLqVMbnGvKfxWKNJKMSVjdnEv6ZxUn",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "8tsQWk8qDmyfftzFhswPzgcuNtkmhkeqzKAeMajiLnp5",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "BkNuiaxwjT85fJz6bWQG3YV2AdW8U5YhRCG1fctSgH6u",
+            "bytes": 554,
+            "forkRent": "4746720",
+            "mainnetRent": "3464560"
+          },
+          {
+            "address": "GuLpec3uAjiFzVpF5DZfMvgi2oG9UovVM3aR3xWtGJJf",
+            "bytes": 165,
+            "forkRent": "2039280",
+            "mainnetRent": "1488440"
+          },
+          {
+            "address": "G6M3VwthNX8ELE4R4T6AEtZw6vLXxACA4LsAuWUVtGoH",
+            "bytes": 401,
+            "forkRent": "3681840",
+            "mainnetRent": "2687320"
+          }
+        ]
+      },
+      {
+        "groups": [
+          "soul",
+          "initial-buy",
+          "credits",
+          "units-account",
+          "tip"
+        ],
+        "size": 1071,
+        "limit": 256000,
+        "cu": 115027,
+        "fee": 10001,
+        "created": [
+          {
+            "address": "74Q3QuaWnFd4fVWCp3TeMwPpD9BMwpr5eSTrHbRPNaMk",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "2kz8z8CSDRJtvfhaWPJBjQ4pjdr9ii2Qks96RdKwAecF",
+            "bytes": 137,
+            "forkRent": "1844400",
+            "mainnetRent": "1346200"
+          }
+        ]
+      }
+    ],
+    "total_lamports": "55253011",
+    "needed_lamports": "55253011",
+    "spent_lamports": "55253011",
+    "purchase": null,
+    "units": {
+      "total": "502551192342",
+      "needed": "507574704266",
+      "spent": "502551192342"
+    },
+    "rents": [
+      {
+        "what": "the coin's mint",
+        "size": 539,
+        "lamports": "4642320"
+      },
+      {
+        "what": "pump.fun's curve",
+        "size": 166,
+        "lamports": "2046240"
+      },
+      {
+        "what": "the curve's coin account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "the curve's $UNITS account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "the launch record",
+        "size": 554,
+        "lamports": "4746720"
+      },
+      {
+        "what": "the agent's compute vault",
+        "size": 165,
+        "lamports": "2039280"
+      },
+      {
+        "what": "the agent's registry record",
+        "size": 401,
+        "lamports": "3681840"
+      },
+      {
+        "what": "the agent's coin account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "your pump.fun volume account",
+        "size": 137,
+        "lamports": "1844400"
+      }
+    ]
+  },
+  "sol": {
+    "mode": "sol",
+    "agent": "5R9KyvPFkivD38TkjUzMNvDY7Ltd7e2yJxDaJeX3AduY",
+    "mint": "EJZr2nz2JH2NkMAU8479nXrthJiKLToa7hBZVJTYBWTJ",
+    "deposit": "200000000",
+    "initial_buy": {
+      "amount_out": "10000000000000",
+      "quote": "502351192342",
+      "max_in": "507374704266"
+    },
+    "txs": [
+      {
+        "groups": [
+          "launch"
+        ],
+        "size": 1166,
+        "limit": 421000,
+        "cu": 246784,
+        "fee": 15001,
+        "created": [
+          {
+            "address": "EJZr2nz2JH2NkMAU8479nXrthJiKLToa7hBZVJTYBWTJ",
+            "bytes": 539,
+            "forkRent": "4642320",
+            "mainnetRent": "3388360"
+          },
+          {
+            "address": "ADCcGXim8YMqWwnZy6GSLbB43LP3UhTRHngVHucyXqTV",
+            "bytes": 166,
+            "forkRent": "2046240",
+            "mainnetRent": "1493520"
+          },
+          {
+            "address": "DjWxBRE39VEpE3Dy5cdBio3VfTdgSeGyGGh9uorzgGRt",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "Hbxq8nkScKdZ3y1SXcRYs6UhMs6sKa5EMK56JG2daux1",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "BDKMDPj5Pfwmyhh6RHCGboSa193Z2vUbEiiqnhJ5oqUT",
+            "bytes": 554,
+            "forkRent": "4746720",
+            "mainnetRent": "3464560"
+          },
+          {
+            "address": "8N5EmBbtgJdmiBvinjcbNwVUmodtTgxwd3YrabB8JsZT",
+            "bytes": 165,
+            "forkRent": "2039280",
+            "mainnetRent": "1488440"
+          },
+          {
+            "address": "FUM7HKiFmuPiMFE1YvoN8TbxmtpLgY8w63oRh95mLLfJ",
+            "bytes": 401,
+            "forkRent": "3681840",
+            "mainnetRent": "2687320"
+          }
+        ]
+      },
+      {
+        "groups": [
+          "soul",
+          "sol-to-units"
+        ],
+        "size": 1035,
+        "limit": 189000,
+        "cu": 107994,
+        "fee": 10001,
+        "created": [
+          {
+            "address": "2xGBqcDBxKY6KQ7VWhs7SQB3EyAwwtzdxPEesQ6VFryM",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "2EFC9oTMrhWSqCx4rQ8bn4JRCCnJFmdsymCm6WCyPtXU",
+            "bytes": 137,
+            "forkRent": "1844400",
+            "mainnetRent": "1346200"
+          }
+        ]
+      },
+      {
+        "groups": [
+          "initial-buy",
+          "credits",
+          "units-account",
+          "tip"
+        ],
+        "size": 892,
+        "limit": 228000,
+        "cu": 109842,
+        "fee": 5001,
+        "created": [
+          {
+            "address": "D2HoE49F5Rxx57BahTpLUTAjdTy41HAVbZoGxcECvikK",
+            "bytes": 170,
+            "forkRent": "2074080",
+            "mainnetRent": "1513840"
+          },
+          {
+            "address": "6mbhoU7UEkTVAwaShmmCVRcM7dQ3of4pwqVNZTfjpdX2",
+            "bytes": 137,
+            "forkRent": "1844400",
+            "mainnetRent": "1346200"
+          }
+        ]
+      }
+    ],
+    "total_lamports": "188381801",
+    "needed_lamports": "191713142",
+    "spent_lamports": "188381801",
+    "purchase": {
+      "whole": "129206041",
+      "credits": "50817",
+      "headroom": "3331341"
+    },
+    "units": null,
+    "rents": [
+      {
+        "what": "the coin's mint",
+        "size": 539,
+        "lamports": "4642320"
+      },
+      {
+        "what": "pump.fun's curve",
+        "size": 166,
+        "lamports": "2046240"
+      },
+      {
+        "what": "the curve's coin account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "the curve's $UNITS account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "the launch record",
+        "size": 554,
+        "lamports": "4746720"
+      },
+      {
+        "what": "the agent's compute vault",
+        "size": 165,
+        "lamports": "2039280"
+      },
+      {
+        "what": "the agent's registry record",
+        "size": 401,
+        "lamports": "3681840"
+      },
+      {
+        "what": "your $UNITS account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "your PumpSwap volume account",
+        "size": 137,
+        "lamports": "1844400"
+      },
+      {
+        "what": "the agent's coin account",
+        "size": 170,
+        "lamports": "2074080"
+      },
+      {
+        "what": "your pump.fun volume account",
+        "size": 137,
+        "lamports": "1844400"
+      }
+    ]
+  },
+  "outcome": "PASS",
+  "checks": [
+    {
+      "name": "0: the frozen launch lookup table cloned from mainnet holds exactly the addresses of launchTableAddresses with the pool",
+      "ok": true,
+      "detail": "24 addresses"
+    },
+    {
+      "name": "0: the real $UNITS on the fork: its curve is complete and migrated, its canonical pool is base $UNITS / quote wrapped SOL with the vaults of state.line_pool",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "units-a4k2: a stand-alone exact-output buy on the real pool delivered exactly the amount asked and took exactly quotePoolBuyExactOut's SOL (plus fee and the rent of the accounts it made)",
+      "ok": true,
+      "detail": "605027760742 base units for 153373851 lamports (pool leg 151480344, LP 30297, protocol 1408768, creator 454442); spent 157297332; 92306 CU; 824 bytes; created 170, 137 bytes"
+    },
+    {
+      "name": "units-a4k2: create_v2 took the REAL migrated $UNITS as the quote (its pool and vaults named): the agent coin exists, quoted in $UNITS, depth 1, creator the agent's PDA, registered in the same transaction",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "units-a4k2: the starting curve create_v2 wrote equals pumpQuotedCurve on the pool's reserves",
+      "ok": true,
+      "detail": "seed 52740673329155 vs 52740673329155"
+    },
+    {
+      "name": "units-a4k2: the compute vault holds the credits deposit",
+      "ok": true,
+      "detail": "200000000 base units"
+    },
+    {
+      "name": "units-a4k2: the 1% initial buy is in the agent key's account, exactly",
+      "ok": true,
+      "detail": "10000000000000 base units for 502351192342 $UNITS base units (bound 507374704266)"
+    },
+    {
+      "name": "units-a4k2: the plan fits (2 transactions, each within 1,232 bytes)",
+      "ok": true,
+      "detail": "launch 1166 bytes; soul + initial-buy + credits + units-account + tip 1071 bytes"
+    },
+    {
+      "name": "units-a4k2: every transaction used at most 62.5% of its compute limit (the 1.6 times headroom rule)",
+      "ok": true,
+      "detail": "240784 of 421000; 115027 of 256000"
+    },
+    {
+      "name": "units-a4k2: the launcher's SOL spend equals the cost lines' total computed before sending, to the lamport",
+      "ok": true,
+      "detail": "spent 55253011, total 55253011 (creation 25248042, credits 0, buy null, units account 30000000, tip 4969); rents the coin's mint 539, pump.fun's curve 166, the curve's coin account 170, the curve's $UNITS account 170, the launch record 554, the agent's compute vault 165, the agent's registry record 401, the agent's coin account 170, your pump.fun volume account 137"
+    },
+    {
+      "name": "units-a4k2: the launcher's $UNITS fell by exactly the deposit plus the initial buy's quote",
+      "ok": true,
+      "detail": "502551192342 base units"
+    },
+    {
+      "name": "sol-a4k2: create_v2 took the REAL migrated $UNITS as the quote (its pool and vaults named): the agent coin exists, quoted in $UNITS, depth 1, creator the agent's PDA, registered in the same transaction",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "sol-a4k2: the starting curve create_v2 wrote equals pumpQuotedCurve on the pool's reserves",
+      "ok": true,
+      "detail": "seed 52740673329155 vs 52740673329155"
+    },
+    {
+      "name": "sol-a4k2: the compute vault holds the credits deposit",
+      "ok": true,
+      "detail": "200000000 base units"
+    },
+    {
+      "name": "sol-a4k2: the 1% initial buy is in the agent key's account, exactly",
+      "ok": true,
+      "detail": "10000000000000 base units for 502351192342 $UNITS base units (bound 507374704266)"
+    },
+    {
+      "name": "sol-a4k2: the plan fits (3 transactions, each within 1,232 bytes)",
+      "ok": true,
+      "detail": "launch 1166 bytes; soul + sol-to-units 1035 bytes; initial-buy + credits + units-account + tip 892 bytes"
+    },
+    {
+      "name": "sol-a4k2: every transaction used at most 62.5% of its compute limit (the 1.6 times headroom rule)",
+      "ok": true,
+      "detail": "246784 of 421000; 107994 of 189000; 109842 of 228000"
+    },
+    {
+      "name": "sol-a4k2: the launcher's SOL spend equals the cost lines' total computed before sending, to the lamport",
+      "ok": true,
+      "detail": "spent 188381801, total 188381801 (creation 29171523, credits 50817, buy 129155224, units account 30000000, tip 4237); rents the coin's mint 539, pump.fun's curve 166, the curve's coin account 170, the curve's $UNITS account 170, the launch record 554, the agent's compute vault 165, the agent's registry record 401, your $UNITS account 170, your PumpSwap volume account 137, the agent's coin account 170, your pump.fun volume account 137"
+    },
+    {
+      "name": "sol-a4k2: the purchase delivered exactly what the launch spent: the launcher's $UNITS account holds the unused slippage bound of the initial buy and no more; no wrapped SOL account is left",
+      "ok": true,
+      "detail": "5023511924 base units left"
+    }
+  ],
+  "rows": [
+    {
+      "step": "units-a4k2 pre",
+      "what": "tx 1/1: sol-to-units (824 bytes, v0)",
+      "signature": "o2cb9Sn3EGrbNsb1zJy3tF5btbWAVzSydmoyRxmQ9SXBuXzHUVt1ibbrSsN7LGg8buNjNf6SbtpTLCMUC8H4MYR",
+      "payer": "B9f2sauxyyK4QtRP8smyhseRYVXedsp8SJfocX6N7SM7",
+      "fee": 5001,
+      "computeUnits": 92306,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "CK5BFtfRj66opRHmwqR1vcEeGmWwHk4by7iuggpHrtDE",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "7RXNaAqRnSjgXCpMFu5gskZFFrSmGTTRDf4QaJPwEair",
+          "bytes": 137,
+          "forkRent": "1844400",
+          "mainnetRent": "1346200"
+        }
+      ],
+      "payerDeltaFork": "157297332",
+      "payerMainnet": "156238892",
+      "other": "153373851"
+    },
+    {
+      "step": "units-a4k2",
+      "what": "tx 1/2: launch (1166 bytes, v0)",
+      "signature": "9ErarePTUGH9i8CafhgsYyi4oLsZcYTkUxs51bwtkwN1X99ygynokKktH5m96Jc9Vq9ZFdeGDy6KiuE21GmunJQ",
+      "payer": "B9f2sauxyyK4QtRP8smyhseRYVXedsp8SJfocX6N7SM7",
+      "fee": 15001,
+      "computeUnits": 240784,
+      "signatures": 3,
+      "created": [
+        {
+          "address": "m6z9dwaAq67EoLtJ4U2oeezHZddz3JxWJVm6fPudirC",
+          "bytes": 539,
+          "forkRent": "4642320",
+          "mainnetRent": "3388360"
+        },
+        {
+          "address": "DtAaRCsynAa5LazwEfn6pA7dixY36ttSDwyv4SnkAwPo",
+          "bytes": 166,
+          "forkRent": "2046240",
+          "mainnetRent": "1493520"
+        },
+        {
+          "address": "94DsAFcDnVAo2MeLqVMbnGvKfxWKNJKMSVjdnEv6ZxUn",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "8tsQWk8qDmyfftzFhswPzgcuNtkmhkeqzKAeMajiLnp5",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "BkNuiaxwjT85fJz6bWQG3YV2AdW8U5YhRCG1fctSgH6u",
+          "bytes": 554,
+          "forkRent": "4746720",
+          "mainnetRent": "3464560"
+        },
+        {
+          "address": "GuLpec3uAjiFzVpF5DZfMvgi2oG9UovVM3aR3xWtGJJf",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "G6M3VwthNX8ELE4R4T6AEtZw6vLXxACA4LsAuWUVtGoH",
+          "bytes": 401,
+          "forkRent": "3681840",
+          "mainnetRent": "2687320"
+        }
+      ],
+      "payerDeltaFork": "21319561",
+      "payerMainnet": "15564881",
+      "other": "0"
+    },
+    {
+      "step": "units-a4k2",
+      "what": "tx 2/2: soul + initial-buy + credits + units-account + tip (1071 bytes, v0)",
+      "signature": "4iBXM3auLcUfPSctgNgs1NgRDx4u9uXoiVksb9WPrcqopnfZMYNknw17sVrpqkAWVFUYp9CPfCyB42fmKLGZFdau",
+      "payer": "B9f2sauxyyK4QtRP8smyhseRYVXedsp8SJfocX6N7SM7",
+      "fee": 10001,
+      "computeUnits": 115027,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "74Q3QuaWnFd4fVWCp3TeMwPpD9BMwpr5eSTrHbRPNaMk",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "2kz8z8CSDRJtvfhaWPJBjQ4pjdr9ii2Qks96RdKwAecF",
+          "bytes": 137,
+          "forkRent": "1844400",
+          "mainnetRent": "1346200"
+        }
+      ],
+      "payerDeltaFork": "33933450",
+      "payerMainnet": "32875010",
+      "other": "30004969"
+    },
+    {
+      "step": "sol-a4k2",
+      "what": "tx 1/3: launch (1166 bytes, v0)",
+      "signature": "2vbeLa4JsGjL3nwMQb7q29PNE8dbUnBTzkoc5dJAn1axVGKornycf8n7fuW9x879rCjHe3FEXK34GRtGYqHToE9Q",
+      "payer": "FSZYtmvqCRzBrGqzVSJCNjM63t9DKyH4tcMHGCdL3sDn",
+      "fee": 15001,
+      "computeUnits": 246784,
+      "signatures": 3,
+      "created": [
+        {
+          "address": "EJZr2nz2JH2NkMAU8479nXrthJiKLToa7hBZVJTYBWTJ",
+          "bytes": 539,
+          "forkRent": "4642320",
+          "mainnetRent": "3388360"
+        },
+        {
+          "address": "ADCcGXim8YMqWwnZy6GSLbB43LP3UhTRHngVHucyXqTV",
+          "bytes": 166,
+          "forkRent": "2046240",
+          "mainnetRent": "1493520"
+        },
+        {
+          "address": "DjWxBRE39VEpE3Dy5cdBio3VfTdgSeGyGGh9uorzgGRt",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "Hbxq8nkScKdZ3y1SXcRYs6UhMs6sKa5EMK56JG2daux1",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "BDKMDPj5Pfwmyhh6RHCGboSa193Z2vUbEiiqnhJ5oqUT",
+          "bytes": 554,
+          "forkRent": "4746720",
+          "mainnetRent": "3464560"
+        },
+        {
+          "address": "8N5EmBbtgJdmiBvinjcbNwVUmodtTgxwd3YrabB8JsZT",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "FUM7HKiFmuPiMFE1YvoN8TbxmtpLgY8w63oRh95mLLfJ",
+          "bytes": 401,
+          "forkRent": "3681840",
+          "mainnetRent": "2687320"
+        }
+      ],
+      "payerDeltaFork": "21319561",
+      "payerMainnet": "15564881",
+      "other": "0"
+    },
+    {
+      "step": "sol-a4k2",
+      "what": "tx 2/3: soul + sol-to-units (1035 bytes, v0)",
+      "signature": "2bbDdQqioHiUf1u1H8zkuHkF4PTDaf48TG3oCic9zkXk67sJHZABsZ71rPUnzcTVSStwC2trcA6b5WpKy73KhP4c",
+      "payer": "FSZYtmvqCRzBrGqzVSJCNjM63t9DKyH4tcMHGCdL3sDn",
+      "fee": 10001,
+      "computeUnits": 107994,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "2xGBqcDBxKY6KQ7VWhs7SQB3EyAwwtzdxPEesQ6VFryM",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "2EFC9oTMrhWSqCx4rQ8bn4JRCCnJFmdsymCm6WCyPtXU",
+          "bytes": 137,
+          "forkRent": "1844400",
+          "mainnetRent": "1346200"
+        }
+      ],
+      "payerDeltaFork": "133134522",
+      "payerMainnet": "132076082",
+      "other": "129206041"
+    },
+    {
+      "step": "sol-a4k2",
+      "what": "tx 3/3: initial-buy + credits + units-account + tip (892 bytes, v0)",
+      "signature": "5e98ULemTLR6rV2ouN9WAYDWmhYNEUWajJEbydyKu2XNa1uKt2rWy7tBaVGLowKj5cYNzg4BDC9WsS3HuuHBzfr7",
+      "payer": "FSZYtmvqCRzBrGqzVSJCNjM63t9DKyH4tcMHGCdL3sDn",
+      "fee": 5001,
+      "computeUnits": 109842,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "D2HoE49F5Rxx57BahTpLUTAjdTy41HAVbZoGxcECvikK",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "6mbhoU7UEkTVAwaShmmCVRcM7dQ3of4pwqVNZTfjpdX2",
+          "bytes": 137,
+          "forkRent": "1844400",
+          "mainnetRent": "1346200"
+        }
+      ],
+      "payerDeltaFork": "33927718",
+      "payerMainnet": "32869278",
+      "other": "30004237"
+    }
+  ]
+}

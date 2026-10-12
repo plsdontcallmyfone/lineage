@@ -88,6 +88,43 @@ describe("one approval: measured sizes", () => {
     expect(size(c.MAX_LAUNCH_STRINGS_POOL)).toBe(c.PACKET_LIMIT);
     expect(size(c.MAX_LAUNCH_STRINGS_POOL + 1)).toBeGreaterThan(c.PACKET_LIMIT);
   });
+  test("the quote coin on its PumpSwap pool, bought with SOL inside the launch: three transactions (the pool purchase names nine accounts the frozen table does not hold)", () => {
+    const POOL = { pool: k(), baseVault: k(), quoteVault: k() };
+    const t = { address: k(), addresses: c.launchTableAddresses({ lineMint: LINE, lineTokenProgram: T22, linePool: POOL }) };
+    const strings = 20 + 5 + c.coinMetadataUriBytes("https://app.units.gg", true, true) + 33;
+    const { launcher, agent, mint, g } = groups({ strings, tip: true });
+    const buy = c.pumpSolToLinePool({ launcher, lineMint: LINE, pool: POOL.pool, amountOut: 2_400_000_000n, maxSolIn: 50_000_000n, rentToken: 2_039_280n });
+    const withPool = c.pumpLaunchMain({ launcher, agent, agentMint: mint, line: { mint: LINE, tokenProgram: T22, pool: POOL }, name: "N".repeat(20), symbol: "TMBPE",
+      uri: "u".repeat(c.coinMetadataUriBytes("https://app.units.gg", true, true)), args: { repoUrl: "https://github.com/karpathy/minbpe", identityMode: 1, hosted: true } });
+    const gs = g.map((x) => (x.name === "launch" ? { ...x, ixs: withPool } : x.name === "sol-to-units" ? { ...x, ixs: buy } : x));
+    const txs = c.planLaunchBundle({ payer: launcher, groups: gs, budget, table: t, v0: true });
+    expect(txs.map((x) => x.groups)).toEqual([["launch", "soul"], ["sol-to-units", "initial-buy"], ["credits", "units-account", "tip"]]);
+    for (const x of txs) expect(x.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
+    expect(txs.length).toBeLessThanOrEqual(c.JITO_MAX_TXS);
+    // the purchase and everything after it do not fit one packet, with or without the units account payment
+    const rest = gs.filter((x) => !["launch", "soul"].includes(x.name)).flatMap((x) => x.ixs);
+    expect(c.wireSize(c.compileMessageV0(launcher, [...budget, ...rest], "11111111111111111111111111111111", [t]))).toBeGreaterThan(c.PACKET_LIMIT);
+    console.log(`measured, quote coin on its pool, bought with SOL: ${txs.map((x) => `${x.groups.join("+")} ${x.size} bytes${x.table ? " (v0)" : ""}`).join("; ")}; purchase onward as one v0 transaction ${c.wireSize(c.compileMessageV0(launcher, [...budget, ...rest], "11111111111111111111111111111111", [t]))} bytes`);
+    // the builder: the launcher's $UNITS account, a temporary wrapped SOL account holding rent + the bound, buy_v2, close
+    expect(buy.length).toBe(5);
+    const temp = c.launchTempWsol(launcher);
+    expect(temp).toBe(c.seededAddress(launcher, c.LAUNCH_WSOL_SEED, c.TOKEN_PROGRAM));
+    expect(buy[1]!.programId).toBe(c.SYSTEM_PROGRAM);
+    expect(buy[1]!.keys.map((m) => m.pubkey)).toEqual([launcher, temp]);
+    expect(new DataView(buy[1]!.data.buffer, buy[1]!.data.byteOffset).getUint32(0, true)).toBe(3);
+    const seedLen = c.LAUNCH_WSOL_SEED.length;
+    expect(new DataView(buy[1]!.data.buffer, buy[1]!.data.byteOffset).getBigUint64(4 + 32 + 8 + seedLen, true)).toBe(2_039_280n + 50_000_000n);
+    expect(buy[3]!.programId).toBe(c.PUMP.amm);
+    expect(buy[3]!.keys[0]!.pubkey).toBe(POOL.pool);
+    expect(buy[3]!.keys[5]!.pubkey).toBe(c.ata(launcher, LINE, T22));
+    expect(buy[3]!.keys[6]!.pubkey).toBe(temp);
+    const d = new DataView(buy[3]!.data.buffer, buy[3]!.data.byteOffset);
+    expect([d.getBigUint64(8, true), d.getBigUint64(16, true)]).toEqual([2_400_000_000n, 50_000_000n]);
+    expect(buy[4]!.keys.map((m) => m.pubkey)).toEqual([temp, launcher, launcher]);
+    expect(Array.from(buy[4]!.data)).toEqual([9]);
+    // only the launcher signs the purchase
+    expect([...new Set(buy.flatMap((ix) => ix.keys.filter((m) => m.isSigner).map((m) => m.pubkey)))]).toEqual([launcher]);
+  });
   test("the longest strings: still one approval, three transactions in order", () => {
     const { launcher, g } = groups({ strings: c.MAX_LAUNCH_STRINGS });
     const txs = c.planLaunchBundle({ payer: launcher, groups: g, budget, table: table(), v0: true });

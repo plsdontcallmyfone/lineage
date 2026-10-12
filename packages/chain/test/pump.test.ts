@@ -119,3 +119,31 @@ describe("pump.fun builders", () => {
     expect(q).toBe(net + (net * 95n + 9_999n) / 10_000n + (net * 30n + 9_999n) / 10_000n);
   });
 });
+
+describe("PumpSwap exact-output buy (the launch's SOL to $UNITS purchase on the pool)", () => {
+  // The real $UNITS pool cloned onto the mainnet fork, 2026-10-12 (scripts/mainnet/POOL-LAUNCH-FORK-LAST.json standalone_pool_buy):
+  // buy_v2 for exactly 605,027.760742 $UNITS took exactly these lamports from the wallet.
+  const rates = { lpFeeBps: 2n, protocolFeeBps: 93n, creatorFeeBps: 30n };
+  const pool = { virtualQuoteReserves: 17_367_691_646n } as any;
+  const base = 268_014_082_345_560n, vault = 49_583_311_596n;
+  test("equals what PumpSwap took on the fork, to the lamport: the pool leg rounded up, then each fee rounded up on it", () => {
+    const q = c.quotePoolBuyExactOut(rates, pool, base, vault, 605_027_760_742n);
+    expect(q).toEqual({ quoteIn: 153_373_851n, leg: 151_480_344n, lpFee: 30_297n, protocolFee: 1_408_768n, creatorFee: 454_442n });
+    expect(q.quoteIn).toBe(q.leg + q.lpFee + q.protocolFee + q.creatorFee);
+  });
+  test("the virtual quote reserves count: without them the same buy would be priced lower", () => {
+    expect(c.quotePoolBuyExactOut(rates, { virtualQuoteReserves: 0n } as any, base, vault, 605_027_760_742n).quoteIn).toBeLessThan(153_373_851n);
+  });
+  test("agrees with the exact-input quote: spending what it asks buys at least the amount, one lamport less does not", () => {
+    for (const out of [1n, 200_000_000n, 605_027_760_742n, 50_000_000_000_000n]) {
+      const q = c.quotePoolBuyExactOut(rates, pool, base, vault, out).quoteIn;
+      expect(c.quotePoolBuyExactIn(rates, pool, base, vault, q + 2n).baseOut).toBeGreaterThanOrEqual(out);
+      expect(c.quotePoolBuyExactOut(rates, pool, base, vault, out + 1_000_000n).quoteIn).toBeGreaterThanOrEqual(q);
+    }
+  });
+  test("refuses an empty pool, a zero amount and a buy of the whole pool", () => {
+    expect(() => c.quotePoolBuyExactOut(rates, pool, base, vault, 0n)).toThrow(/no trades/);
+    expect(() => c.quotePoolBuyExactOut(rates, pool, 0n, vault, 1n)).toThrow(/no trades/);
+    expect(() => c.quotePoolBuyExactOut(rates, pool, base, vault, base)).toThrow(/whole pool/);
+  });
+});
