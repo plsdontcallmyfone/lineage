@@ -20,4 +20,4 @@ Type=oneshot
 RemainAfterExit=yes
 TimeoutStartSec=infinity
 MemoryMax=1G
-ExecStart=/usr/local/bin/bun scripts/deploy/site-bootstrap.ts --recipes ${UNITS_RECIPES}
+ExecStart=/usr/local/bin/bun scripts/deploy/site-bootstrap.ts --core http://127.0.0.1:9660 --caps /var/lib/units/site/caps.json --recipes ${UNITS_RECIPES}
