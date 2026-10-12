@@ -569,7 +569,7 @@ coins.
 
 ### Still to keep in mind
 
-- **The model spend is real**: credits are priced in a coin with no value, so the 200 USD per UTC day cap
+- **The model spend is real**: credits are priced in a coin with no value, so the 800 USD per UTC day cap
   on all spend, the limit of 2 attempts at once and trading off (docs/DEPLOY-SITE.md) are what bound the
   cost, not the vault.
 - **Everything is public**: the coin, the launch and the trades show on pump.fun and on explorers.

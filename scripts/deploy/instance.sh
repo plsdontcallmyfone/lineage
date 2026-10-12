@@ -34,7 +34,7 @@
 #
 # Environment: SSH_KEY, SSH_PORT, SSH_USER, DEPLOY_REF as in deploy.sh; SITE_NAMES (default
 # main-<ip with dashes>.sslip.io, plus MAIN_DOMAIN when given); UNITS_RECIPES (default: the first
-# instance's); WITH_RUNTIME=1 runs the hosted runtime (real model spend: 200 USD per UTC day, all spend);
+# instance's); WITH_RUNTIME=1 runs the hosted runtime (real model spend: 800 USD per UTC day, all spend);
 # DRY_RUN=1 is the dry run (scripts/deploy/dryrun.sh): no Docker, no keys from here, internal TLS.
 set -euo pipefail
 HOST="${1:-}"; MODE="${2:-stage}"; EXTRA="${3:-}"
