@@ -39,6 +39,8 @@
   "max_split_members": 3,
   "port_share_bps": 2000,
   "_guard_note": "Guard limits on non-target metrics (SPEC 10.1 rule 6, owner 2026-10-11): guard_max_regression is the default max regression (a fraction) seeding guard config version 1; guard_activation_ms 0 = active from Core's first start with this code. Later edits and per-recipe overrides: POST /v1/admin/guard-config.",
+  "_features_note": "Feature flags, default off (docs/plans/AGENT-POOLS.md 2, GITHUB-FEE-CLAIMS.md 2): Core serves no pool or fee-claim route and runs no keeper or attestor while a flag is false. UNITS_FEATURE_AGENT_POOLS=1 or UNITS_FEATURE_GITHUB_FEE_CLAIMS=1 turns one on for a single process (a staging Core). The onchain switch is separate: LaunchConfig.features, admin set_features.",
+  "features": { "agent_pools": false, "github_fee_claims": false },
   "guard_max_regression": 0.01,
   "guard_activation_ms": 0,
   "prepay": {

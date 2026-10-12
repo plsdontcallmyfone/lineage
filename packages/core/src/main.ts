@@ -125,6 +125,9 @@ const core = new Core({
   ...(chainSettings ? { slotBeacon: { lagSlots: chainSettings.beacon_lag_slots } } : {}),
 });
 if (chainSettings) erc8004Of(core).configure({ registryProgram: chainSettings.registry_program }); // ERC-8004 file names the configured registry
+// pools and GitHub fee claims (docs/plans/AGENT-POOLS.md, GITHUB-FEE-CLAIMS.md): chain reads always, the two service keys only
+// when their files are named (UNITS_POOL_KEEPER_KEY, UNITS_FEE_CLAIMS_ATTESTOR_KEY); nothing runs while the feature flags are off
+if (chainSettings && reader) await (await import("./pools-wiring.ts")).wirePoolsAndClaims(core, reader, chainSettings, profile.network);
 const REPO = resolve(import.meta.dir, "../../..");
 const rawConfig = JSON.parse(readFileSync(configPath, "utf8")) as { canaries_dir?: unknown };
 const canariesDir = resolve(arg("canaries-dir") ?? (typeof rawConfig.canaries_dir === "string" ? rawConfig.canaries_dir : join(homedir(), ".config/lineage/canaries")));

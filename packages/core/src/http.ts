@@ -31,6 +31,8 @@ import { hiddenOf } from "./hidden.ts";
 import { deploymentsOf } from "./deployments.ts";
 import { analyticsOf } from "./analytics.ts";
 import { viewersOf } from "./viewers.ts";
+import { feeClaimsOf } from "./fee-claims.ts";
+import { poolsOf } from "./pools.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
@@ -131,7 +133,7 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [socialOf, scoresOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
+  for (const of of [socialOf, scoresOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -329,6 +331,35 @@ export function buildRoutes(core: Core): Route[] {
     // verified links, agent card, ERC-8004 registration file (identity plan I3, I6; links.ts, erc8004.ts)
     route("GET", "/v1/links", "none", (c) => linksOf(core).all(q(c, "status"))),
     route("GET", "/v1/agents/:id/prepay", "none", (c) => prepayOf(core).view(c.params.id!)), // plan C
+    // agent pools (docs/plans/AGENT-POOLS.md 5); every route is 404 feature_off while the flag is off
+    route("GET", "/v1/pools", "none", () => poolsOf(core).list()),
+    route("GET", "/v1/pools/config", "none", () => poolsOf(core).configView()),
+    route("GET", "/v1/pools/:id", "none", (c) => poolsOf(core).view(c.params.id!)),
+    route("GET", "/v1/pools/:id/context", "none", (c) => poolsOf(core).context(c.params.id!)),
+    route("GET", "/v1/pools/:id/settlements", "none", (c) => poolsOf(core).settlements(c.params.id!)),
+    route("GET", "/v1/pools/:id/actions", "none", (c) => poolsOf(core).actions(c.params.id!)),
+    route("GET", "/v1/agents/:id/pool", "none", (c) => poolsOf(core).ofAgent(c.params.id!)),
+    route("POST", "/v1/admin/pools/config", "admin", (c) => poolsOf(core).setConfig(c.json())),
+    route("POST", "/v1/admin/pools/run", "admin", () => poolsOf(core).keeperStep()),
+    // GitHub fee routing and claims (docs/plans/GITHUB-FEE-CLAIMS.md 5); every route is 404 feature_off while the flag is off
+    route("GET", "/v1/github/users/:login", "none", (c) => feeClaimsOf(core).user(c.params.login!)),
+    route("GET", "/v1/agents/:id/fee-route", "none", (c) => feeClaimsOf(core).routeView(c.params.id!)),
+    route("GET", "/v1/fee-claims/providers", "none", () => feeClaimsOf(core).providers()),
+    route("GET", "/v1/fee-claims/recipients", "none", (c) => feeClaimsOf(core).recipientByLogin(q(c, "login") ?? "")),
+    route("GET", "/v1/fee-claims/recipients/:github_id", "none", (c) => feeClaimsOf(core).recipient(c.params.github_id!)),
+    route("GET", "/v1/fee-claims/oauth/start", "none", (c) => {
+      const s = feeClaimsOf(core).oauthStart(q(c, "return_to"));
+      return q(c, "json") === "1" ? s : new Response(null, { status: 302, headers: { location: s.url, "cache-control": "no-store" } });
+    }),
+    route("GET", "/v1/fee-claims/oauth/callback", "none", async (c) => {
+      const r = await feeClaimsOf(core).oauthCallback(q(c, "code"), q(c, "state"));
+      return new Response(null, { status: 302, headers: { location: r.redirect, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+    }),
+    route("GET", "/v1/fee-claims/session", "none", (c) => feeClaimsOf(core).session(q(c, "session"))),
+    route("POST", "/v1/fee-claims/proofs/gist", "none", (c) => feeClaimsOf(core).gistProof(c.json())),
+    route("POST", "/v1/fee-claims/wallet", "none", (c) => feeClaimsOf(core).bindWallet((c.json() as { session?: unknown })?.session, c.json())),
+    route("POST", "/v1/fee-claims/attest", "none", (c) => feeClaimsOf(core).attest((c.json() as { session?: unknown })?.session)),
+    route("GET", "/v1/fee-claims/attestations", "none", (c) => feeClaimsOf(core).attestations(q(c, "github_id"))),
     // agent wallets (docs/plans/AGENT-WALLET-SAFETY.md 2): the treasury (registry signing key) and the compute vault, balances read from chain
     route("GET", "/v1/agents/:id/wallet", "none", (c) => agentWalletOf(core).view(c.params.id!)),
     route("GET", "/v1/wallets", "none", () => agentWalletOf(core).list()),
@@ -387,11 +418,12 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/agents/:id/bond", "agent", (c) => core.bond(self(c), c.json())),
     route("POST", "/v1/agents/:id/unbond", "agent", (c) => core.unbond(self(c), c.json())),
     route("POST", "/v1/calibrations", "agent", (c) => core.submitCalibration(c.agent!, c.json())),
-    route("POST", "/v1/candidates", "agent", (c) => core.commitCandidate(c.agent!, c.json())),
+    route("POST", "/v1/candidates", "agent", (c) => (poolsOf(core).checkStackedSplit(c.agent!, c.json()), core.commitCandidate(c.agent!, c.json()))),
     route("POST", "/v1/candidates/:id/reveal", "agent", (c) => core.revealCandidate(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/candidates/:id/provenance", "agent", (c) => core.tx(() => core.hosted.submit(c.agent!, c.params.id!, c.json()))),
     route("GET", "/v1/assignments", "agent", (c) => core.tx(() => core.assignments(c.agent!))),
-    route("POST", "/v1/intents", "agent", (c) => core.collab.fileIntent(c.agent!, c.json())),
+    // pool members do not take a target another member of their pool holds (docs/plans/AGENT-POOLS.md D11; a no-op while the flag is off)
+    route("POST", "/v1/intents", "agent", (c) => (poolsOf(core).checkIntentClaim(c.agent!, c.json()), core.collab.fileIntent(c.agent!, c.json()))),
     route("DELETE", "/v1/intents/:id", "agent", (c) => core.collab.withdrawIntent(c.agent!, c.params.id!)),
     // chain mode: messages and keys are posted through lineage_msg and indexed from chain (SPEC 12.5)
     route("PUT", "/v1/agents/:id/encryption-key", "agent", (c) => (core.chainMode ? useChain("publishing an encryption key") : core.messages.setKey(self(c), c.json()))),

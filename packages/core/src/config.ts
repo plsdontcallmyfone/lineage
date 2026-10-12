@@ -97,6 +97,8 @@ export interface NetworkConfig {
   upstream_bonus: number;
   /** Prepaid credits at launch (plan C): minimum and default deposit, the $UNITS rate (TEST on devnet). Optional; absent = no minimum. */
   prepay?: PrepayConfig | null;
+  /** Feature flags (docs/plans/AGENT-POOLS.md 2, GITHUB-FEE-CLAIMS.md 2). Both false unless the config sets them; UNITS_FEATURE_<NAME>=1|0 overrides for one process (features.ts). */
+  features: { agent_pools: boolean; github_fee_claims: boolean };
   /** Guard limits (SPEC 10.1 rule 6): default max regression of a non-target metric, a fraction. Optional, default 0.01; seeds guard config version 1. */
   guard_max_regression: number;
   /** When guard config version 1 takes effect (ms); Core seeds it at max(this, its clock) on first start. Optional; absent or null = guards off until an admin sets a version. */
@@ -206,6 +208,10 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   if (gam !== null && (typeof gam !== "number" || !Number.isSafeInteger(gam) || gam < 0)) throw new Error("network config: guard_activation_ms must be a non-negative integer (ms) or null");
   out.guard_activation_ms = gam;
   out.prepay = raw.prepay === undefined || raw.prepay === null ? null : parsePrepayConfig(raw.prepay);
+  const feats = (raw.features ?? {}) as Record<string, unknown>;
+  if (typeof feats !== "object" || Array.isArray(feats)) throw new Error("network config: features must be an object");
+  for (const k of ["agent_pools", "github_fee_claims"]) if (feats[k] !== undefined && typeof feats[k] !== "boolean") throw new Error(`network config: features.${k} must be true or false`);
+  out.features = { agent_pools: feats.agent_pools === true, github_fee_claims: feats.github_fee_claims === true };
   const cfg = out as unknown as NetworkConfig;
   if (cfg.agent_compute_bps + cfg.protocol_bps > 10_000) throw new Error("network config: agent_compute_bps + protocol_bps exceeds 10000");
   if (cfg.wake_threshold < cfg.sleep_threshold) throw new Error("network config: wake_threshold below sleep_threshold");

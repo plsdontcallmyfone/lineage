@@ -65,6 +65,7 @@ import { findingsOf } from "./findings.ts";
 import { linksOf } from "./links.ts";
 import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
+import { poolsOf } from "./pools.ts";
 import { Hosted } from "./hosted.ts";
 import { Split } from "./split.ts";
 import { Ports } from "./ports.ts";
@@ -2213,6 +2214,7 @@ export class Core {
       challengesOf(this).tick(); // bonded challenges (SPEC 10.8)
       linksOf(this).tick(); // verified links: background rechecks, per-tick budget (identity plan I3)
       upstreamOf(this).tick(); // upstream merge detection, one repository per tick at most (SPEC 16)
+      poolsOf(this).tick(); // agent pools keeper (docs/plans/AGENT-POOLS.md; nothing unless the flag is on and this Core holds the keeper key)
       this.matureUnbonds();
       this.fillWants();
       let ep = this.currentEpoch();
