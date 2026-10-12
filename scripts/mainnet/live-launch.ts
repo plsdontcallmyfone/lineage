@@ -12,7 +12,9 @@
 // the transactions the page handed the wallet (the first transaction whole; the SOL purchase on its own).
 //
 //   bun scripts/mainnet/live-launch.ts --key <launcher keypair.json> [--send] [--max-sol 0.15]
-//        [--name "Test Basalt"] [--symbol TBASALT] [--site https://main-157-245-71-188.sslip.io]
+//        [--name Basalt] [--symbol BSLT] [--site https://main-157-245-71-188.sslip.io] [--out <dir>]
+//        [--image <png, jpeg or webp, at most 256 KB>] [--twitter <url>] [--telegram <url>] [--website <url>]
+//        [--vibe "<short hint>"] [--identity units|token]   (units: the GitHub account option, its fee in the plan)
 //   bun scripts/mainnet/live-launch.ts --phase watch        # read only, repeatable
 //
 // The launcher key is a throwaway file outside the repository (mode 600); it never leaves this process
@@ -59,12 +61,14 @@ export function parsePlan(transactions: string, rows: { label: string; usd: stri
 }
 
 /** Why this plan must not be signed, or null. */
-export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number }): string | null {
+export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; unitsAccount?: boolean }): string | null {
   if (!p.built) return "the page shows no built launch (or still speaks of a simulation)";
   if (p.txs.length !== 2) return `the plan has ${p.txs.length} transactions, expected 2 (launch + soul, then the purchase, initial buy, credits and tip)`;
   if (!p.txs[0]!.groups.includes("launch")) return "the first transaction does not carry the launch";
   if (!p.txs[1]!.groups.includes("credits") || !p.txs[1]!.groups.includes("initial-buy")) return "the second transaction does not carry the credits and the initial buy";
-  if (p.txs.some((t) => t.groups.includes("units-account"))) return "the plan pays for a units account, which this instance does not offer";
+  const paysAccount = p.txs.some((t) => t.groups.includes("units-account"));
+  if (paysAccount && !o.unitsAccount) return "the plan pays for a units account, which this run did not choose";
+  if (!paysAccount && o.unitsAccount) return "the units account was chosen and no transaction of the plan pays its fee";
   const big = p.txs.find((t) => t.bytes > PACKET_MAX);
   if (big) return `a transaction is ${big.bytes} bytes, over the ${PACKET_MAX} byte packet`;
   if (p.total_sol === null || !(p.total_sol > 0)) return "the page shows no SOL total";
@@ -88,11 +92,16 @@ async function main() {
   const OUT = arg("out", join(ROOT, "work", "mainnet-test-launch"))!;
   const MAX_SOL = Number(arg("max-sol", "0.15"));
   const SEED = {
-    name: arg("name", "Test Basalt")!,
-    symbol: arg("symbol", "TBASALT")!,
-    desc: "A test launch on the units mainnet TEST deployment: it proves the launch flow end to end. The coin has no value and is not $UNITS.",
+    name: arg("name", "Basalt")!,
+    symbol: arg("symbol", "BSLT")!,
+    desc: arg("desc", "Basalt makes base58 encoding and decoding cheaper, one measured step at a time.")!,
     repo: "https://github.com/keis/base58",
+    image: arg("image") ?? null,
+    links: { l_twitter: arg("twitter") ?? "", l_telegram: arg("telegram") ?? "", l_website: arg("website") ?? "" } as Record<string, string>,
+    vibe: arg("vibe") ?? "",
+    identity: arg("identity", "token")! as "units" | "token",
   };
+  if (SEED.identity !== "units" && SEED.identity !== "token") throw new Error("--identity is units or token");
   mkdirSync(OUT, { recursive: true });
   const STATE_FILE = join(OUT, "LIVE-LAUNCH.json");
   const T0 = Date.now();
@@ -286,6 +295,19 @@ async function main() {
       await page.fill('[name="l_name"]', SEED.name);
       await page.fill('[name="l_symbol"]', SEED.symbol);
       await page.fill('[name="l_desc"]', SEED.desc);
+      // the ticker is typed by hand: the name does not fill it
+      check("wizard, Coin: the ticker holds what was typed, not something made from the name", (await page.inputValue('[name="l_symbol"]')) === SEED.symbol, await page.inputValue('[name="l_symbol"]'));
+      if (SEED.image) {
+        const bytes = readFileSync(SEED.image);
+        S.image = { file: SEED.image, bytes: bytes.length, sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex") };
+        await page.setInputFiles('[name="l_image"]', SEED.image);
+        await page.waitForFunction(() => !!document.querySelector("#lz-prev img, #lz-prev [style*=background-image]"), null, { timeout: 15_000 }).catch(() => {});
+        S.image.page_says = (await text(".lz-img")).slice(0, 300);
+        check("wizard, Coin: the chosen image is taken (a preview, no refusal)", (await page.locator("#lz-prev img, #lz-prev [style*=background-image]").count()) > 0 && !/too large|not an image|over 256/i.test(S.image.page_says), `${bytes.length} bytes, sha256 ${S.image.sha256}; ${S.image.page_says.slice(0, 120)}`);
+      }
+      for (const [n, v] of Object.entries(SEED.links)) if (v) await page.fill(`[name="${n}"]`, v);
+      S.links = SEED.links;
+      save();
       await shot("1-coin");
       await page.click('[data-act="lz-next"]');
       await page.fill('[name="l_repo"]', SEED.repo);
@@ -304,6 +326,7 @@ async function main() {
       // the soul is written with nothing typed and nothing pressed (owner 2026-10-12): the step has one optional field, Vibe
       const souls0 = (await j("/souls/config")).body;
       check("wizard, Agent: one optional field (Vibe), no Specialty and no Values inputs", (await page.locator('[name="s_vibe"]').count()) === 1 && (await page.locator('[name="s_specialty"], [name="s_values"]').count()) === 0, "");
+      if (SEED.vibe) await page.fill('[name="s_vibe"]', SEED.vibe);
       await page.waitForSelector(".wl-soul .wl-hash", { timeout: 300_000 });
       const soulText = await text("#w-soul");
       const souls1 = (await j("/souls/config")).body;
@@ -319,9 +342,15 @@ async function main() {
       await page.waitForFunction(() => !/^$|price from Core/.test(document.querySelector("#w-id-price")?.textContent ?? ""), null, { timeout: 60_000 });
       // a deployment that gives no GitHub account does not show the option at all; one that does offers it, and this run takes the own-token path either way
       const offered = await page.locator("#w-id-paid").isVisible();
-      if (offered) await page.check('input[name="l_identity"][value="token"]');
       S.identity_offered = offered ? await text("#w-id-price") : false;
-      check("wizard, Identity: \"Your own token\" is selected; the GitHub account option is shown with its fee only where the deployment offers it, never as a dead radio",
+      S.identity_choice = SEED.identity;
+      if (SEED.identity === "units") {
+        if (!offered) throw new Error("the units account was asked for and this instance does not offer it; nothing was signed");
+        await page.check('input[name="l_identity"][value="purchased"]');
+        S.identity_view = (await text('[data-step="3"]')).slice(0, 1500);
+        check("wizard, Identity: the GitHub account option is selected and shows its fee in SOL", (await page.locator('input[name="l_identity"][value="purchased"]').isChecked()) && /SOL/.test(String(S.identity_offered)) && !/TBA|price from Core/.test(String(S.identity_offered)), `fee ${S.identity_offered}`);
+      } else if (offered) await page.check('input[name="l_identity"][value="token"]');
+      if (SEED.identity === "token") check("wizard, Identity: \"Your own token\" is selected; the GitHub account option is shown with its fee only where the deployment offers it, never as a dead radio",
         (await page.locator('input[name="l_identity"][value="token"]').isChecked()) && !/we operate|not offered here/.test(await text('[data-step="3"]')) && (!offered || /SOL/.test(String(S.identity_offered))), offered ? `offered at ${S.identity_offered}` : "not shown on this instance");
       await shot("4-identity");
       const tFunding = Date.now();
@@ -345,9 +374,10 @@ async function main() {
       const ids = await page.locator("#w-launch-out .lz-tech").evaluate((e: HTMLElement) => {
         const row = (k: string) => Array.from(e.querySelectorAll("dt, th, .k, span.eyebrow, td")).find((x) => x.textContent?.trim() === k)?.nextElementSibling;
         const a = (k: string) => (row(k)?.querySelector("[title], a, [data-addr]") as HTMLElement | null)?.getAttribute("title") ?? row(k)?.querySelector("a")?.getAttribute("href") ?? row(k)?.textContent ?? null;
-        return { agent: a("Agent key"), mint: a("Agent mint") };
-      }).catch(() => ({ agent: null, mint: null }));
-      S.plan = { ...plan, at: new Date().toISOString(), sol_usd: (await j("/chain/sol-price")).body ?? null, agent_key_shown: ids.agent, agent_mint_shown: ids.mint };
+        return { agent: a("Agent key"), mint: a("Agent mint"), uri: (row("Metadata URI")?.textContent ?? "").replace(/\s+/g, " ").trim() || null };
+      }).catch(() => ({ agent: null, mint: null, uri: null }));
+      S.plan = { ...plan, at: new Date().toISOString(), sol_usd: (await j("/chain/sol-price")).body ?? null, agent_key_shown: ids.agent, agent_mint_shown: ids.mint, metadata_uri_shown: ids.uri ?? (/Metadata URI\s*(https?:\/\/\S+)/.exec(review) ?? [])[1] ?? null };
+      log(`metadata URI the launch will write: ${S.plan.metadata_uri_shown}`);
       S.review_view = review.slice(0, 3000);
       save();
       await page.locator("#w-launch-out details.lz-tech").evaluate((e: HTMLDetailsElement) => (e.open = true)).catch(() => {});
@@ -357,7 +387,7 @@ async function main() {
       const fork = JSON.parse(readFileSync(join(import.meta.dir, "WIZARD-FORK-LAST.json"), "utf8"));
       const forkSpent = Number(fork.launch?.wallet_sol_spent_fork_lamports ?? 0) / 1e9;
       log(`fork figures: the wizard on the fork spent ${forkSpent.toFixed(9)} SOL at the fork's rent; the instruction rehearsal measured 0.097173597 SOL at mainnet rent (docs/MAINNET-COSTS.md), 1,082 and 1,101 bytes`);
-      const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9 });
+      const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9, unitsAccount: SEED.identity === "units" });
       check("wizard, Review: the launch is built with its cost lines (nothing simulated) and the plan is within the limits (2 transactions, each within a packet, total under --max-sol)", !problem, problem ?? `${plan.txs.length} transactions of ${plan.txs.map((t) => t.bytes).join(" and ")} bytes; total ${plan.total_sol} SOL = ${plan.total_usd} USD; limit ${MAX_SOL} SOL`);
       const disabled = await page.locator('[data-act="launch-sign"]').isDisabled();
       check("wizard, Review: Launch is enabled (the wallet covers the total)", !disabled, await text("#w-launch-out [data-fronting-short], #w-launch-out .lz-fronting .wl-fine"));
@@ -376,12 +406,15 @@ async function main() {
       if (problem || disabled) throw new Error(`not signing: ${problem ?? "Launch is disabled"}`);
 
       // ---------------------------------------------------------------- the launch itself
+      S.rpc_methods_before_signing = { ...rpcCounts };
+      check("launch: the page made no simulateTransaction request before Launch was pressed", (rpcCounts.simulateTransaction ?? 0) === 0, JSON.stringify(rpcCounts));
       const n0 = signed.length;
       await page.locator('[data-act="launch-sign"]').click();
       await page.locator('[data-track="confirmed"][data-state="ok"], #w-launch-status [data-err], #w-launch-out [data-err]').first().waitFor({ timeout: 300_000 });
       await shot("7-after-send");
       const confirmed = (await page.locator('[data-track="confirmed"][data-state="ok"]').count()) > 0;
       const sigs = confirmed ? ((await page.locator('[data-track="confirmed"] a').evaluateAll((els: HTMLAnchorElement[]) => els.map((e) => (/tx\/([1-9A-HJ-NP-Za-km-z]{60,})/.exec(e.href) ?? [])[1]).filter(Boolean))) as string[]) : [];
+      S.rpc_methods_after_send = { ...rpcCounts };
       S.launch = { confirmed, signatures: sigs, approvals: signed.slice(n0).map((r) => r.txs.length), status_lines: statusLines, error: confirmed ? null : (await text("#w-launch-status, #w-launch-out [data-err]")).slice(0, 1500), at: new Date().toISOString() };
       save();
       check("launch: one approval carried every transaction of the launch (one signTransaction request)", signed.length - n0 >= 1 && signed[n0]!.txs.length === plan.txs.length, `requests ${JSON.stringify(signed.slice(n0).map((r) => r.txs.length))}`);
@@ -394,7 +427,9 @@ async function main() {
         save();
         log(`agent ${S.agent}, mint ${S.mint}`);
       }
-      check("launch: one AgentLaunch for the launcher on mainnet", mine.length === 1, `agent ${S.agent}, mint ${S.mint}`);
+      // the launcher key is reused between test launches (an earlier launch stays on chain after Core purged it): the new one is the newest, made in this run
+      const fresh = mine.filter((l) => Number(l.createdAt) * 1000 >= T0 - 60_000);
+      check("launch: one new AgentLaunch for the launcher on mainnet, made in this run", fresh.length === 1 && fresh[0] === mine[0], `agent ${S.agent}, mint ${S.mint}; ${mine.length} launches by this key in all`);
 
       // the agent key exists only in this tab: keep it beside the launcher key (mode 600, never printed)
       const dl = page.waitForEvent("download", { timeout: 20_000 }).catch(() => null);

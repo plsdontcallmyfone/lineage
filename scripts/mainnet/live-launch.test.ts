@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { parsePlan, planProblem, type Plan } from "./live-launch.ts";
 
 // The guard that stands between the page's Review step and the wallet's signature in the live mainnet
 // launch (scripts/mainnet/live-launch.ts): the plan is read from the page's own text and refused when
 // it is not the launch the fork measured.
 
-// the Review text of the wizard run on the mainnet fork (WIZARD-FORK-LAST.json, the "Transactions" row)
-const fork = JSON.parse(readFileSync(join(import.meta.dir, "WIZARD-FORK-LAST.json"), "utf8"));
-const forkRow = (fork.results as { check: string; detail: string }[]).find((r) => /Review: the launch simulated/.test(r.check))!.detail;
+// the "Transactions" row of the Review step as the live wizard showed it on 2026-10-12 (second mainnet test
+// launch: a chosen image and three links in the metadata URI, the units account chosen), and the same plan
+// without the units account. Fixed text: this test must not move with a record another run rewrites.
+const liveRow = "Transactionslaunch + soul (1195 bytes, v0); sol-to-units + initial-buy + credits + units-account + tip (1140 bytes, v0) Launch (one signature)";
+const forkRow = "Transactionslaunch + soul (1092 bytes, v0); sol-to-units + initial-buy + credits + tip (1091 bytes, v0) Launch (one signature)";
 const rows = [
   { label: "Token creation", usd: "$1.59", sol: "0.0148 SOL" },
   { label: "Total", usd: "$11.27", sol: "0.1049 SOL; the wallet must hold 0.1057 SOL (the purchase at its slippage bound)" },
@@ -28,6 +28,14 @@ test("the plan is read from the page's Review text", () => {
   expect(p.built).toBe(true);
   expect(parsePlan(forkRow, rows, "simulation succeeded on mainnet What you pay").built).toBe(false);
   expect(planProblem(p, { maxSol: 0.15, balanceSol: 0.5 })).toBeNull();
+  // the plan of the live launch with the units account: read whole, signable only when the account was chosen
+  const live = parsePlan(liveRow, rows, ok);
+  expect(live.txs).toEqual([
+    { groups: ["launch", "soul"], bytes: 1195, v0: true },
+    { groups: ["sol-to-units", "initial-buy", "credits", "units-account", "tip"], bytes: 1140, v0: true },
+  ]);
+  expect(planProblem(live, { maxSol: 0.15, balanceSol: 0.5, unitsAccount: true })).toBeNull();
+  expect(planProblem(live, { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/did not choose/);
 });
 
 test("a plan outside the limits is never signed", () => {
@@ -37,7 +45,11 @@ test("a plan outside the limits is never signed", () => {
   expect(bad({ txs: base.txs.slice(0, 1) })).toMatch(/1 transactions/);
   expect(bad({ txs: [base.txs[1]!, base.txs[0]!] })).toMatch(/first transaction/);
   expect(bad({ txs: [base.txs[0]!, { ...base.txs[1]!, bytes: 1233 }] })).toMatch(/1233 bytes/);
-  expect(bad({ txs: [base.txs[0]!, { ...base.txs[1]!, groups: ["sol-to-units", "units-account", "initial-buy", "credits"] }] })).toMatch(/units account/);
+  const withAccount = [base.txs[0]!, { ...base.txs[1]!, groups: ["sol-to-units", "initial-buy", "credits", "units-account", "tip"] }];
+  expect(bad({ txs: withAccount })).toMatch(/did not choose/);
+  // the units account, when this run chose it, must be paid for in the plan, and only then
+  expect(planProblem({ ...base, txs: withAccount }, { maxSol: 0.15, balanceSol: 0.5, unitsAccount: true })).toBeNull();
+  expect(bad({}, { maxSol: 0.15, balanceSol: 0.5, unitsAccount: true } as any)).toMatch(/no transaction of the plan pays its fee/);
   expect(bad({ total_sol: null })).toMatch(/no SOL total/);
   expect(bad({}, { maxSol: 0.1, balanceSol: 0.5 })).toMatch(/over the limit of 0.1/);
   expect(bad({}, { maxSol: 0.15, balanceSol: 0.1 })).toMatch(/wallet holds 0.1/);
