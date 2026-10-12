@@ -1,0 +1,25 @@
+{
+  "mode": "mainnet",
+  "test": true,
+  "deployment": "mainnet TEST (single key admin and upgrade authority, throwaway pump.fun quote coin; closed when the test ends)",
+  "program_ids": "mainnet-test (throwaway; the launch's mainnet ids are not used)",
+  "registry_program": "27Y2UyLkuBAdwriNtqro5CJ4MTKjWCoUQywDJKunYBni",
+  "launch_program": "CxwvazD6EYoALLfFzBvJk5DWYacgAmrUGGxntmvPLkCT",
+  "msg_program": "45TEx2pxSMCKPzLwZsatB62hX6SQndYL29ugcXJWa4ns",
+  "line_mint": "C5dYJH9gpLkPrmbWatMhFj2mWGx9pvyRoUenJmFhL6br",
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "line_decimals": 6,
+  "line_venue": "pump.fun",
+  "admin": "Gb7WNkLH5SeNPbotc9Tn7VUzUfAsfQLZ2Y2fHjL997J4",
+  "core_authority": "AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu",
+  "runtime_authority": "CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs",
+  "launch_lookup_table": "DVA3o9HkvGcQikkKmVFJXgVpnymtsf7uxkhsv1Dr2ZnR",
+  "compute_sink": "2PPSHuyWdaxBEBKWmhUwzZrx9D64g7GDmyPTqNbqkFeX",
+  "agent_compute_bps": 7000,
+  "protocol_bps": 3000,
+  "network_overrides": {
+    "prepay": {
+      "identity_account_recipient": null
+    }
+  }
+}

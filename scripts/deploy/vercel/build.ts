@@ -17,7 +17,9 @@ import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.t
 const arg = (n: string, d: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1]! : d; };
 const ROOT = join(import.meta.dir, "../../..");
 const WEB = join(ROOT, "apps/web");
-const SITE = arg("site", "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
+// the backend the static site proxies to: --site, else UNITS_SITE (set it in the Vercel project), else the devnet site.
+// The mainnet test backend is https://main-157-245-71-188.sslip.io (config/mainnet-test/README.md).
+const SITE = arg("site", process.env.UNITS_SITE || "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
 const OUT = arg("out", join(WEB, "dist"));
 
 const DOCS_URL = (process.env.UNITS_DOCS_URL || sites.docs_url).replace(/\/+$/, "");
