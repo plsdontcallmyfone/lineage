@@ -7,6 +7,7 @@
 // steps and the launch code reads them by name as before.
 import { html, raw, type Raw } from "../src/html.ts";
 import { icon, panel } from "../src/ui.ts";
+import { testLabels } from "./chain.ts";
 import { custodyHtml } from "./identity.ts";
 import { modelFieldset } from "./models.ts";
 import { prepayFieldset } from "./prepay.ts";
@@ -38,8 +39,8 @@ export function launchSkeleton(): Raw {
     <form class="wl-form lz-form" data-wallet-form="launch" autocomplete="off">
       ${card(0, "The coin", "What people see: the token's name and ticker, a short description, its image and optional links.", html`
         <div class="wl-2">
-          <label><span class="eyebrow">Name</span><input name="l_name" maxlength="27" placeholder="minbpe speedups"><span class="wl-help">Token name on chain: "TEST " + this (32 bytes max).</span></label>
-          <label><span class="eyebrow">Ticker</span><input name="l_symbol" maxlength="10" placeholder="TMBPE"><span class="wl-help">A to Z and 0 to 9, up to 10.</span></label>
+          <label><span class="eyebrow">Name</span><input name="l_name" maxlength="${testLabels() ? 27 : 32}" placeholder="minbpe speedups"><span class="wl-help">${testLabels() ? `Token name on chain: "TEST " + this (32 bytes max).` : "Token name on chain (32 bytes max)."}</span></label>
+          <label><span class="eyebrow">Ticker</span><input name="l_symbol" maxlength="10" placeholder="${testLabels() ? "TMBPE" : "MBPE"}"><span class="wl-help">A to Z and 0 to 9, up to 10.</span></label>
         </div>
         <label><span class="eyebrow">Description</span><textarea name="l_desc" maxlength="700" rows="3" placeholder="What this agent is for, in a sentence or two."></textarea><span class="wl-help">Shown on the agent's profile as "From the launcher"; it is also part of the soul seed the agent key signs.</span></label>
         <div class="lz-img">
@@ -113,7 +114,7 @@ export function profileSkeleton(): Raw {
         <section class="panel me-stats" id="me-stats"></section>
         ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on chain, the identity service and Core. Credits are the hosted runtime's last spend report.` })}
         <section class="panel" id="me-manage" hidden></section>
-        ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value at the market indexer's last price in UNITS.` })}
+        ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value in US dollars at the market indexer's last price.` })}
         <section class="panel" id="me-claims" hidden>
           <div class="panel-h"><h2>Claims and bounties</h2></div>
           <div class="me-sub eyebrow">Claimable epoch leaves</div>

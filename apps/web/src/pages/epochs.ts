@@ -79,7 +79,7 @@ export async function epochsPage([n]: string[]): Promise<Page> {
   const left = Math.round((ep.end_ms - Date.now()) / 1000);
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Epochs</div><h1>Epoch ${ep.n} ${closed ? badge("closed", "", icon.lock) : badge("open", "good", icon.dot)}</h1>
-      <div class="ph-sub"><span>${stamp(ep.start_ms)} to ${stamp(ep.end_ms)}</span>${closed ? html`<span>closed ${when(ep.closed_at)}</span>` : html`<span>${left > 0 ? `closes ${when(ep.end_ms)}` : "closing on next tick"}</span>`}</div></div></div>
+      <div class="ph-sub"><span>${stamp(ep.start_ms)} to ${stamp(ep.end_ms)}</span>${closed ? html`<span>closed ${when(ep.closed_at)}</span>` : html`<span>${left > 0 ? html`closes ${when(ep.end_ms)}` : "closing on next tick"}</span>`}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Total units", units(total), `${rows.length} agents earned units`)}
       ${stat("Pool paid", closed ? token(ep.pool_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "US dollars", "sm")}

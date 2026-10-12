@@ -134,11 +134,13 @@ export function fundingBlocked(v: { costs: LaunchSolCosts | null; solUsd: number
 function lines(v: FundingView): [string, string, string][] {
   const c = v.costs;
   const out: [string, string, string][] = [];
+  // no costs yet: the lines read "simulating" only while a simulation runs, "not simulated" after a failed one
+  const wait = v.pending ? "simulating" : "not simulated";
   // [label, the cost in US dollars, the SOL the wallet pays for it]
-  out.push(["Token creation", c ? money(usdOf(c.creation, v.solUsd)) : "simulating", c ? sol(c.creation) : ""]);
-  out.push(["Model credits", c ? money(usdOf(c.credits, v.solUsd)) : "simulating", `${c ? `${sol(c.credits)}` : ""}${v.creditsUsd ? `${c ? " for " : ""}${fmtUsd(Number(v.creditsUsd))} of credits` : ""}`]);
-  if (!c || c.buy !== null) out.push([`Initial buy${v.bps !== null ? ` ${v.bps / 100}%` : ""}`, c?.buy != null ? money(usdOf(c.buy, v.solUsd)) : "simulating", c?.buy != null ? sol(c.buy) : ""]);
-  if (v.identityChosen) out.push(["A units account", c ? money(usdOf(c.identity, v.solUsd)) : "simulating", c ? sol(c.identity) : ""]);
+  out.push(["Token creation", c ? money(usdOf(c.creation, v.solUsd)) : wait, c ? sol(c.creation) : ""]);
+  out.push(["Model credits", c ? money(usdOf(c.credits, v.solUsd)) : wait, `${c ? `${sol(c.credits)}` : ""}${v.creditsUsd ? `${c ? " for " : ""}${fmtUsd(Number(v.creditsUsd))} of credits` : ""}`]);
+  if (!c || c.buy !== null) out.push([`Initial buy${v.bps !== null ? ` ${v.bps / 100}%` : ""}`, c?.buy != null ? money(usdOf(c.buy, v.solUsd)) : wait, c?.buy != null ? sol(c.buy) : ""]);
+  if (v.identityChosen) out.push(["A units account", c ? money(usdOf(c.identity, v.solUsd)) : wait, c ? sol(c.identity) : ""]);
   if (c && c.tip > 0n) out.push(["Jito tip", money(usdOf(c.tip, v.solUsd)), sol(c.tip)]);
   return out;
 }
@@ -165,7 +167,7 @@ export function costBreakdown(v: FundingView): Raw {
   const c = v.costs;
   return html`<div class="lz-review lz-fronting" data-fronting-ok="${String(!v.blocked)}">
     ${lines(v).map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}
-    <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : "simulating"}</b> <span class="dim">${c ? sol(c.total) : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
+    <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : v.pending ? "simulating" : "not simulated"}</b> <span class="dim">${c ? sol(c.total) : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
     <div class="lz-rr"><span class="eyebrow">Approval</span><span class="lz-rv"><b>one signature</b> <span class="dim">${v.txCount ? `${v.txCount} transaction${v.txCount === 1 ? "" : "s"} signed together${v.devnet ? ", sent in order" : ", sent as one Jito bundle (all or nothing)"}` : ""}</span></span></div>
     ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked}.</span></div>` : html`<div class="wl-fine"><span class="mark good">your wallet covers all of it</span></div>`}
   </div>`;

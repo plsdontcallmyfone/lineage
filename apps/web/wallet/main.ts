@@ -281,7 +281,7 @@ function renderConn() {
   set(
     "me-chips",
     html`<button type="button" class="pf-chip" data-copy="${a}" title="Copy the address">${icon.copy} Copy address</button>
-      <span class="pf-chip">SOL <b class="num">${S.sol === null ? "TBA" : sol(S.sol)}</b></span>
+      <span class="pf-chip">SOL <b class="num">${S.sol === null ? "TBA" : fmtUsd(solToUsd(Number(S.sol) / 1e9))}</b>${S.sol === null ? "" : html` <span class="dim">${sol(S.sol)}</span>`}</span>
       <span class="pf-chip">${qsym()} <b class="num">${S.line === null ? "TBA" : fmtUsd(qUsd(S.line))}</b>${S.line === null ? "" : html` <span class="dim">${units(S.line, dec())}</span>`}</span>
       <a class="pf-chip" href="#holdings">${icon.coin} Holdings</a>`,
   );
@@ -740,7 +740,8 @@ async function launchReview() {
     laterFees = laterFees > purchaseFee && !swap ? laterFees - purchaseFee : laterFees;
     const ataRent = buy ? BigInt(await rpc.call<number>("getMinimumBalanceForRentExemption", [170])) * BigInt(buy.ixs.length > 2 ? 2 : 1) : 0n;
     const costs = solCostsFromSims({ launch: built.sim, purchase, payer: launcher, creditsShare, hasBuy: !!buy, laterFees, laterRent: ataRent, identity, tip, headroom });
-    const simErr = built.sim.err ? "the launch simulation failed" : purchase?.err ? "the SOL purchase simulation failed" : null;
+    // an empty wallet cannot pay the fee, so the chain refuses the simulation outright: say that, not "failed"
+    const simErr = built.sim.err ? (S.sol === 0n ? "this wallet holds no SOL, and the launch is paid in SOL" : "the launch simulation failed") : purchase?.err ? "the SOL purchase simulation failed" : null;
     S.draft = { agent, mint, args, soul, deposit, buy, plan, built, purchase, swap, costs, simErr, identity, landed: [] };
     S.simming = false;
     renderLaunchReview();
