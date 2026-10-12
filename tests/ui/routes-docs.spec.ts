@@ -122,7 +122,7 @@ test.describe("Docs site", () => {
     await expect(page.locator("a.dc-cta").first()).toHaveAttribute("href", `${app}/launch`);
     const explorer = page.locator(".dc-links a", { hasText: "Explorer" });
     if (await explorer.count()) await expect(explorer.first()).toHaveAttribute("href", `${app}/`);
-    await expect.poll(async () => (await page.locator("[data-live]").allInnerTexts()).some((x) => x.trim() && x !== "TBA"), { timeout: 30_000 }).toBe(true);
+    await expect.poll(async () => (await page.locator("[data-live]").allInnerTexts()).some((x) => x.trim() && x !== "no data yet"), { timeout: 30_000 }).toBe(true);
     await cleanPage(page);
   });
 

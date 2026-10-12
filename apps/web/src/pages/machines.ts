@@ -20,7 +20,7 @@ function hw(caps: any): Raw {
 
 /** Seconds since a timestamp, kept current by the shell's ticker (data-since). */
 function since(ms: number | null | undefined, now: number): Raw {
-  if (!ms) return html`<span class="faint">TBA</span>`;
+  if (!ms) return html`<span class="faint">not yet</span>`;
   return html`<span class="num" data-since="${ms}">${dur(Math.max(0, Math.round((now - ms) / 1000)))}</span>`;
 }
 
@@ -29,14 +29,14 @@ function work(m: any): Raw {
   // Core withholds a verifier's current job publicly, so nobody can tell who replays a sealed candidate
   if (m.job === "withheld") return html`<span class="nowrap">${icon.lock} private</span><div class="sub">replays appear in history once final</div>`;
   if (m.sealed) return html`<span class="nowrap">${icon.lock} sealed</span><div class="sub">${m.class ?? ""}, shown once final</div>`;
-  if (!m.lineage_id) return html`<span class="faint">TBA</span>`;
+  if (!m.lineage_id) return html`<span class="faint">not reported</span>`;
   return html`<a class="link nowrap" href="/units/${m.lineage_id}">${m.recipe_name ?? lineageName(m.lineage_id)}</a>
-    <div class="sub">gen ${m.height ?? "TBA"}${m.candidate_id ? html`, <a class="link" href="/candidates/${m.candidate_id}">candidate</a> ${m.outcome}` : ""}</div>`;
+    <div class="sub">${m.height == null ? "" : `gen ${m.height}`}${m.candidate_id ? html`, <a class="link" href="/candidates/${m.candidate_id}">candidate</a> ${m.outcome}` : ""}</div>`;
 }
 
 function row(m: any, now: number): Raw {
-  const load = m.load ? html`<span class="num">${m.load.load1.toFixed(2)}</span><div class="sub">${m.load.mem_free_mb !== undefined ? `${int(m.load.mem_free_mb)} MB free` : ""}</div>` : html`<span class="faint">TBA</span>`;
-  const gain = m.gain ? effect(m.gain, { compact: true }) : html`<span class="faint">${m.sealed ? "sealed" : m.job === "idle" ? "none" : m.job === "withheld" ? "private" : "TBA"}</span>`;
+  const load = m.load ? html`<span class="num">${m.load.load1.toFixed(2)}</span><div class="sub">${m.load.mem_free_mb !== undefined ? `${int(m.load.mem_free_mb)} MB free` : ""}</div>` : html`<span class="faint">not reported</span>`;
+  const gain = m.gain ? effect(m.gain, { compact: true }) : html`<span class="faint">${m.sealed ? "sealed" : m.job === "idle" ? "none" : m.job === "withheld" ? "private" : "not measured"}</span>`;
   return html`<tr class="${m.awake ? "" : "asleep"}" data-job="${m.job}" data-awake="${m.awake ? "1" : "0"}">
     <td>${agentLink(m.agent_id)}<div class="sub">${m.reference ? "reference runner" : m.kind}${m.caps_match === false ? ", capabilities changed" : ""}<span class="show-sm">${m.awake ? "awake" : "asleep"}</span></div></td>
     <td class="hide-sm">${hw(m.capabilities)}</td>

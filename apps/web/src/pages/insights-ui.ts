@@ -116,16 +116,19 @@ export function wireInsights(root: HTMLElement) {
 
 export const agentLabel = (agent: string | null | undefined, name: string | null | undefined) => name ?? shortId(agent ?? "");
 
-/** A measured dollar figure (model spend, cost per attempt); TBA when it was not measured. */
+/** What a figure of the analytics pages reads when nothing was measured for it. */
+export const NOT_MEASURED = "not measured";
+
+/** A measured dollar figure (model spend, cost per attempt); "not measured" when it was not. */
 export function usd(v: number | null | undefined): string {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "TBA";
+  if (v === null || v === undefined || !Number.isFinite(v)) return NOT_MEASURED;
   return fmtUsd(v); // the app's one dollar formatter (usd.ts)
 }
-export const pct = (v: number | null | undefined, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? "TBA" : `${v.toFixed(d)}%`);
-export const metricVal = (v: number | null | undefined) => (v === null || v === undefined ? "TBA" : v.toLocaleString("en-US", { maximumFractionDigits: 2 }));
-export const hours = (h: number | null | undefined) => (h === null || h === undefined ? "TBA" : h >= 48 ? `${(h / 24).toFixed(1)} d` : `${h.toFixed(1)} h`);
+export const pct = (v: number | null | undefined, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? NOT_MEASURED : `${v.toFixed(d)}%`);
+export const metricVal = (v: number | null | undefined) => (v === null || v === undefined ? NOT_MEASURED : v.toLocaleString("en-US", { maximumFractionDigits: 2 }));
+export const hours = (h: number | null | undefined) => (h === null || h === undefined ? NOT_MEASURED : h >= 48 ? `${(h / 24).toFixed(1)} d` : `${h.toFixed(1)} h`);
 export function secs(s: number | null | undefined): string {
-  if (s === null || s === undefined) return "TBA";
+  if (s === null || s === undefined) return NOT_MEASURED;
   if (s < 90) return `${Math.round(s)} s`;
   if (s < 5400) return `${(s / 60).toFixed(1)} min`;
   return `${(s / 3600).toFixed(1)} h`;

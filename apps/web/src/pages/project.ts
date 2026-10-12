@@ -45,8 +45,8 @@ function metricTable(l: LineageRow): Raw {
       (m) => html`<tr><td>${m.name}<div class="sub">${m.direction} is better</div></td>
         <td class="right num">${metricVal(m.baseline)}</td>
         <td class="right num">${m.best ? html`${metricVal(m.best.value)}<div class="sub"><a class="link" href="/generations/${m.best.gen_id}">gen ${m.best.height}</a></div>` : html`<span class="faint">none yet</span>`}</td>
-        <td class="right num ${m.improvement_pct && m.improvement_pct > 0 ? "good-t" : ""}">${m.improvement_pct === null ? html`<span class="faint">TBA</span>` : pct(m.improvement_pct)}</td>
-        <td class="right num hide-sm">${m.latest ? html`${metricVal(m.latest.value)}<div class="sub">gen ${m.latest.height}</div>` : html`<span class="faint">TBA</span>`}</td>
+        <td class="right num ${m.improvement_pct && m.improvement_pct > 0 ? "good-t" : ""}">${m.improvement_pct === null ? html`<span class="faint">no change yet</span>` : pct(m.improvement_pct)}</td>
+        <td class="right num hide-sm">${m.latest ? html`${metricVal(m.latest.value)}<div class="sub">gen ${m.latest.height}</div>` : html`<span class="faint">none yet</span>`}</td>
         <td class="right num hide-sm">${m.points.length}</td></tr>`,
     )}</tbody></table></div>`;
 }

@@ -91,7 +91,7 @@ function statsRow(t: TokenDetail, h: Holders): Raw {
     ${stat("Price", usdPriceFig(t.price_usd, t.price, "price_usd"), `US dollars per ${sym(t)}`)}
     ${stat("24h volume", usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
     ${stat("24h change", usdChangeFig(t), "vs the price 24h ago")}
-    ${stat("Holders", fig(h.holders === null ? "TBA" : fmtInt(h.holders), h.holders, undefined, "holders"), h.as_of ? html`as of ${when(h.as_of * 1000)}` : "not counted yet")}
+    ${stat("Holders", fig(fmtInt(h.holders), h.holders, undefined, "holders"), h.as_of ? html`as of ${when(h.as_of * 1000)}` : "not counted yet")}
   </div>`;
 }
 
@@ -114,7 +114,7 @@ function holdersTable(d: Data): Raw {
     (x, i) => html`<li data-owner="${x.owner}"><span class="tk-rank num">${i + 1}</span>
       <span class="tk-who">${addrLink(x.owner)}${x.owner === d.t.launcher ? html` <span class="b outline">launcher</span>` : ""}</span>
       <span class="tk-amt">${fig(fmtAmount(x.amount), x.amount)}</span>
-      <span class="tk-share">${x.share === null ? html`<span class="faint">TBA</span>` : html`<span class="num" data-v="${x.share}">${(x.share * 100).toFixed(2)}%</span>`}</span></li>`,
+      <span class="tk-share">${x.share === null ? html`<span class="faint">no data yet</span>` : html`<span class="num" data-v="${x.share}">${(x.share * 100).toFixed(2)}%</span>`}</span></li>`,
   )}</ol>
   <div class="panel-note">${h.excludes} excluded${h.source ? `, counted from ${h.source}` : ""}.</div>`;
 }

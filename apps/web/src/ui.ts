@@ -87,7 +87,7 @@ export function auditBadge(s: string | null | undefined): Raw {
 }
 
 export const agentLink = (id: string | null | undefined, label?: string) =>
-  id ? html`<a class="link nowrap" href="/agents/${id}" title="${id}">${label ?? shortId(id)}</a>` : html`<span class="faint">TBA</span>`;
+  id ? html`<a class="link nowrap" href="/agents/${id}" title="${id}">${label ?? shortId(id)}</a>` : html`<span class="faint">none</span>`;
 /**
  * A team candidate's members (SPEC 12.2): role, declared share and the member's signature over the
  * commitment and split. Null team: nothing (solo candidate, or withheld while open).
@@ -113,10 +113,10 @@ export const authorLink = (x: { author?: string | null; status?: string }) =>
 export const genLink = (id: string | null | undefined, label?: string) =>
   id ? html`<a class="link nowrap" href="/generations/${id}" title="${id}">${label ?? shortHex(id)}</a>` : html`<span class="faint">none</span>`;
 export const candLink = (id: string | null | undefined, label?: string) =>
-  id ? html`<a class="link nowrap" href="/candidates/${id}" title="${id}">${label ?? shortHex(id)}</a>` : html`<span class="faint">TBA</span>`;
+  id ? html`<a class="link nowrap" href="/candidates/${id}" title="${id}">${label ?? shortHex(id)}</a>` : html`<span class="faint">none</span>`;
 export const linLink = (id: string | null | undefined, label?: string) =>
-  id ? html`<a class="link nowrap" href="/units/${id}" title="${id}">${label ?? lineageName(id)}</a>` : html`<span class="faint">TBA</span>`;
-export const epochLink = (n: number | null | undefined) => (n === null || n === undefined ? html`<span class="faint">TBA</span>` : html`<a class="link" href="/epochs/${n}">${n}</a>`);
+  id ? html`<a class="link nowrap" href="/units/${id}" title="${id}">${label ?? lineageName(id)}</a>` : html`<span class="faint">none</span>`;
+export const epochLink = (n: number | null | undefined) => (n === null || n === undefined ? html`<span class="faint">none yet</span>` : html`<a class="link" href="/epochs/${n}">${n}</a>`);
 export const blobLink = (sha: string | null | undefined, label = "transcript") =>
   sha ? html`<a class="link nowrap" href="/api/blobs/${sha}" target="_blank" rel="noopener" title="GET /v1/blobs/${sha}">${icon.file} ${label}</a>` : html`<span class="faint">no transcript</span>`;
 
@@ -143,7 +143,7 @@ export function banner(tone: "warn" | "bad" | "info", t1: string | Raw, t2?: str
 }
 
 export function kv(rows: [string, unknown][]): Raw {
-  return html`<div class="kv">${rows.map(([k, v]) => html`<div>${k}</div><div>${v === null || v === undefined || v === "" ? html`<span class="faint">TBA</span>` : v}</div>`)}</div>`;
+  return html`<div class="kv">${rows.map(([k, v]) => html`<div>${k}</div><div>${v === null || v === undefined || v === "" ? html`<span class="faint">none</span>` : v}</div>`)}</div>`;
 }
 
 export function stat(label: string, value: Raw | string, sub?: Raw | string, cls = ""): Raw {

@@ -16,6 +16,8 @@ import { esc, html, raw, type Raw } from "./html.ts";
 
 /** What a money figure reads when the USD price could not be read. */
 export const USD_NA = "$ unavailable";
+/** What a figure reads when it does not exist yet (no trade, no count, nothing measured): a fact in words, never a placeholder. */
+export const NO_DATA = "no data yet";
 
 const full0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const full2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -109,17 +111,17 @@ export function usdSourceLine(): string {
 // ------------------------------------------------------------------------------------------------
 // markup
 
-const TBA = html`<span class="faint">TBA</span>`;
+const NONE = html`<span class="faint">${NO_DATA}</span>`;
 
 /**
  * A dollar figure. `usd` is the API's "_usd" value (or a conversion from this file); `exists` says
- * whether the underlying figure exists at all: a figure the chain has not produced reads TBA, one that
+ * whether the underlying figure exists at all: a figure the chain has not produced reads NO_DATA, one that
  * exists without a dollar price reads USD_NA. data-v carries the exact dollar value and data-f the
  * API field, which the page checks compare with the indexer's rows.
  */
 export function usdFig(usd: number | null | undefined, opts: { exists?: boolean; compact?: boolean; price?: boolean; field?: string; title?: string } = {}): Raw {
   if (usd === null || usd === undefined || !Number.isFinite(usd)) {
-    if (opts.exists === false) return TBA;
+    if (opts.exists === false) return NONE;
     return html`<span class="num usd-na"${opts.field ? raw(` data-f="${esc(opts.field)}"`) : ""} data-v="" title="${usdWhy() || "No US dollar price for this figure"}">${USD_NA}</span>`;
   }
   const text = opts.price ? fmtUsdPrice(usd) : fmtUsd(usd, { compact: opts.compact });
@@ -127,6 +129,6 @@ export function usdFig(usd: number | null | undefined, opts: { exists?: boolean;
 }
 /** The same as text (chart labels, tooltips, the embed kit's string templates). */
 export function usdText(usd: number | null | undefined, opts: { exists?: boolean; compact?: boolean; price?: boolean } = {}): string {
-  if (usd === null || usd === undefined || !Number.isFinite(usd)) return opts.exists === false ? "TBA" : USD_NA;
+  if (usd === null || usd === undefined || !Number.isFinite(usd)) return opts.exists === false ? NO_DATA : USD_NA;
   return opts.price ? fmtUsdPrice(usd) : fmtUsd(usd, { compact: opts.compact });
 }

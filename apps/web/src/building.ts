@@ -49,7 +49,7 @@ export interface DirToken {
   hidden?: { reason: string; added_at: number | null } | null;
 }
 
-const TBA = html`<span class="bd-tba">TBA</span>`;
+const NONE = html`<span class="bd-tba">no data yet</span>`;
 
 /**
  * The four market figures as label/value cells (cards, rows, the token page), in US dollars from the
@@ -94,7 +94,7 @@ export function buildingLine(t: Pick<DirToken, "repo_url" | "building" | "sessio
   const link = opts.link !== false && sid ? html`<a class="bd-sess" href="${(opts.sessionHref ?? ((id: string) => `/sessions/${id}`))(sid)}">${b?.live ? "Watch live" : "Latest session"}</a>` : "";
   return html`<div class="bd-building${b?.live ? " on" : ""}">
     ${status}
-    <div class="bd-repo">${repoText ? html`<span title="${repo ?? ""}">${repoText}</span>` : html`<span class="bd-tba">repository TBA</span>`}${link}</div>
+    <div class="bd-repo">${repoText ? html`<span title="${repo ?? ""}">${repoText}</span>` : html`<span class="bd-tba">repository not set</span>`}${link}</div>
   </div>`;
 }
 

@@ -25,10 +25,11 @@ describe("dollar formatter", () => {
 });
 
 describe("figures", () => {
-  test("a figure that exists without a dollar price reads $ unavailable; one that does not exist reads TBA", () => {
+  test("a figure that exists without a dollar price reads $ unavailable; one that does not exist reads no data yet", () => {
     expect(usdText(null, { exists: true })).toBe(USD_NA);
-    expect(usdText(null, { exists: false })).toBe("TBA");
-    expect(usdFig(null, { exists: false }).s).toContain("TBA");
+    expect(usdText(null, { exists: false })).toBe("no data yet");
+    expect(usdFig(null, { exists: false }).s).toContain("no data yet");
+    expect(usdFig(null, { exists: false }).s).not.toContain("TBA");
     const na = usdFig(null, { field: "price_usd" }).s;
     expect(na).toContain(">$ unavailable<");
     expect(na).toContain('data-f="price_usd"');
@@ -44,9 +45,9 @@ describe("figures", () => {
     expect(cells.match(/\$ unavailable/g)).toHaveLength(3);
     expect(cells).not.toMatch(/0\.312508|312,508,385|UNITS/);
     const ok = seen(paramCells({ price: 0.312508, market_cap: 312_508_385, volume_24h: 0, change_24h: null, price_usd: 0.000625, market_cap_usd: 625_016.77, volume_24h_usd: 0, change_24h_usd: null }).s);
-    expect(ok).toMatch(/Price\s+\$0\.000625\s+Market cap\s+\$625K\s+24h volume\s+\$0\s+24h change\s+TBA/);
+    expect(ok).toMatch(/Price\s+\$0\.000625\s+Market cap\s+\$625K\s+24h volume\s+\$0\s+24h change\s+no data yet/);
     // a token with no price at all yet
-    expect(seen(usdPriceFig(null, null).s)).toContain("TBA");
+    expect(seen(usdPriceFig(null, null).s)).toContain("no data yet");
   });
   test("24h change: of the dollar price when the indexer has it, else against the quote coin, and the title says which", () => {
     expect(usdChangeFig({ change_24h: 0.1, change_24h_usd: 0.25 }).s).toMatch(/data-f="change_24h_usd"[^>]*>\+25%/);

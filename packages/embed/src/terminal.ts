@@ -1,13 +1,13 @@
 import { effectText, type Building } from "../../../apps/web/src/building.ts";
 import { fmtChange, fmtInt, shortAddr } from "../../../apps/web/src/market.ts";
-import { usdText } from "../../../apps/web/src/usd.ts";
+import { NO_DATA, usdText } from "../../../apps/web/src/usd.ts";
 import type { Stats, TokenSummary } from "./client.ts";
 import { esc, extLink, howSteps, repoLabel } from "./render.ts";
 
 // The terminal's logic (docs/plans/FRONTEND-EMBED.md, amendment "the terminal"): commands with blurbs
 // and topics, a keyword knowledge base for `ask` (fixed text, no model call), did-you-mean by edit
 // distance and tab completion. Pure: it reads through a small client interface and returns markup,
-// so it is tested without a DOM. Every figure is read live; a missing one prints as TBA.
+// so it is tested without a DOM. Every figure is read live; a missing one prints as "no data yet".
 
 export interface TermClient {
   /** the Solana network the site's Core names; absent or null: not known */
@@ -196,7 +196,7 @@ export function helpHtml(): string[] {
 export function stepHtml(s: Stats, i: number): string {
   const steps = howSteps(s);
   const st = steps[i]!;
-  const f = st.figure ? ` <span class="fig"><b>${esc(st.figure.value)}</b>${st.figure.unit && st.figure.value !== "TBA" ? ` ${esc(st.figure.unit)}` : ""} ${esc(st.figure.label)}</span>` : "";
+  const f = st.figure ? ` <span class="fig"><b>${esc(st.figure.value)}</b>${st.figure.unit && st.figure.value !== NO_DATA ? ` ${esc(st.figure.unit)}` : ""} ${esc(st.figure.label)}</span>` : "";
   return `<div class="step"><span class="n">${st.n}/${steps.length}</span> <b>${esc(st.title)}.</b> ${esc(st.body)}${f}</div>`;
 }
 
@@ -207,7 +207,7 @@ export function buildingText(t: TokenSummary & { building?: Building | null }, s
   if (b?.live) return `working on ${b.file ? b.file.split("/").pop() : "a change"}${repo ? ` in ${repo}` : ""}`;
   if (b?.last) return `last improvement: ${effectText(b.last)}`;
   if (s) return `${s.state === "live" ? "live" : `last session ${s.state}`} on ${s.recipe_name ?? "a lineage"}`;
-  return b ? "no verified improvement yet" : "TBA";
+  return b ? "no verified improvement yet" : "nothing reported yet";
 }
 
 function tokenRows(ts: TokenSummary[], links: TermLinks): string[] {
@@ -279,7 +279,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
     }
     case "stats": {
       const s = await client.stats();
-      const f = (v: number | null, fmt = fmtInt) => (v == null ? "TBA" : fmt(v));
+      const f = (v: number | null, fmt = fmtInt) => (v == null ? NO_DATA : fmt(v));
       return {
         html: [
           row([`<span class="d">Agent tokens</span>`, `<span class="n"><b>${f(s.tokens)}</b></span>`]),
@@ -304,7 +304,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
         html: [
           `<b>${esc(label)}</b> <span class="dim">${esc(t.name ?? "")}</span>`,
           ...(soul?.tagline ? [`<span class="ans">${esc(soul.tagline)}</span>`] : []),
-          row([`<span class="d">Repository</span>`, `<span class="n">${t.repo_url ? a(t.repo_url, repoLabel(t.repo_url)) : "TBA"}</span>`]),
+          row([`<span class="d">Repository</span>`, `<span class="n">${t.repo_url ? a(t.repo_url, repoLabel(t.repo_url)) : "not set"}</span>`]),
           row([`<span class="d">Agent</span>`, `<span class="n" title="${esc(t.agent)}">${esc(shortAddr(t.agent))}</span>`]),
           row([`<span class="d">Price</span>`, `<span class="n">${esc(usdText(t.price_usd, { exists: t.price != null, price: true }))}</span>`]),
           row([`<span class="d">Market cap</span>`, `<span class="n">${esc(usdText(t.market_cap_usd, { exists: t.market_cap != null }))}</span>`]),
@@ -325,14 +325,14 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
         id = l.tip ?? l.gen0;
       }
       const g = await client.generation(id);
-      const eff = g.effect && typeof g.effect.ratio === "number" ? `${g.effect.metric} ratio ${Number(g.effect.ratio).toFixed(4)}` : g.entry_type === "genesis" ? "genesis (the recipe's starting point)" : "TBA";
+      const eff = g.effect && typeof g.effect.ratio === "number" ? `${g.effect.metric} ratio ${Number(g.effect.ratio).toFixed(4)}` : g.entry_type === "genesis" ? "genesis (the recipe's starting point)" : "not measured";
       const replays = Array.isArray(g.replays) ? g.replays.length : 0;
       return {
         html: [
           row([`<span class="d">Generation</span>`, `<span class="n" title="${esc(g.gen_id)}">${esc(g.gen_id.slice(0, 12))}, height ${esc(g.height)}</span>`]),
           row([`<span class="d">Effect</span>`, `<span class="n">${esc(eff)}</span>`]),
           row([`<span class="d">Replays</span>`, `<span class="n">${esc(replays)}</span>`]),
-          row([`<span class="d">Accepted</span>`, `<span class="n">${g.accepted_at ? esc(new Date(g.accepted_at).toLocaleString("en-US")) : "TBA"}</span>`]),
+          row([`<span class="d">Accepted</span>`, `<span class="n">${g.accepted_at ? esc(new Date(g.accepted_at).toLocaleString("en-US")) : "not yet"}</span>`]),
           ...(g.candidate_id
             ? [`<span class="dim">Recheck it yourself from a clone of the repo:</span>`, `<code class="cmd">bun scripts/verify.ts --core ${esc(links.site)} --candidate ${esc(g.candidate_id)}</code>`]
             : []),

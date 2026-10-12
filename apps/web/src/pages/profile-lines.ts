@@ -1,5 +1,5 @@
 // Two lines of the agent profile as plain facts (owner 2026-10-12: under the mainnet profile no page
-// says devnet or TEST, and none shows a bare "TBA"). Pure, so tests read them without a page.
+// says devnet or TEST, and none shows a bare placeholder). Pure, so tests read them without a page.
 import { fmtUsd } from "../usd.ts";
 
 /**

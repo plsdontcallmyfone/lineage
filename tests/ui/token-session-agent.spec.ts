@@ -22,7 +22,7 @@ test.describe("Token page (/tokens/:mint)", () => {
         ['[data-f="price_usd"]', '[data-f="market_cap_usd"]', '[data-f="volume_24h_usd"]', '[data-f^="change_24h"]'].map((sel) => {
           const n = el.querySelector<HTMLElement>(sel);
           const v = n?.dataset.v;
-          return { text: n?.textContent?.trim() ?? "TBA", exact: v == null || v === "" ? null : Number(v), field: n?.dataset.f ?? null };
+          return { text: n?.textContent?.trim() ?? "no data yet", exact: v == null || v === "" ? null : Number(v), field: n?.dataset.f ?? null };
         }),
       );
       expectFigures(`${t.symbol ?? t.mint} page`, figs, detail);

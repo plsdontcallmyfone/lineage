@@ -1,6 +1,6 @@
 import { ApiError } from "./api.ts";
 import { esc, html, raw, type Raw } from "./html.ts";
-import { fmtUsd, fmtUsdPrice, usdFig, USD_NA } from "./usd.ts";
+import { fmtUsd, fmtUsdPrice, NO_DATA, usdFig, USD_NA } from "./usd.ts";
 
 // Launchpad market data (plan L3): a client for the market indexer's read API (packages/indexer,
 // served by the dashboard at /market/*, plan L2) and the presentation pieces the token pages share.
@@ -180,12 +180,12 @@ const zero = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
 /** A price in UNITS per token: six significant digits. */
 export function fmtPrice(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
+  if (n === null || n === undefined || !Number.isFinite(n)) return NO_DATA;
   return sig6.format(n);
 }
 /** An amount (UNITS or tokens): whole numbers from 100,000, two places from 1, four significant digits below. */
 export function fmtAmount(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
+  if (n === null || n === undefined || !Number.isFinite(n)) return NO_DATA;
   const a = Math.abs(n);
   if (a >= 100_000) return zero.format(n);
   if (a >= 1 || a === 0) return two.format(n);
@@ -193,16 +193,16 @@ export function fmtAmount(n: number | null | undefined): string {
 }
 /** A ratio change (0.05 is +5.00%). */
 export function fmtChange(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
+  if (n === null || n === undefined || !Number.isFinite(n)) return NO_DATA;
   const p = n * 100;
   return `${p > 0 ? "+" : p < 0 ? "-" : ""}${two.format(Math.abs(p))}%`;
 }
 /** Curve progress, a fraction of the migration threshold. */
 export function fmtProgress(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
+  if (n === null || n === undefined || !Number.isFinite(n)) return NO_DATA;
   return `${(Math.min(1, Math.max(0, n)) * 100).toFixed(2)}%`;
 }
-export const fmtInt = (n: number | null | undefined) => (n === null || n === undefined || !Number.isFinite(n) ? "TBA" : zero.format(n));
+export const fmtInt = (n: number | null | undefined) => (n === null || n === undefined || !Number.isFinite(n) ? NO_DATA : zero.format(n));
 
 export const shortAddr = (a: string | null | undefined) => (!a ? "" : a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
 export const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}${explorerQ}`;
@@ -211,11 +211,11 @@ export const explorerAddr = (a: string) => `https://explorer.solana.com/address/
 // ------------------------------------------------------------------------------------------------
 // components (plain functions returning markup; classes are prefixed mk- so the owner can restyle)
 
-const TBA = html`<span class="faint">TBA</span>`;
+const NONE = html`<span class="faint">${NO_DATA}</span>`;
 
 /** A figure with its exact indexer value in the title and a data-v the page check compares. */
 export function fig(text: string, exact: number | string | null | undefined, unit?: string, field?: string): Raw {
-  if (text === "TBA") return TBA;
+  if (text === NO_DATA) return NONE;
   return html`<span class="num" data-v="${exact ?? ""}"${field ? raw(` data-f="${esc(field)}"`) : ""} title="${String(exact ?? "")}${unit ? ` ${unit}` : ""}">${text}</span>${unit ? html`<span class="unit">${unit}</span>` : ""}`;
 }
 export const priceFig = (n: number | null | undefined, field?: string) => fig(fmtPrice(n), n, QUOTE, field);
@@ -234,7 +234,7 @@ export function usdChangeFig(t: Pick<TokenSummary, "change_24h" | "change_24h_us
   const inUsd = t.change_24h_usd != null;
   const n = inUsd ? t.change_24h_usd! : t.change_24h;
   const text = fmtChange(n);
-  if (text === "TBA") return TBA;
+  if (text === NO_DATA) return NONE;
   return html`<span class="num mk-chg ${n! > 0 ? "up" : n! < 0 ? "down" : ""}" data-v="${n}" data-f="${inUsd ? "change_24h_usd" : "change_24h"}" title="${inUsd ? "change of the US dollar price over 24 hours" : `change against ${QUOTE} over 24 hours; the dollar price of ${QUOTE} 24 hours ago is not on record`}">${text}</span>`;
 }
 
@@ -266,7 +266,7 @@ export const amountFig = (n: number | null | undefined, unit: string, field?: st
 
 export function changeFig(n: number | null | undefined, field?: string): Raw {
   const t = fmtChange(n);
-  if (t === "TBA") return TBA;
+  if (t === NO_DATA) return NONE;
   return html`<span class="num mk-chg ${n! > 0 ? "up" : n! < 0 ? "down" : ""}" data-v="${n}"${field ? raw(` data-f="${esc(field)}"`) : ""} title="${String(n)}">${t}</span>`;
 }
 
@@ -277,7 +277,7 @@ export function phaseBadge(t: Pick<TokenSummary, "phase" | "migrated"> & { venue
 }
 
 export function progressBar(p: number | null | undefined, field?: string): Raw {
-  if (p === null || p === undefined || !Number.isFinite(p)) return TBA;
+  if (p === null || p === undefined || !Number.isFinite(p)) return NONE;
   const pct = Math.min(1, Math.max(0, p)) * 100;
   return html`<span class="mk-prog"><span class="bar"><i style="width:${pct.toFixed(2)}%"></i></span><span class="num" data-v="${p}"${field ? raw(` data-f="${esc(field)}"`) : ""}>${fmtProgress(p)}</span></span>`;
 }
@@ -287,7 +287,7 @@ export function tokenLabel(t: Pick<TokenSummary, "name" | "symbol" | "mint">): R
 }
 
 export const addrLink = (a: string | null | undefined, label?: string) =>
-  a ? html`<a class="link nowrap" href="${explorerAddr(a)}" target="_blank" rel="noopener" title="${a}">${label ?? shortAddr(a)}</a>` : TBA;
+  a ? html`<a class="link nowrap" href="${explorerAddr(a)}" target="_blank" rel="noopener" title="${a}">${label ?? shortAddr(a)}</a>` : html`<span class="faint">none</span>`;
 export const txLink = (s: string, label?: string) => html`<a class="link nowrap" href="${explorerTx(s)}" target="_blank" rel="noopener" title="${s}">${label ?? shortAddr(s)}</a>`;
 
 // ------------------------------------------------------------------------------------------------

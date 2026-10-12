@@ -25,7 +25,7 @@ export function agentCard(t: DirToken): Raw {
       </div>
       <a class="ag-tok" href="/tokens/${t.mint}" title="${t.symbol ? `$${t.symbol}` : t.mint}">
         <span class="ag-sym">${t.symbol ? `$${t.symbol}` : "token"}</span>
-        <span class="ag-px">${t.price == null ? html`<span class="ag-faint">TBA</span>` : html`<b>${usdPriceFig(t.price_usd, t.price, "price_usd")}</b>`}</span>
+        <span class="ag-px">${t.price == null ? html`<span class="ag-faint">no price yet</span>` : html`<b>${usdPriceFig(t.price_usd, t.price, "price_usd")}</b>`}</span>
         <span class="ag-chg">${usdChangeFig(t)} <span class="ag-faint">24h</span></span>
       </a>
     </div>

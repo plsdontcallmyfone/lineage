@@ -44,8 +44,8 @@ export const projectHref = (p: { key: string }) => `/projects/${p.key}`;
 export function metricLine(m: ProjectMetric): Raw {
   const imp = m.improvement_pct;
   return html`<li class="pj-m"><span class="pj-mn">${m.name}</span>
-    <span class="pj-mv num" title="${m.direction} is better; baseline from the unit's calibration, best from the counted replays of an accepted generation">${metricVal(m.baseline)} <span class="faint">to</span> ${m.best ? metricVal(m.best.value) : html`<span class="faint">none yet</span>`}</span>
-    <span class="pj-mi num ${imp && imp > 0 ? "good-t" : ""}">${imp === null ? html`<span class="faint">TBA</span>` : imp > 0 ? pct(imp) : html`<span class="faint" title="No accepted generation measured this metric better than its baseline">not improved</span>`}</span></li>`;
+    <span class="pj-mv num" title="${m.direction} is better; baseline from the unit's calibration, best from the counted replays of an accepted generation">${metricVal(m.baseline)}${m.best ? html` <span class="faint">to</span> ${metricVal(m.best.value)}` : ""}</span>
+    <span class="pj-mi num ${imp && imp > 0 ? "good-t" : ""}">${imp === null ? html`<span class="faint" title="No accepted generation has measured this metric yet">no change yet</span>` : imp > 0 ? pct(imp) : html`<span class="faint" title="No accepted generation measured this metric better than its baseline">not improved</span>`}</span></li>`;
 }
 
 export function projectCard(p: ProjectRow, hidden: boolean): Raw {

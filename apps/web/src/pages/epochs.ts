@@ -86,7 +86,7 @@ export async function epochsPage([n]: string[]): Promise<Page> {
 
   const usage = ep.usage?.length
     ? html`<div class="tw"><table class="t"><thead><tr><th>Agent</th><th class="right">Debited</th><th class="right">Model tokens</th><th class="right">Sandbox s</th><th class="right">At</th></tr></thead><tbody>${ep.usage.map(
-        (u: any) => html`<tr><td>${agentLink(u.agent_id)}</td><td class="right">${token(u.amount)}</td><td class="right num">${u.model_tokens === null ? "TBA" : int(u.model_tokens)}</td><td class="right num">${u.sandbox_seconds === null ? "TBA" : int(u.sandbox_seconds)}</td><td class="right">${when(u.at)}</td></tr>`,
+        (u: any) => html`<tr><td>${agentLink(u.agent_id)}</td><td class="right">${token(u.amount)}</td><td class="right num">${u.model_tokens === null ? "not measured" : int(u.model_tokens)}</td><td class="right num">${u.sandbox_seconds === null ? "not measured" : int(u.sandbox_seconds)}</td><td class="right">${when(u.at)}</td></tr>`,
       )}</tbody></table></div>`
     : empty("No hosted runtime usage recorded this epoch");
 

@@ -1,6 +1,6 @@
 import { state } from "./api.ts";
 import { esc, html, raw, type Raw } from "./html.ts";
-import { quoteToUsd, usdFig, usdReading, usdWhy } from "./usd.ts";
+import { NO_DATA, quoteToUsd, usdFig, usdReading, usdWhy } from "./usd.ts";
 
 // Formatting. Every figure passed in here comes from Core; nothing is computed into a new claim
 // except presentation (percent of a measured ratio, token decimals from config, and the dollar value of
@@ -31,7 +31,7 @@ export function tokenText(base: string | null | undefined, places = 4): string |
  */
 export function token(base: string | null | undefined, opts: { places?: number; unit?: boolean; compact?: boolean } = {}): Raw {
   const t = tokenText(base, opts.places ?? 4);
-  if (t === null) return html`<span class="faint">TBA</span>`;
+  if (t === null) return html`<span class="faint">${NO_DATA}</span>`;
   const d = state.cfg?.token_decimals ?? 0;
   const exact = tokenText(base, d);
   const usd = quoteToUsd(Number(BigInt(base!)) / 10 ** d);
@@ -41,12 +41,12 @@ export function token(base: string | null | undefined, opts: { places?: number; 
 }
 
 export function int(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
+  if (n === null || n === undefined || !Number.isFinite(n)) return NO_DATA;
   return group(Math.round(n).toString());
 }
 
 export function units(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
+  if (n === null || n === undefined || !Number.isFinite(n)) return NO_DATA;
   return n.toFixed(2);
 }
 
@@ -76,12 +76,12 @@ export function dur(s: number): string {
 }
 
 export function when(ms: number | null | undefined): Raw {
-  if (!ms) return html`<span class="faint">TBA</span>`;
+  if (!ms) return html`<span class="faint">not yet</span>`;
   return html`<time class="nowrap" datetime="${new Date(ms).toISOString()}" title="${stamp(ms)}" data-ago="${ms}">${ago(ms)}</time>`;
 }
 
 export function stamp(ms: number | null | undefined): string {
-  if (!ms) return "TBA";
+  if (!ms) return "not yet";
   const d = new Date(ms);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -95,11 +95,11 @@ export function gainPct(ratio: number): string {
 }
 
 export function effect(e: any, opts: { perReplay?: boolean; compact?: boolean; perOnly?: boolean } = {}): Raw {
-  if (!e) return html`<span class="faint">TBA</span>`;
+  if (!e) return html`<span class="faint">not measured</span>`;
   if (Array.isArray(e.fixed)) {
     return html`<span class="eff good">fixed ${e.fixed.length} test${e.fixed.length === 1 ? "" : "s"}</span>${opts.compact ? "" : html`<div class="sub">${e.fixed.join(", ")}</div>`}`;
   }
-  if (typeof e.ratio !== "number") return html`<span class="faint">TBA</span>`;
+  if (typeof e.ratio !== "number") return html`<span class="faint">not measured</span>`;
   const good = e.ratio < 1;
   const noisy = e.ci_low !== e.ci_high;
   const head = html`<span class="eff ${good ? "good" : "bad"}" title="cost change of ${esc(e.metric)} relative to the parent">${gainPct(e.ratio)}</span> <span class="ratio num">ratio ${e.ratio.toFixed(4)}</span>`;
@@ -132,7 +132,7 @@ export function repoLabel(url: string | null | undefined): string {
 }
 
 export function repoLink(url: string | null | undefined): Raw {
-  if (!url) return html`<span class="faint">TBA</span>`;
+  if (!url) return html`<span class="faint">not set</span>`;
   if (/^https?:\/\//.test(url)) return html`<a class="link" href="${url}" target="_blank" rel="noopener">${repoLabel(url)}</a>`;
   return html`<span>${url}</span>`;
 }
@@ -141,7 +141,7 @@ export const nbsp = raw("&nbsp;");
 
 /** Launch GitHub identity modes (SPEC 13.9). Old names are aliases Core may still return. */
 export function identityLabel(m: string | null | undefined): string {
-  if (!m) return "TBA";
+  if (!m) return "not set";
   if (m === "token" || m === "import") return "Own GitHub token";
   if (m === "purchased" || m === "provided") return "Purchased account";
   if (m === "app") return "App identity";

@@ -76,7 +76,7 @@ export function replayList(replays: any[], recipe: any, calib: any, opts: { perR
         </div>
         <div class="dim" style="font-size:12px">
           <div class="num">build digests: parent <span class="hash" title="${res.build?.base_digest}">${shortHex(res.build?.base_digest, 10) || "none"}</span>, candidate <span class="hash" title="${res.build?.cand_digest}">${shortHex(res.build?.cand_digest, 10) || "none"}</span></div>
-          <div class="num">env: ${res.env?.cpu_model ?? "TBA"}, ${res.env?.cores ?? "TBA"} cores, worker ${res.env?.worker_version ?? "TBA"}</div>
+          <div class="num">env: ${res.env?.cpu_model ?? "CPU not reported"}, ${res.env?.cores ?? "unreported"} cores, worker ${res.env?.worker_version ?? "version not reported"}</div>
           <div class="num">image <span class="hash" title="${res.env?.image_digest}">${shortHex(res.env?.image_digest, 18)}</span></div>
           <div class="num">seed <span class="hash" title="${r.seed}">${shortHex(r.seed, 12)}</span>, revealed <span title="${stamp(r.revealed_at)}">${when(r.revealed_at)}</span></div>
           <div class="num">commitment <span class="hash" title="${r.commitment}">${shortHex(r.commitment, 12)}</span></div>

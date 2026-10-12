@@ -13,7 +13,7 @@ import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../live-panel/
 // and what the agent is building (repository, live status, a link to the session). Hidden launches
 // are left out by the indexer. Filters by target class, search, sorts and state filters run in the
 // market indexer (GET /market/tokens, /market/summary), which joins the chain with Core. Every figure
-// is the indexer's or Core's; what neither holds is TBA.
+// is the indexer's or Core's; what neither holds reads "no data yet".
 //
 // `mountExplorer(el, opts)` renders it into any element (the app's home page, and the embed kit's
 // <units-explorer>). Styles are injected once, prefixed ex-, on the app's colour tokens with
@@ -133,7 +133,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
   }
 
   const counter = (label: string, v: number | null | undefined, hot = false) =>
-    html`<div class="ex-ctr${hot && v ? " hot" : ""}"><span>${hot ? html`<i class="ex-pulse"></i>` : ""}${label}</span><b class="ex-num">${v == null ? "TBA" : v}</b></div>`;
+    html`<div class="ex-ctr${hot && v ? " hot" : ""}"><span>${hot ? html`<i class="ex-pulse"></i>` : ""}${label}</span><b class="ex-num">${v == null ? "no data yet" : v}</b></div>`;
   const side = (title: string, key: "cls", facets: Record<string, number>, labels: (k: string) => string, order: string[]) => {
     const keys = [...new Set([...order.filter((k) => facets[k] !== undefined), ...Object.keys(facets).sort()])];
     const total = Object.values(facets).reduce((a, b) => a + b, 0);
@@ -225,7 +225,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const sid = screen.dataset.screen ?? "";
     const sym = card.dataset.sym || "";
     const tok = last?.tokens.find((x) => x.mint === card.dataset.mint);
-    let m: ThumbModel = { repo: tok?.repo_url ? repoLabel(tok.repo_url) : "repository TBA", file: null, lines: [], cursor: -1, caption: sid ? "Loading the session" : "No authoring session yet", live: false, title: sym ? `$${sym}` : undefined };
+    let m: ThumbModel = { repo: tok?.repo_url ? repoLabel(tok.repo_url) : "repository not set", file: null, lines: [], cursor: -1, caption: sid ? "Loading the session" : "No authoring session yet", live: false, title: sym ? `$${sym}` : undefined };
     if (!RECORDINGS_SHOWN && tok?.session?.state !== "live") {
       // live only: a card whose agent is not working shows its idle state, not a still of a past session
       const st = await idleStatus((p) => (C ? getJson<any>(`${C}/${p}`) : Promise.reject(new Error("no core"))), card.dataset.agent, endOf(tok?.session ?? null));

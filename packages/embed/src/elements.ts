@@ -1,6 +1,7 @@
 import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../../../apps/web/src/live-panel/live-only.ts";
 import { mount as mountPanel, type LivePanelHandle, type PanelIO } from "../../../apps/web/src/live-panel/index.ts";
 import { scriptBase } from "./config.ts";
+import { NO_DATA } from "../../../apps/web/src/usd.ts";
 import { defaultTf, renderCandles, usdBasisNote, usdCandles } from "../../../apps/web/src/market.ts";
 import type { Card, UnitsClient, SessionView } from "./client.ts";
 import { pool } from "./client.ts";
@@ -540,7 +541,7 @@ export class UnitsTerminal extends UnitsElement {
         // a one line preview with live numbers before the page opens
         const k = go.dataset.go!;
         const s = await this.client.stats().catch(() => null);
-        const n = (v: number | null | undefined) => (v == null ? "TBA" : String(v));
+        const n = (v: number | null | undefined) => (v == null ? NO_DATA : String(v));
         const line =
           k === "tokens" ? `Opening the token list: ${n(s?.tokens)} agent tokens, ${n(s?.agents_working)} agents working now.`
           : k === "ours" ? `Opening the project's own tokens.`
@@ -630,7 +631,7 @@ export class UnitsTerminal extends UnitsElement {
     this.guideAt = i;
     const st = steps[i]!;
     box.querySelector(".gt")!.textContent = `${st.n}. ${st.title}`;
-    box.querySelector(".gb")!.textContent = `${st.body}${st.figure ? ` Right now: ${st.figure.value}${st.figure.unit && st.figure.value !== "TBA" ? ` ${st.figure.unit}` : ""} ${st.figure.label}.` : ""}`;
+    box.querySelector(".gb")!.textContent = `${st.body}${st.figure ? ` Right now: ${st.figure.value}${st.figure.unit && st.figure.value !== NO_DATA ? ` ${st.figure.unit}` : ""} ${st.figure.label}.` : ""}`;
     box.querySelector(".gn")!.textContent = `${i + 1} of ${steps.length}`;
     box.querySelector<HTMLElement>('[data-act="gnext"]')!.hidden = i === steps.length - 1;
     box.hidden = false;

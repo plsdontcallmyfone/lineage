@@ -23,7 +23,7 @@ test.describe("Agents (/agents)", () => {
       await expect(card.locator(".bd-building")).toHaveCount(1);
       await expect(card.locator(".ag-tok")).toHaveAttribute("href", `/tokens/${row.mint}`);
       const px = card.locator(".ag-px");
-      if (row.price == null) await expect(px).toHaveText("TBA");
+      if (row.price == null) await expect(px).toHaveText("no price yet");
       else {
         // the price in US dollars: the indexer's price_usd, or "$ unavailable" when it has no dollar price
         const fig = px.locator("[data-f=price_usd]");

@@ -1,13 +1,13 @@
 import { esc } from "../../../apps/web/src/html.ts";
 import { fmtAmount, fmtInt, fmtProgress, shortAddr } from "../../../apps/web/src/market.ts";
-import { usdText } from "../../../apps/web/src/usd.ts";
+import { NO_DATA, usdText } from "../../../apps/web/src/usd.ts";
 import { buildingLine, paramCells, type Building } from "../../../apps/web/src/building.ts";
 import type { Card, SessionEvent, Stats, TokenDetail } from "./client.ts";
 import type { Holders, Trade } from "./client.ts";
 
 // Pure render functions (strings in, strings out) for the elements, so they can be tested without a
 // DOM. Every figure is the API's own value through the dashboard's formatters (apps/web/src/market.ts);
-// a figure that does not exist renders as TBA, never as a guess. A token shows only price, market cap,
+// a figure that does not exist renders as "no data yet", never as a guess. A token shows only price, market cap,
 // 24h volume, 24h change and what its agent is building (APP-CONSOLIDATION.md amendment 2026-10-10
 // (2)), through the app's own markup (apps/web/src/building.ts); no fee figure is shown anywhere.
 
@@ -20,14 +20,14 @@ export function linkFor(template: string | null | undefined, site: string, c: { 
   return t.replace(/\{mint\}/g, encodeURIComponent(c.mint)).replace(/\{agent\}/g, encodeURIComponent(c.agent)).replace(/\{symbol\}/g, encodeURIComponent(c.symbol ?? ""));
 }
 
-const STATE_LABEL: Record<string, string> = { working: "Working", idle: "Idle", graduated: "Graduated", unknown: "Status TBA" };
+const STATE_LABEL: Record<string, string> = { working: "Working", idle: "Idle", graduated: "Graduated", unknown: "Status unknown" };
 
 export function stateChip(state: string): string {
   return `<span class="chip" part="state" data-s="${esc(state)}"><i></i>${esc(STATE_LABEL[state] ?? state)}</span>`;
 }
 
 export function progressHtml(p: number | null | undefined): string {
-  if (p === null || p === undefined || !Number.isFinite(p)) return `<span class="faint">curve TBA</span>`;
+  if (p === null || p === undefined || !Number.isFinite(p)) return `<span class="faint">no curve data yet</span>`;
   const pct = Math.min(1, Math.max(0, p)) * 100;
   return `<span class="prog" part="progress" title="Curve progress: quote reserve over the migration threshold"><span class="bar"><i style="width:${pct.toFixed(2)}%"></i></span><span class="num">${esc(fmtProgress(p))}</span></span>`;
 }
@@ -95,7 +95,7 @@ export function cardHtml(c: Card, o: CardOpts): string {
   const label = c.symbol ?? shortAddr(c.mint);
   return `<article class="card" part="card" data-mint="${esc(c.mint)}" data-state="${esc(c.state)}" data-look="${esc(o.look)}"${o.style ? ` style="${esc(o.style)}"` : ""}>
   <a class="shot" part="screen" href="${esc(o.href)}" target="_blank" rel="noopener" aria-label="${esc(`${label}: ${sessionLine(c)}`)}">
-    <span class="thumb" data-thumb="${esc(c.session?.session_id ?? "")}"><span class="ph">${esc(c.session ? "Loading the screen" : c.sessions_known ? "No session yet" : "Screen TBA")}</span></span>
+    <span class="thumb" data-thumb="${esc(c.session?.session_id ?? "")}"><span class="ph">${esc(c.session ? "Loading the screen" : c.sessions_known ? "No session yet" : "Screen unavailable")}</span></span>
     ${stateChip(c.state)}
   </a>
   <div class="meta" part="meta">
@@ -143,7 +143,7 @@ export function timelineLayout(times: number[], o: { pad?: number; step?: number
 
 // --------------------------------------------------------------------------------------- stats, how
 
-const fig = (v: number | null | undefined, f: (n: number) => string = (n) => fmtInt(n)) => (v === null || v === undefined || !Number.isFinite(v) ? "TBA" : f(v));
+const fig = (v: number | null | undefined, f: (n: number) => string = (n) => fmtInt(n)) => (v === null || v === undefined || !Number.isFinite(v) ? NO_DATA : f(v));
 
 /** 24h volume in US dollars: the indexer's dollar sum; "$ unavailable" when the volume is known and its dollar value is not. */
 const volumeUsd = (s: Stats) => usdText(s.volume_24h_usd, { exists: s.volume_24h != null, compact: true });
@@ -160,7 +160,7 @@ export function statsHtml(s: Stats, keys: (keyof Stats)[] = STAT_ITEMS.map((x) =
     .map((k) => {
       const it = STAT_ITEMS.find((x) => x.key === k) ?? { key: k, label: String(k).replace(/_/g, " ") };
       const v = it.text ? it.text(s) : fig(s[k], it.fmt);
-      return `<div class="stat" part="stat" data-k="${esc(k)}"><dt>${esc(it.label)}</dt><dd><b class="num">${esc(v)}</b>${it.unit && v !== "TBA" ? `<span class="u">${esc(it.unit)}</span>` : ""}</dd></div>`;
+      return `<div class="stat" part="stat" data-k="${esc(k)}"><dt>${esc(it.label)}</dt><dd><b class="num">${esc(v)}</b>${it.unit && v !== NO_DATA ? `<span class="u">${esc(it.unit)}</span>` : ""}</dd></div>`;
     })
     .join("")}</dl>`;
 }
@@ -188,7 +188,7 @@ export function howHtml(s: Stats): string {
   return `<ol class="how" part="how">${howSteps(s)
     .map(
       (st) =>
-        `<li class="step" part="step"><span class="n">${st.n}</span><div><h4>${esc(st.title)}</h4><p>${esc(st.body)}</p>${st.figure ? `<div class="f"><b class="num">${esc(st.figure.value)}</b>${st.figure.unit && st.figure.value !== "TBA" ? ` <span class="u">${esc(st.figure.unit)}</span>` : ""} <span class="k">${esc(st.figure.label)}</span></div>` : ""}</div></li>`,
+        `<li class="step" part="step"><span class="n">${st.n}</span><div><h4>${esc(st.title)}</h4><p>${esc(st.body)}</p>${st.figure ? `<div class="f"><b class="num">${esc(st.figure.value)}</b>${st.figure.unit && st.figure.value !== NO_DATA ? ` <span class="u">${esc(st.figure.unit)}</span>` : ""} <span class="k">${esc(st.figure.label)}</span></div>` : ""}</div></li>`,
     )
     .join("")}</ol>`;
 }
@@ -196,7 +196,7 @@ export function howHtml(s: Stats): string {
 // --------------------------------------------------------------------------------------- token block
 
 const ago = (sec: number | null | undefined) => {
-  if (!sec) return "TBA";
+  if (!sec) return "not yet";
   const s = Math.max(0, Math.round(Date.now() / 1000 - sec));
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
 };
@@ -237,6 +237,6 @@ export function tradesHtml(trades: Trade[]): string {
 export function holdersHtml(h: Holders): string {
   if (!h.top.length) return `<p class="none">No holders outside the pool vaults yet.</p>`;
   return `<table class="tbl" part="holders"><thead><tr><th>Holder</th><th class="r">Tokens</th><th class="r">Share</th></tr></thead><tbody>${h.top
-    .map((x) => `<tr><td>${ext(explorer("address", x.owner), shortAddr(x.owner), x.owner)}</td><td class="r num">${esc(fmtAmount(x.amount))}</td><td class="r num">${x.share == null ? "TBA" : esc(`${(x.share * 100).toFixed(2)}%`)}</td></tr>`)
+    .map((x) => `<tr><td>${ext(explorer("address", x.owner), shortAddr(x.owner), x.owner)}</td><td class="r num">${esc(fmtAmount(x.amount))}</td><td class="r num">${x.share == null ? NO_DATA : esc(`${(x.share * 100).toFixed(2)}%`)}</td></tr>`)
     .join("")}</tbody></table>`;
 }

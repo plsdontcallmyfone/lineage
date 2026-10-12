@@ -56,7 +56,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
             ? html`<div class="big" style="color:var(--good)">${e.fixed.length} fixed</div><div class="s">${e.fixed.join(", ")}</div>`
             : e
               ? html`<div class="big" style="color:${e.ratio < 1 ? "var(--good)" : "var(--bad)"}">${gainPct(e.ratio)}</div><div class="s num">ratio ${e.ratio.toFixed(4)}${e.ci_low !== e.ci_high ? `, CI ${e.ci_low.toFixed(4)} to ${e.ci_high.toFixed(4)}` : ", deterministic"}</div>`
-              : html`<div class="big faint">TBA</div>`
+              : html`<div class="big faint">not measured</div>`
         }</div>
       <div><div class="eyebrow">Replays counted</div><div class="mid">${g.replay_ids.length}</div><div class="s">${mainReplays.length} assigned${auditReplays.length ? `, ${auditReplays.length} audit` : ""}</div></div>
       <div><div class="eyebrow">Audit</div><div class="mid" style="font-size:14px">${auditBadge(g.audit?.status ?? null)}</div><div class="s">${g.audit ? "reference runner plus one random agent" : "not selected for audit"}</div></div>

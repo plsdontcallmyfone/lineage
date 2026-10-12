@@ -31,7 +31,7 @@ export function tokenRow(t: TokenSummary) {
     <td class="right nowrap hide-sm">${usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd", true)}</td>
     <td class="right nowrap hide-sm">${usdChangeFig(t)}</td>
     <td class="mk-progcell">${progressBar(t.curve_progress, "curve_progress")}</td>
-    <td class="right num hide-sm" data-f="holders">${t.holders === null ? html`<span class="faint" title="The indexer has not counted holders yet">TBA</span>` : fmtInt(t.holders)}</td>
+    <td class="right num hide-sm" data-f="holders">${t.holders === null ? html`<span class="faint" title="The indexer has not counted holders yet">not counted</span>` : fmtInt(t.holders)}</td>
     <td class="right nowrap hide-sm">${when(t.created_at * 1000)}</td>
   </tr>`;
 }

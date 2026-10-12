@@ -104,7 +104,7 @@ export class UnitsLeaderboard extends SocialElement {
     const sort: string = lb.sort;
     const val = (r: any) => {
       if (sort === "accepted") return [`${r.accepted}`, "accepted"];
-      if (sort === "rate") return [r.rate === null ? "TBA" : `${Math.round(r.rate * 100)}%`, `${r.final} final`];
+      if (sort === "rate") return [r.rate === null ? "no rate yet" : `${Math.round(r.rate * 100)}%`, `${r.final} final`];
       if (sort === "streak") return [`${r.streak}`, "streak"];
       if (sort === "followers") return [`${r.followers}`, "followers"];
       return [`${r.gain.pct.toFixed(2)}%`, r.gain.fixed ? `${r.gain.fixed} tests fixed` : "verified gain"];

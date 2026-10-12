@@ -129,13 +129,13 @@ describe("render", () => {
     expect(labels).toEqual(["Price", "Market cap", "24h volume", "24h change"]);
     expect(h).not.toMatch(/fee|compute vault|treasury|holders/i);
   });
-  test("figures that do not exist render as TBA", () => {
-    expect(cardHtml({ ...card, market_cap: null, curve_progress: null }, { href: "#", look: "plain" })).toContain("TBA");
-    expect(statsHtml({ tokens: null, graduated: null, agents_working: 0, generations: 3, candidates: null, volume_24h: null, volume_24h_usd: null, sessions_live: 0 })).toMatch(/TBA[\s\S]*>0<[\s\S]*>3</);
+  test("figures that do not exist render as words, never TBA", () => {
+    expect(cardHtml({ ...card, market_cap: null, curve_progress: null }, { href: "#", look: "plain" })).toContain("no data yet");
+    expect(statsHtml({ tokens: null, graduated: null, agents_working: 0, generations: 3, candidates: null, volume_24h: null, volume_24h_usd: null, sessions_live: 0 })).toMatch(/no data yet[\s\S]*>0<[\s\S]*>3</);
     const st = { tokens: 2, graduated: 0, agents_working: 0, generations: 3, candidates: 1, sessions_live: 0 };
     expect(statsHtml({ ...st, volume_24h: 120, volume_24h_usd: 4321.5 })).toContain('data-k="volume_24h"><dt>24h volume</dt><dd><b class="num">$4.3K</b></dd>');
     expect(statsHtml({ ...st, volume_24h: 120, volume_24h_usd: null })).toContain('<b class="num">$ unavailable</b>');
-    expect(statsHtml({ ...st, volume_24h: null, volume_24h_usd: null })).toContain('<dt>24h volume</dt><dd><b class="num">TBA</b>');
+    expect(statsHtml({ ...st, volume_24h: null, volume_24h_usd: null })).toContain('<dt>24h volume</dt><dd><b class="num">no data yet</b>');
   });
   test("link template", () => {
     expect(linkFor("/coin/{mint}?t={symbol}", "https://s", { mint: "M1", agent: "A", symbol: "TX" })).toBe("/coin/M1?t=TX");
@@ -154,7 +154,7 @@ describe("render", () => {
   test("how: six steps, each with a live figure", () => {
     const s = howSteps({ tokens: 34, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: null, volume_24h_usd: null, sessions_live: 2 });
     expect(s).toHaveLength(6);
-    expect(s.map((x) => x.figure!.value)).toEqual(["34", "TBA", "2", "82", "20", "1"]);
+    expect(s.map((x) => x.figure!.value)).toEqual(["34", "no data yet", "2", "82", "20", "1"]);
     expect(s.map((x) => x.figure!.label).join(" ")).not.toMatch(/fee/i);
   });
   test("event lines", () => {
@@ -237,10 +237,10 @@ describe("terminal", () => {
     expect((await run("watch tmbpe", env())).watch).toEqual({ agent: "A1", label: "TMBPE" });
     expect((await run("watch nope", env())).watch).toBeUndefined();
   });
-  test("tokens list is live rows with dollar figures, TBA for missing ones", async () => {
+  test("tokens list is live rows with dollar figures, words for missing ones", async () => {
     const h = (await run("tokens", env())).html.join("");
     expect(h).toContain(">$10K<");
-    expect(h).toContain(">TBA<");
+    expect(h).toContain(">no data yet<");
     expect(h).not.toMatch(/5,000,000|\d UNITS/);
   });
   test("stats and agent: no fee rows; agent shows the five token parameters", async () => {

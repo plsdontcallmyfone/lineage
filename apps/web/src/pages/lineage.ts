@@ -161,10 +161,10 @@ export async function lineagePage([id]: string[]): Promise<Page> {
 
   const metrics = (recipe.metrics ?? []).map((m: any) => {
     const cm = cal.metrics?.[m.name];
-    const cv = cm ? (cm.cv === 0 ? "0" : cm.cv < 0.0001 ? cm.cv.toExponential(2) : (cm.cv * 100).toFixed(2) + "%") : "TBA";
+    const cv = cm ? (cm.cv === 0 ? "0" : cm.cv < 0.0001 ? cm.cv.toExponential(2) : (cm.cv * 100).toFixed(2) + "%") : "not measured";
     return html`<div class="mrow">
-      <div class="mrow-h"><span style="font-weight:600">${m.name}</span>${cm ? (cm.enabled ? badge("enabled", "good", icon.check) : badge("disabled", "bad", icon.x)) : html`<span class="faint">TBA</span>`}</div>
-      <div class="sub num">${m.kind}, ${m.direction} is better, ${m.deterministic ? "deterministic" : `noisy, ${m.rounds ?? "TBA"} rounds, bootstrap CI`}${m.holdout ? ", holdout seeds" : ""}</div>
+      <div class="mrow-h"><span style="font-weight:600">${m.name}</span>${cm ? (cm.enabled ? badge("enabled", "good", icon.check) : badge("disabled", "bad", icon.x)) : html`<span class="faint">not calibrated</span>`}</div>
+      <div class="sub num">${m.kind}, ${m.direction} is better, ${m.deterministic ? "deterministic" : `noisy, ${m.rounds == null ? "" : `${m.rounds} rounds, `}bootstrap CI`}${m.holdout ? ", holdout seeds" : ""}</div>
       <div class="sub num">min effect ${(m.min_effect * 100).toFixed(2)}%, calibration cv ${cv}${cm?.base_value !== undefined ? `, base ${int(cm.base_value)}` : ""}</div>
       ${cm && !cm.enabled ? html`<div class="sub" style="color:var(--bad)">${cm.reason ?? "no reason recorded"}</div>` : ""}
     </div>`;

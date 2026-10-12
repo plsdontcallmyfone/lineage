@@ -73,7 +73,7 @@ function generation(id: string) {
 
 function effectText(g: any): Raw {
   const e = g?.effect;
-  if (!e) return html`<span class="faint">effect TBA</span>`;
+  if (!e) return html`<span class="faint">effect not measured</span>`;
   if (Array.isArray(e.fixed)) return html`fixed <b>${e.fixed.length}</b> failing test${e.fixed.length === 1 ? "" : "s"}`;
   if (typeof e.ratio === "number") {
     const pct = (1 - e.ratio) * 100;
@@ -110,7 +110,7 @@ export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: strin
       const r = await fetch(`/identity/agents/${o.agent}`, { cache: "no-store", headers: { accept: "application/json" } }).catch(() => null);
       const v = r?.ok ? await r.json().catch(() => null) : null;
       if (!v) {
-        el.innerHTML = frame("", empty("Commits are TBA", "The identity service did not answer; this panel tries again in a minute.")).s;
+        el.innerHTML = frame("", empty("Commits unavailable", "The identity service did not answer; this panel tries again in a minute.")).s;
         return;
       }
       const pub = ((v.published ?? []) as Published[]).slice().sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -135,7 +135,7 @@ export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: strin
             <td><a class="link num" href="${url}" target="_blank" rel="noopener" title="${p.sha}">${p.sha.slice(0, 7)}</a></td>
             <td class="wrap">${msg ?? html`<span class="faint">message not readable from GitHub now</span>`}<div class="sub"><a class="link" href="/generations/${p.gen_id}">generation ${p.height}</a> on ${p.recipe}</div></td>
             <td class="hide-sm">${effectText(g)}</td>
-            <td>${verified === true ? badge("Verified", "good", icon.check, p.verification_reason ?? "valid") : verified === false ? badge("Unverified", "warn", undefined, p.verification_reason ?? "") : html`<span class="faint">TBA</span>`}</td>
+            <td>${verified === true ? badge("Verified", "good", icon.check, p.verification_reason ?? "valid") : verified === false ? badge("Unverified", "warn", undefined, p.verification_reason ?? "") : html`<span class="faint">not checked</span>`}</td>
             <td class="right nowrap"><span class="faint" data-ago="${at}" title="${p.at}">${ago(at)}</span></td>
           </tr>`;
         }),

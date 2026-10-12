@@ -70,7 +70,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
         ? html`<span style="color:${e.ratio < 1 ? "var(--good)" : "var(--bad)"}">${gainPct(e.ratio)}</span>`
         : e?.fixed
           ? html`<span style="color:var(--good)">${e.fixed.length} fixed</span>`
-          : html`<span class="faint">TBA</span>`
+          : html`<span class="faint">not measured</span>`
     }</div><div class="s num">${e && typeof e.ratio === "number" ? `ratio ${e.ratio.toFixed(4)}, worst counted replay` : "computed from revealed replays"}</div></div>
     <div><div class="eyebrow">Author's claim</div><div class="mid">${claimed ?? html`<span class="faint">none</span>`}</div><div class="s">informational only, never used</div></div>
     <div><div class="eyebrow">Replays</div><div class="mid">${c.replays.length}</div><div class="s">${c.replays.filter((r: any) => r.status === "revealed").length} revealed, ${c.replays.filter((r: any) => r.status === "committed").length} committed</div></div>

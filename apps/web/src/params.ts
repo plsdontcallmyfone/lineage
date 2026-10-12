@@ -8,7 +8,7 @@ export function paramValue(k: string, v: unknown): string {
   if (AMOUNTS.has(k)) {
     // exact: every significant decimal, at least two places
     const t = tokenText(String(v), 18);
-    return t === null ? "TBA" : `${t.replace(/(\.\d\d\d*?)0+$/, "$1")} ${TOKEN}`;
+    return t === null ? "not set" : `${t.replace(/(\.\d\d\d*?)0+$/, "$1")} ${TOKEN}`;
   }
   if (typeof v !== "number") return String(v);
   if (k.endsWith("_bps")) return `${(v / 100).toFixed(v % 100 ? 2 : 0)}%`;
