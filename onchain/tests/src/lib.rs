@@ -18,6 +18,8 @@ use solana_transaction::Transaction;
 
 pub mod pumpfun;
 pub use pumpfun as pf;
+pub mod routes;
+pub use routes::*;
 use spl_token_2022::extension::StateWithExtensions;
 use spl_token_2022::state::{Account as T22Account, Mint as T22Mint};
 

@@ -12,8 +12,12 @@ use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, Tran
 use units_registry::leaf;
 
 pub mod bounty;
+pub mod claim;
+pub mod pool;
 pub mod pump;
 pub use bounty::*;
+pub use claim::*;
+pub use pool::*;
 use pump as pf;
 
 // Network ids by build feature, as in units_registry: devnet by default, `mainnet` for mainnet.
@@ -41,6 +45,13 @@ pub const MAX_PROOF: usize = 32;
 pub const IDENTITY_TOKEN: u8 = 0;
 pub const IDENTITY_PURCHASED: u8 = 1;
 pub const IDENTITY_APP: u8 = 2;
+/// `LaunchConfig.features` bits (admin `set_features`; both off by default).
+pub const FEATURE_POOLS: u8 = 1;
+pub const FEATURE_GITHUB_FEES: u8 = 2;
+/// `AgentLaunch.routes` bits: the agent is a pool member, has a GitHub fee route. The same bits as
+/// the features, so `features & routes` is what applies to one agent's crank.
+pub const ROUTE_POOL: u8 = FEATURE_POOLS;
+pub const ROUTE_GITHUB: u8 = FEATURE_GITHUB_FEES;
 
 #[program]
 pub mod units_launch {
@@ -59,6 +70,8 @@ pub mod units_launch {
         c.last_usage_epoch = 0;
         c.usage_anchor = 0;
         c.usage_anchor_ts = 0;
+        c.features = 0;
+        c.reserved = [0; 15];
         apply_args(c, &args);
         emit!(LaunchConfigSet { args });
         Ok(())
@@ -145,7 +158,8 @@ pub mod units_launch {
         l.bonding_curve = curve_info.key();
         l.pump_pool = Pubkey::default();
         l.pump_creator = ctx.accounts.pump_creator.key();
-        l.reserved = Pubkey::default();
+        l.routes = 0;
+        l.reserved = [0; 31];
         l.graduated = false;
         l.awake = false;
         l.created_at = Clock::get()?.unix_timestamp;
@@ -167,28 +181,45 @@ pub mod units_launch {
     /// transaction). compute = floor(balance x agent_compute_bps / 10,000) to the compute vault,
     /// protocol = the rest to the registry treasury, both signed by the creator PDA. `$LINE` anyone
     /// sends to that ATA is treated as fees.
-    pub fn crank_pump_fees(ctx: Context<CrankPumpFees>) -> Result<()> {
+    pub fn crank_pump_fees<'info>(ctx: Context<'_, '_, 'info, 'info, CrankPumpFees<'info>>) -> Result<()> {
         let c = &ctx.accounts.launch_config;
         require!(!c.paused, LaunchError::Paused);
         let fees = ctx.accounts.creator_line_token.amount;
         require!(fees > 0, LaunchError::NothingToClaim);
-        let to_compute = (fees as u128 * c.agent_compute_bps as u128 / BPS as u128) as u64;
-        let to_protocol = fees - to_compute;
+        let agent_share = (fees as u128 * c.agent_compute_bps as u128 / BPS as u128) as u64;
+        let to_protocol = fees - agent_share;
         let agent = ctx.accounts.agent_launch.agent;
         let bump = [ctx.bumps.pump_creator];
         let seeds: &[&[u8]] = &[PUMP_CREATOR_SEED, agent.as_ref(), &bump];
-        for (to, amount) in [(ctx.accounts.compute_vault.to_account_info(), to_compute), (ctx.accounts.treasury.to_account_info(), to_protocol)] {
+        let accounts = &ctx.accounts;
+        let pay = |to: &AccountInfo<'info>, amount: u64| -> Result<()> {
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(accounts.line_token_program.to_account_info(), TransferChecked {
+                    from: accounts.creator_line_token.to_account_info(),
+                    mint: accounts.line_mint.to_account_info(),
+                    to: to.clone(),
+                    authority: accounts.pump_creator.to_account_info(),
+                }, &[seeds]),
+                amount,
+                accounts.line_mint.decimals,
+            )
+        };
+        // Slices of the agent's share (docs/plans/AGENT-POOLS.md D3): only for an agent that has a
+        // route or a membership, and only while the admin's feature bit is on. Otherwise the split
+        // below is the one this instruction always made, with its eight accounts.
+        let active = c.features & accounts.agent_launch.routes;
+        let mut rest = ctx.remaining_accounts.iter();
+        let (mut to_github, mut github_id, mut to_pool, mut pool) = (0u64, 0u64, 0u64, Pubkey::default());
+        if active & ROUTE_GITHUB != 0 {
+            (to_github, github_id) = claim::route_slice(&agent, agent_share, &mut rest, pay)?;
+        }
+        if active & ROUTE_POOL != 0 {
+            (to_pool, pool) = pool::route_slice(&agent, agent_share, &mut rest, pay)?;
+        }
+        let to_compute = agent_share.checked_sub(to_github).and_then(|x| x.checked_sub(to_pool)).ok_or(LaunchError::InvalidArgs)?;
+        for (to, amount) in [(accounts.compute_vault.to_account_info(), to_compute), (accounts.treasury.to_account_info(), to_protocol)] {
             if amount > 0 {
-                token_interface::transfer_checked(
-                    CpiContext::new_with_signer(ctx.accounts.line_token_program.to_account_info(), TransferChecked {
-                        from: ctx.accounts.creator_line_token.to_account_info(),
-                        mint: ctx.accounts.line_mint.to_account_info(),
-                        to,
-                        authority: ctx.accounts.pump_creator.to_account_info(),
-                    }, &[seeds]),
-                    amount,
-                    ctx.accounts.line_mint.decimals,
-                )?;
+                pay(&to, amount)?;
             }
         }
         ctx.accounts.compute_vault.reload()?;
@@ -199,6 +230,9 @@ pub mod units_launch {
         l.to_protocol = l.to_protocol.saturating_add(to_protocol);
         update_awake(l, balance, c);
         emit!(FeesCranked { agent: l.agent, mint: l.mint, fees, to_compute, to_protocol, pool_fees: l.graduated, balance, awake: l.awake });
+        if active != 0 {
+            emit!(FeesRouted { agent: l.agent, mint: l.mint, fees, github_id, to_github, pool, to_pool });
+        }
         Ok(())
     }
 
@@ -362,6 +396,70 @@ pub mod units_launch {
     pub fn cancel_bounty(ctx: Context<CancelBounty>) -> Result<()> {
         bounty::cancel_bounty(ctx)
     }
+
+    /// Admin: the feature bits (`FEATURE_POOLS`, `FEATURE_GITHUB_FEES`). Zero restores the crank
+    /// this program had before either feature, whatever routes and memberships exist.
+    pub fn set_features(ctx: Context<SetLaunchConfig>, features: u8) -> Result<()> {
+        require!(features & !(FEATURE_POOLS | FEATURE_GITHUB_FEES) == 0, LaunchError::InvalidArgs);
+        ctx.accounts.launch_config.features = features;
+        emit!(FeaturesSet { features });
+        Ok(())
+    }
+
+    /// Admin: creates or updates the `ClaimConfig` (claim.rs).
+    pub fn set_claim_config(ctx: Context<SetClaimConfig>, args: ClaimConfigArgs) -> Result<()> {
+        claim::set_claim_config(ctx, args)
+    }
+
+    /// The agent's registry owner: routes `bps` of the agent's share of every crank to the GitHub
+    /// account `github_id`. Immediate the first time; afterwards pending for `change_delay_s`.
+    pub fn set_fee_route(ctx: Context<SetFeeRoute>, github_id: u64, bps: u16) -> Result<()> {
+        claim::set_fee_route(ctx, github_id, bps)
+    }
+
+    /// Anyone, once the delay passed: makes the pending route the route.
+    pub fn apply_fee_route(ctx: Context<ApplyFeeRoute>) -> Result<()> {
+        claim::apply_fee_route(ctx)
+    }
+
+    /// The wallet an attestation names: pays `min(ceiling, escrow balance)` to it. The attestation
+    /// is an Ed25519 precompile instruction earlier in the same transaction (claim.rs).
+    pub fn claim_github_fees(ctx: Context<ClaimGithubFees>, ceiling: u64, expires_at: i64) -> Result<()> {
+        claim::claim_github_fees(ctx, ceiling, expires_at)
+    }
+
+    /// Admin: creates or updates the `PoolConfig` (pool.rs).
+    pub fn set_pool_config(ctx: Context<SetPoolConfig>, args: PoolConfigArgs) -> Result<()> {
+        pool::set_pool_config(ctx, args)
+    }
+
+    /// The agent's registry owner (anyone while `auto_join` is on): joins the agent to the pool of
+    /// its repository. Trailing accounts: every existing member's `PoolMember`, in member order.
+    pub fn join_pool<'info>(ctx: Context<'_, '_, 'info, 'info, JoinPool<'info>>) -> Result<()> {
+        pool::join_pool(ctx)
+    }
+
+    /// Pool keeper, once per pool and registry epoch: allocates the buckets to the members.
+    /// Trailing accounts: every member's `PoolMember`, in member order.
+    pub fn pool_settle<'info>(ctx: Context<'_, '_, 'info, 'info, PoolSettle<'info>>, args: PoolSettleArgs) -> Result<()> {
+        pool::pool_settle(ctx, args)
+    }
+
+    /// Anyone: a member's allocated payout into its compute vault.
+    pub fn pool_pay(ctx: Context<PoolPay>) -> Result<()> {
+        pool::pool_pay(ctx)
+    }
+
+    /// Pool keeper: buys a member's token with its allocated buyback (`kind` 1, held) or burn
+    /// (`kind` 2, burned) budget. Trailing accounts: the venue instruction's accounts.
+    pub fn pool_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolBuy<'info>>, kind: u8, args: PoolBuyArgs) -> Result<()> {
+        pool::pool_buy(ctx, kind, args)
+    }
+
+    /// Pool keeper: one member's cross-holding purchase of another member's token.
+    pub fn pool_cross_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolCrossBuy<'info>>, args: PoolBuyArgs) -> Result<()> {
+        pool::pool_cross_buy(ctx, args)
+    }
 }
 
 /// Hysteresis (SPEC 13.7): asleep below `sleep_threshold`, awake again from `wake_threshold`.
@@ -395,7 +493,6 @@ fn apply_args(c: &mut LaunchConfig, a: &LaunchConfigArgs) {
     c.paused = a.paused;
     c.venue = VENUE_PUMP;
     c.pump_creator_fee_bps = a.pump_creator_fee_bps;
-    c.reserved = 0;
 }
 
 // ---------- state ----------
@@ -449,8 +546,10 @@ pub struct LaunchConfig {
     pub wake_threshold: u64,
     /// `creator_fee_bps` a launch's curve must carry (LaunchConfigArgs).
     pub pump_creator_fee_bps: u64,
-    /// Zero (a Meteora-era config held the DBC start price here).
-    pub reserved: u128,
+    /// Feature bits (`FEATURE_POOLS`, `FEATURE_GITHUB_FEES`). With `reserved` these are the 16 bytes
+    /// that were always zero (a Meteora-era config held the DBC start price there).
+    pub features: u8,
+    pub reserved: [u8; 15],
     pub paused: bool,
     pub bump: u8,
     pub authority_bump: u8,
@@ -483,7 +582,10 @@ pub struct AgentLaunch {
     pub pump_pool: Pubkey,
     /// PDA ["pump_creator", agent]: the coin's pump.fun creator.
     pub pump_creator: Pubkey,
-    pub reserved: Pubkey,
+    /// `ROUTE_GITHUB`, `ROUTE_POOL`. With `reserved` these are the 32 bytes a pump.fun record always
+    /// had zero (a Meteora-era record holds its position NFT account there; no route applies to it).
+    pub routes: u8,
+    pub reserved: [u8; 31],
     pub graduated: bool,
     pub awake: bool,
     pub created_at: i64,
@@ -751,6 +853,22 @@ pub struct FeesCranked {
     pub awake: bool,
 }
 #[event]
+pub struct FeesRouted {
+    pub agent: Pubkey,
+    pub mint: Pubkey,
+    pub fees: u64,
+    /// 0 without a GitHub route.
+    pub github_id: u64,
+    pub to_github: u64,
+    /// The default key without a pool membership.
+    pub pool: Pubkey,
+    pub to_pool: u64,
+}
+#[event]
+pub struct FeaturesSet {
+    pub features: u8,
+}
+#[event]
 pub struct PumpGraduated {
     pub agent: Pubkey,
     pub mint: Pubkey,
@@ -840,6 +958,40 @@ pub enum LaunchError {
     SelfHostedCap,
     #[msg("bounty release held: the epoch's challenge window or an open challenge")]
     BountyHeld,
+    #[msg("this feature is switched off")]
+    FeatureOff,
+    #[msg("the agent has a fee route or a pool membership: its accounts must follow the crank's")]
+    MissingRouteAccounts,
+    #[msg("not this agent's fee route, its escrow or its vault")]
+    WrongRouteAccount,
+    #[msg("route share outside the configured bounds, or no GitHub id")]
+    RouteBounds,
+    #[msg("no route change is pending")]
+    NoPendingRoute,
+    #[msg("the route change is still inside its delay")]
+    RouteTimelock,
+    #[msg("no attestation by the attestor for this claim in this transaction")]
+    BadAttestation,
+    #[msg("attestation expired")]
+    AttestationExpired,
+    #[msg("attestation lives longer than max_attestation_ttl_s")]
+    AttestationTtl,
+    #[msg("the wallet change is still inside its delay")]
+    RebindPending,
+    #[msg("not this pool's account")]
+    WrongPoolAccount,
+    #[msg("pool is full")]
+    PoolFull,
+    #[msg("settlement epoch is not posted or not newer than the last settled one")]
+    PoolEpoch,
+    #[msg("settlement weights must sum to 10,000 with generations and be zero without")]
+    PoolWeights,
+    #[msg("buy outside its budget")]
+    PoolBudget,
+    #[msg("the pool's token account did not gain the requested tokens")]
+    PoolBuyShort,
+    #[msg("venue program is not Pump or PumpSwap")]
+    WrongVenue,
 }
 
 // The mainnet TEST deployment (docs/MAINNET-RUNBOOK.md "Mainnet test"): a throwaway id that is closed when the test

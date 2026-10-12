@@ -49,7 +49,7 @@ fn full_launch_records_everything() {
     assert_eq!((a.owner, a.mint), (l.launcher.pubkey(), l.mint));
     assert_eq!(balance(&e.svm, &l.compute_vault), 0);
     let lc: ll::LaunchConfig = read(&e.svm, &launch_config());
-    assert_eq!((lc.venue, lc.pump_creator_fee_bps, lc.reserved), (ll::VENUE_PUMP, 0, 0));
+    assert_eq!((lc.venue, lc.pump_creator_fee_bps, lc.features, lc.reserved), (ll::VENUE_PUMP, 0, 0, [0; 15]));
     // One agent per key: the same agent cannot launch a second coin.
     let (r, _, _) = launch_shaped(&mut e, &l.agent, CreateShape::default(), vec![]);
     rejects(r, "already in use");

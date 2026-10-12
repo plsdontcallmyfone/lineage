@@ -346,7 +346,7 @@ fn account_snapshots() -> Vec<Value> {
             "admin": lc.admin.to_string(), "runtimeAuthority": lc.runtime_authority.to_string(), "lineMint": lc.line_mint.to_string(),
             "venue": lc.venue.to_string(), "agentComputeBps": lc.agent_compute_bps, "protocolBps": lc.protocol_bps,
             "sleepThreshold": lc.sleep_threshold.to_string(), "wakeThreshold": lc.wake_threshold.to_string(),
-            "pumpCreatorFeeBps": lc.pump_creator_fee_bps.to_string(), "reserved": lc.reserved.to_string(), "paused": lc.paused,
+            "pumpCreatorFeeBps": lc.pump_creator_fee_bps.to_string(), "reserved": reserved_u128(&lc), "paused": lc.paused,
             "registryProgram": lc.registry_program.to_string(), "maxDebitPerEpoch": lc.max_debit_per_epoch.to_string(),
             "usageEpochsPosted": lc.usage_epochs_posted.to_string(), "lastUsageEpoch": lc.last_usage_epoch.to_string(),
             "usageAnchor": lc.usage_anchor.to_string(), "usageAnchorTs": lc.usage_anchor_ts.to_string() } }),
@@ -426,4 +426,12 @@ fn client_vectors() {
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("run with UPDATE_VECTORS=1 once")).unwrap();
     assert_eq!(doc["instructions"], Value::Array(ixs), "instruction vectors changed: rerun with UPDATE_VECTORS=1 and the packages/chain tests");
     assert_eq!(doc["accounts"].as_array().unwrap().len(), 13);
+}
+
+/// The 16 bytes the TypeScript decoder still reads as one u128 (`features` and the reserved bytes).
+fn reserved_u128(lc: &ll::LaunchConfig) -> String {
+    let mut b = [0u8; 16];
+    b[0] = lc.features;
+    b[1..].copy_from_slice(&lc.reserved);
+    u128::from_le_bytes(b).to_string()
 }
