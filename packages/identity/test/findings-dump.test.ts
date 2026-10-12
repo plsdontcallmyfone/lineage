@@ -154,6 +154,8 @@ describe("findings dump", () => {
     const all = files.filter((f) => !f.endsWith(".json") || f === "index.json").map((f) => w.git("show", `HEAD:${f}`)).join("\n");
     expect(all).not.toContain(EM_DASH);
     expect(w.reports.at(-1)).toMatchObject({ status: "published", url: "https://github.com/units-agents/findings", episodes: 200, units: 2, agents: 2, last_seq: 200, verified: true });
+    // the commit message counts what the commit holds (the index is built inside plan())
+    expect(w.git("log", "-1", "--format=%B")).toContain("2 units, 200 episodes in all.");
 
     // the rest inside 10 minutes: rate limited; after: one more commit with them, never the open one
     const n1 = Number(w.git("rev-list", "--count", "HEAD").trim());
@@ -163,6 +165,7 @@ describe("findings dump", () => {
     const s2 = await w.pub.run();
     expect(s2).toMatchObject({ result: "published", added: 5, episodes: 205 });
     expect(Number(w.git("rev-list", "--count", "HEAD").trim())).toBe(n1 + 1);
+    expect(w.git("log", "-1", "--format=%B")).toContain("205 episodes in all.");
     const tree = w.git("ls-tree", "-r", "--name-only", "HEAD");
     expect(tree).not.toContain("0".repeat(62) + "ce"); // seq 206 (0xce)
     expect(w.git("grep", "-c", "OPEN_CANDIDATE_SECRET", "HEAD")).toBe("");

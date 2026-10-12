@@ -28,7 +28,8 @@ export interface ProfileCommitOptions {
   replaceTree: boolean;
   /** paths to delete from the head's tree before the planned files are written (the findings dump drops a hidden agent's records) */
   remove?: (s: ProfileRepoState) => string[];
-  message: string;
+  /** the commit message; a function is called after plan(), so it can count what the plan decided */
+  message: string | (() => string);
   /** repository name under the account; the profile repository <login> by default (agent learnings use units-learnings) */
   repoName?: string;
   /** organization that holds the repository instead of the account (the publisher's units-agents, docs/plans/GITHUB-ORG.md 3) */
@@ -124,7 +125,7 @@ export async function profileRepoCommit(o: ProfileCommitOptions): Promise<Profil
     const c = o.cred;
     const ident = ["-c", `user.name=${c.login}`, "-c", `user.email=${noreplyEmail(c)}`, "-c", "gpg.format=ssh", "-c", `user.signingkey=${c.ssh_private_key_path}`, "-c", "commit.gpgsign=true"];
     const msgFile = join(work, ".git", "UNITS_MSG");
-    writeFileSync(msgFile, o.message);
+    writeFileSync(msgFile, typeof o.message === "function" ? o.message() : o.message);
     runGit(work, [...ident, "commit", "-q", "-S", "-F", msgFile]);
     const sha = runGit(work, ["rev-parse", "HEAD"]);
     runGit(work, ["push", "-q", "origin", `HEAD:refs/heads/${branch}`], env);

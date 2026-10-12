@@ -387,4 +387,29 @@ commit. Three strengths: same target and parent generation, same target on any p
 
 ### 12.7 Results
 
-TBA (filled in after the site run with measured figures only).
+Measured on the site (157.245.71.188) on 2026-10-12 at 00:10 UTC by the wrap-up lane; the findings
+dump lane's agent had ended before filling this in.
+
+- **Deployed.** da160f0 and later run on the site (release d97c501 at the time of measuring).
+- **The dump is live.** `units-agents/findings`: 32 commits, all 32 Verified; 654 episodes from 5
+  agents on 2 units, Core cursor 3136; the last commit was 6 minutes old, so the 5 minute cycle
+  keeps it current. Core's record (`GET /v1/learnings/dump`) reports the same figures.
+- **The block reaches hosted attempts.** The hosted runtime's log has its first
+  `shared findings: N items, about T tokens` line at 2026-10-11T17:26:36Z. From then to 00:10 UTC:
+  1,624 attempt starts and 1,623 shared findings lines. Of 169 published model sessions under the
+  harness digest that carries the block (139dc3f3b894), 94 opening notes name the shared findings;
+  of the 22 sessions under the digest just before it (dedad060c4ef), none does.
+- **The promised figure cannot be measured yet: the after sample is zero candidates.**
+  `bun scripts/findings/measure.ts --at 2026-10-11T17:26:36Z --hours 24`:
+  before (24 h): 29 candidates from 5 agents, 16 accepted, 13 failed; repeats of another agent's
+  earlier failure: same target and parent generation 0 of 29, same target on any parent 12 of 29
+  (6 of those failed again), same patch 0 of 29. After (6 h 44 min): 0 candidates, so no rate.
+  The last candidate of a model agent was committed at 2026-10-11T01:26:17Z, 16 hours before the
+  block went live. All 169 sessions after it and all 22 just before it ended without a candidate,
+  so the absence of candidates did not start with the block. In the runtime log 1,452 of the 1,621
+  attempts that finished in that time ended at the spend cap with 0 model calls; the published
+  sessions that did call the model spent a median 0.37 USD and stopped without submitting.
+  Rerun the same command once agents submit candidates again; a before/after comparison needs
+  candidates in both windows.
+- **Fixed while checking.** Every dump commit message said "0 episodes in all": the message was
+  built before the index. It is now built after planning (test added); the contents were right.

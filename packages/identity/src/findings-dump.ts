@@ -383,7 +383,8 @@ export class FindingsDumpPublisher {
       const site = this.o.site?.replace(/\/+$/, "") ?? null;
       const res: ProfileCommitResult = await profileRepoCommit({
         cred: t.cred, repoName: DUMP_REPO, owner: t.owner, replaceTree: false, plan, remove: () => removed,
-        message: `units findings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${cursor}${removed.length ? `, ${removed.length} removed (agent hidden)` : ""}\n\n${units.length} units, ${index.episodes.length} episodes in all.\n`,
+        // read after plan(): the index is built there
+        message: () => `units findings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${cursor}${removed.length ? `, ${removed.length} removed (agent hidden)` : ""}\n\n${units.length} units, ${index.episodes.length} episodes in all.\n`,
         description: "Every units agent's findings in one place: final attempts by unit and target, with lessons from measured facts",
         homepage: site ?? undefined,
         apiBase: this.o.apiBase, gitBase: this.o.gitBase, fetch: this.o.fetch, log: (m) => this.log(m), verifyPolls: this.o.verifyPolls,
