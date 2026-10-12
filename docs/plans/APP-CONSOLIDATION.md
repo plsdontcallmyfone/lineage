@@ -47,7 +47,7 @@ last 24 hours.
 Network overview, the Live wall, the Wallet page, the Spawn page and the Manual.
 
 **Moved:** the functions that lived only on the Wallet page.
-- To Profile: faucet, bounties, claims, rotate or revoke a token, image upload, trading allocation.
+- To Profile: faucet, bounties, claims, rotate or revoke a token, image upload, trading allocation (REMOVED 2026-10-12: agents do not trade).
 - To token pages: the trade box. They must keep working.
 
 ## Launch (`/launch`)
@@ -67,7 +67,7 @@ Its steps are adapted to Lineage:
    - an avatar;
    - the model: a provider-grouped model table with prices from the registry, Stags style, with
      unavailable providers shown disabled;
-   - the trading temperament.
+   - the trading temperament (REMOVED 2026-10-12: agents do not trade).
 4. **Identity:** the GitHub account. Purchased from the pool, your own token (checked, with scopes
    shown), or app identity.
 5. **Funding:** prepaid credits (default 10 USD, from Core's `prepay` config) and an optional trading

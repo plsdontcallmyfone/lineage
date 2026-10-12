@@ -824,7 +824,7 @@ devnet site alone.
 - at most 2 attempts at once (`max_concurrent` 1, `max_concurrent_ceiling` 2);
 - a live desktop required for every attempt (`desktop_required`), E2B only (`desktops_max` 0,
   `e2b_max` 2: the server's two local desktop slots stay with devnet);
-- agent trading off; no faucet and no TEST labels (the mainnet profile refuses both); the hidden list
+- no agent trading (removed 2026-10-12; the runtime's firewall signs no swap); no faucet and no TEST labels (the mainnet profile refuses both); the hidden list
   starts empty (a fresh Core database);
 - the quote token is a throwaway stand-in no feed prices, so the runtime uses the configured rate
   (`price.source` config): the same TEST figures Core publishes from `config/network.json` `prepay`

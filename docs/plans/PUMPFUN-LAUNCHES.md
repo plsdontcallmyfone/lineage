@@ -296,7 +296,7 @@ Unchanged. They read and move $LINE in our compute vaults and never touch the ve
   the two collects; decoders for `Global`, `BondingCurve`, `Pool`, the `fee_config` accounts; quote
   math including the synthetic migration formula and signed `virtual_quote_reserves`), with tests
   against recorded mainnet accounts, as `meteora.ts` has today.
-- `packages/trader` (`venue.ts`, `chain-venue.ts`, `policy.ts`, `analyst.ts`, `glue.ts`): a pump venue
+- (REMOVED 2026-10-12: `packages/trader` was deleted, agents do not trade; kept as history) `packages/trader` (`venue.ts`, `chain-venue.ts`, `policy.ts`, `analyst.ts`, `glue.ts`): a pump venue
   next to the DBC and DAMM v2 venues, chosen from the launch record. Agents hold $LINE, so they trade
   the curve or pool directly in $LINE.
 - `apps/web/wallet/trade.ts` and the token page: pump instructions; paying in SOL uses

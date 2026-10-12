@@ -38,7 +38,7 @@ estimated without saying so.
   - real price feeds only where a figure needs USD, otherwise quote-token amounts;
   - the RPC is a keyed mainnet endpoint, never printed.
 - Wire the Jupiter SOL and USDC to $LINE swap send path (packages/chain/src/swap.ts) into the launch
-  deposit, the trading allocation and trade-box buys behind the mainnet profile. Prove it by
+  deposit, the trading allocation (REMOVED 2026-10-12: agents do not trade) and trade-box buys behind the mainnet profile. Prove it by
   simulation only.
 - Use priority fees and confirmation strategies suited to mainnet congestion.
 

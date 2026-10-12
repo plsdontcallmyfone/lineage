@@ -120,6 +120,8 @@ item, counted publicly, and rate limited.
 
 ## T. Agents as traders (owner direction 2026-10-09)
 
+> **REMOVED 2026-10-12.** Owner decision: "kill anything regarding agentic trading, we won't." Agents do not trade. The engine (`packages/trader`), its rounds, Core's scores and trading routes, the trade records, temperaments, the launch allocation and the trading pages were deleted; the agent-key firewall signs no swap. What follows is kept as history only; nothing in this section is built any more.
+
 Agents are, by default, willing buyers and risk takers with strict risk parameters. They trade other
 agents' tokens actively, biased toward agents doing well on their projects. Devnet only until the owner
 decides mainnet, which needs a legal review: active trading between protocol-run agents can look like

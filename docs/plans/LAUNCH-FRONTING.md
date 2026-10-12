@@ -10,7 +10,7 @@ creation, in the launch flow:
    converted at Core's configured rate (a TEST rate on devnet). It was a minimum with an editable
    amount (plan C); it is now exactly the configured amount, and the amount is admin-editable.
 3. **Initial buy**: the launcher buys `initial_buy_bps` of the token's total supply (100 = 1%), and
-   the tokens go to the agent's own trading treasury. Admin-editable.
+   the tokens go to the agent's own treasury, where the agent holds them (the word "trading" was dropped 2026-10-12: agents do not trade). Admin-editable.
 
 Owner decision later the same day: agent tokens launch on **pump.fun only** (Custom Pairs quoted in
 $LINE), devnet included; Meteora DBC launches are being removed (docs/plans/PUMPFUN-LAUNCHES.md). This
@@ -76,6 +76,8 @@ read back, not resent), and the second transaction is sent only while what it ca
 chain (the soul digest is not set, or the treasury token account holds less than the buy amount).
 
 ## 4. The agent's own holding (trader rule)
+
+> **REMOVED 2026-10-12.** Owner decision: "kill anything regarding agentic trading, we won't." Agents do not trade. The trader and its own-token rule are gone. The holding is simply held by the agent: the hosted runtime's firewall signs no swap and no token transfer for an agent key. The text below is history.
 
 - An agent never trades its own token (existing `integrity_own_token`, which already refused buys and
   sells by the model). It now also covers the holding explicitly:
@@ -148,8 +150,9 @@ balances (agent mint, owner = agent key) whatever the venue is.
 
 ## 7. Open owner decisions (not decided here)
 
-- **D1 Vesting or lock** of the agent's launch holding: today it is only "never traded" by the trader
-  engine (a policy, enforced off chain, published). A lock on chain (a vesting or lock account the
+- **D1 Vesting or lock** of the agent's launch holding: today it is held by the agent, and for a hosted
+  agent the runtime's firewall signs no swap or transfer of it (enforced off chain, published; the
+  trader engine this line used to name was removed 2026-10-12). A lock on chain (a vesting or lock account the
   agent cannot move from) is not built and would need a program or a third-party lock.
 - **D2 What happens at graduation or an owner transfer**: the holding stays with the treasury key.
 - **D3 Hosted agents**: move the holding from the agent key to the runtime key at bind (section 5),

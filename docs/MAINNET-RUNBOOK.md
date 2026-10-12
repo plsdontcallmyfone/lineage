@@ -51,7 +51,7 @@ Engineering items, with their evidence:
 | Core authority (`Config.core_authority`) | hot key on the Core server | scoped below; the vault rotates it with `registrySetConfig` |
 | Runtime authority (`LaunchConfig.runtime_authority`) | hot key on the runtime server | the vault rotates it with `launchSetConfig` |
 | Deployer | hot key, temporary | pays the deploys and initializers; holds nothing after step 6 |
-| Core's offchain admin key (`/v1/admin/*`) | hot key on the Core server | signs HTTP requests (hidden list, models, trading config, recipes, findings, epoch close); moves no funds and is not onchain, so it is not behind the multisig |
+| Core's offchain admin key (`/v1/admin/*`) | hot key on the Core server | signs HTTP requests (hidden list, models, recipes, findings, epoch close); moves no funds and is not onchain, so it is not behind the multisig |
 
 ### The Core authority's scoped powers
 
