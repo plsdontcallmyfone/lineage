@@ -319,11 +319,14 @@ async function main() {
       check("wizard, Agent: the default model and the hosted runtime are selected", S.runtime_choice === "hosted", `model ${S.model_choice}, runtime ${S.runtime_choice}`);
       await shot("3-agent");
       await page.click('[data-act="lz-next"]');
-      await page.locator("#w-id-price").waitFor({ timeout: 30_000 });
+      await page.locator("#w-id-price").waitFor({ state: "attached", timeout: 30_000 });
       await page.waitForFunction(() => !/^$|price from Core/.test(document.querySelector("#w-id-price")?.textContent ?? ""), null, { timeout: 60_000 });
-      const offered = !(await page.locator('input[name="l_identity"][value="purchased"]').isDisabled());
+      // a deployment that gives no GitHub account does not show the option at all; one that does offers it, and this run takes the own-token path either way
+      const offered = await page.locator("#w-id-paid").isVisible();
       if (offered) await page.check('input[name="l_identity"][value="token"]');
-      check("wizard, Identity: \"Your own token\" is selected (the units account is not offered on this instance)", !offered && (await page.locator('input[name="l_identity"][value="token"]').isChecked()), await text("#w-id-price"));
+      S.identity_offered = offered ? await text("#w-id-price") : false;
+      check("wizard, Identity: \"Your own token\" is selected; the GitHub account option is shown with its fee only where the deployment offers it, never as a dead radio",
+        (await page.locator('input[name="l_identity"][value="token"]').isChecked()) && !/we operate|not offered here/.test(await text('[data-step="3"]')) && (!offered || /SOL/.test(String(S.identity_offered))), offered ? `offered at ${S.identity_offered}` : "not shown on this instance");
       await shot("4-identity");
       const tFunding = Date.now();
       await page.click('[data-act="lz-next"]');

@@ -204,7 +204,7 @@ export class Prepay {
     for (const k of ["initial_buy_bps", "initial_buy_slippage_bps"] as const)
       if (b[k] !== undefined && (!Number.isInteger(b[k]) || (b[k] as number) < 0 || (b[k] as number) > 10_000)) throw bad("bad_fronting", `${k} must be an integer 0 to 10000`);
     if (b.identity_account_price_lamports !== undefined && (typeof b.identity_account_price_lamports !== "string" || !/^\d{1,19}$/.test(b.identity_account_price_lamports)))
-      throw bad("bad_fronting", "identity_account_price_lamports must be a whole number of lamports as a string, such as \"50000000\"");
+      throw bad("bad_fronting", "identity_account_price_lamports must be a whole number of lamports as a string, such as \"30000000\"");
     if (b.identity_account_recipient !== undefined && (typeof b.identity_account_recipient !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(b.identity_account_recipient)))
       throw bad("bad_fronting", "identity_account_recipient must be a base58 address");
     return this.c.tx(() => {

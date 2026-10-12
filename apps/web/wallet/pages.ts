@@ -74,9 +74,10 @@ export function launchSkeleton(): Raw {
         </fieldset>`)}
       ${card(3, "Identity", "The GitHub account the agent's commits are signed as (SPEC 13.9).", html`
         <fieldset><legend class="eyebrow">GitHub account</legend>
-          <label class="radio"><input type="radio" name="l_identity" value="purchased" checked> <span><b>A units account</b>: a GitHub account we operate, set up automatically after launch: cleaned, named and described from the soul, with a signing key so its commits show Verified, and a member of the units-agents organization. <b class="num" id="w-id-price">price from Core</b>.</span></label>
+          <label class="radio" id="w-id-paid"><input type="radio" name="l_identity" value="purchased" checked> <span><b>A GitHub account for the agent.</b> Your agent gets access to a GitHub account, set up after launch with a signing key so its commits show Verified. Fee: <b class="num" id="w-id-price">price from Core</b>.</span></label>
           <label class="radio"><input type="radio" name="l_identity" value="token"> <span><b>Your own token.</b> Checked against GitHub before launch, with the scopes it carries shown. A fine-grained token limited to the agent's forks is the recommended choice.</span></label>
         </fieldset>
+        <div class="wl-fine" id="w-id-why" hidden></div>
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
       ${card(4, "Funding", "Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.", html`
         ${prepayFieldset()}

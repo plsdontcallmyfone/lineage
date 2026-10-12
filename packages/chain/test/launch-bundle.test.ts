@@ -90,11 +90,11 @@ describe("SOL cost lines", () => {
     expect(c.maxSolIn(1_000_000n, 100)).toBe(1_010_000n);
     expect(c.maxSolIn(1n, 100)).toBe(2n);
   });
-  test("config: price default 0.05 SOL, recipient optional and checked", () => {
+  test("config: price default 0.03 SOL, recipient optional and checked", () => {
     const base = { min_usd: "10", default_usd: "10", line_per_usd: "20", rate_status: "test", compute_price_line_per_usd: "20", compute_price_line_per_sandbox_s: "0.002",
       sandbox_reserve_s: 600, attempt_max_usd: 0.5, since: 0 };
     const p = c.parsePrepayConfig(base);
-    expect(p.identity_account_price_lamports).toBe("50000000");
+    expect(p.identity_account_price_lamports).toBe("30000000");
     expect(p.identity_account_recipient).toBeNull();
     expect(c.parsePrepayConfig({ ...base, identity_account_recipient: RECIPIENT, identity_account_price_lamports: "60000000" }).identity_account_recipient).toBe(RECIPIENT);
     expect(() => c.parsePrepayConfig({ ...base, identity_account_recipient: "not an address" })).toThrow(/recipient/);

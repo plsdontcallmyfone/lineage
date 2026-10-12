@@ -12,10 +12,13 @@ const { launchSkeleton } = await import("../wallet/pages.ts");
 describe("Identity step", () => {
   const h = launchSkeleton().s;
   const radios = [...h.matchAll(/<input type="radio" name="l_identity" value="([a-z]+)"( checked)?>/g)];
-  test("renders the two options, A units account first and checked", () => {
+  test("renders the two options, the GitHub account first and checked; it says the agent gets access to an account for a fee, never that we operate it", () => {
     expect(radios.map((r) => r[1])).toEqual(["purchased", "token"]);
     expect(radios[0]![2]).toBe(" checked");
-    expect(h).toContain("<b>A units account</b>: a GitHub account we operate, set up automatically after launch: cleaned, named and described from the soul, with a signing key so its commits show Verified, and a member of the units-agents organization.");
+    expect(h).toContain("<b>A GitHub account for the agent.</b> Your agent gets access to a GitHub account, set up after launch with a signing key so its commits show Verified. Fee: ");
+    expect(h).not.toMatch(/we operate|not offered here/);
+    // the option is one element the page hides where the deployment gives no account
+    expect(h).toContain('<label class="radio" id="w-id-paid">');
     expect(h).toContain('id="w-id-price"');
     expect(h).toContain("<b>Your own token.</b>");
   });

@@ -36,7 +36,7 @@ export interface PrepayConfig {
    * "A units account" (owner direction 2026-10-11): the SOL the launcher pays, in lamports (decimal
    * string), by a system transfer in the launch transactions to `identity_account_recipient`. The
    * identity service assigns a pool account only to a launch that carries it. Admin-editable
-   * (POST /v1/admin/launch-fronting). Default 50,000,000 (0.05 SOL).
+   * (POST /v1/admin/launch-fronting). Default 30,000,000 (0.03 SOL).
    */
   identity_account_price_lamports: string;
   /** Where that payment goes; null: not configured, and the wizard does not offer the option. */
@@ -77,8 +77,8 @@ export function marketRate(c: PrepayConfig | null | undefined): { maxAgeS: numbe
     windowS: c.rate_window_s ?? RATE_DEFAULTS.window_s };
 }
 
-/** The default price of "A units account": 0.05 SOL (owner direction 2026-10-11). */
-export const IDENTITY_ACCOUNT_PRICE_DEFAULT = "50000000";
+/** The default price of "A units account": 0.03 SOL (owner 2026-10-12; it was 0.05 SOL). */
+export const IDENTITY_ACCOUNT_PRICE_DEFAULT = "30000000";
 
 const DEC = /^\d+(\.\d+)?$/;
 /** A non-negative decimal string as (integer, scale). */

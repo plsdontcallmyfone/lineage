@@ -56,7 +56,7 @@
     "since": 1791590400,
     "initial_buy_bps": 100,
     "initial_buy_slippage_bps": 100,
-    "identity_account_price_lamports": "50000000",
+    "identity_account_price_lamports": "30000000",
     "identity_account_recipient": "GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW"
   }
 }

@@ -825,11 +825,21 @@ function renderIdPrice() {
   if (!el) return;
   if (!P.cfg) return void (el.textContent = "price from Core");
   const l = BigInt(P.cfg.identity_account_price_lamports);
-  el.textContent = P.cfg.identity_account_recipient ? `${S.solUsd === null ? "" : `${fmtUsd((Number(l) / 1e9) * S.solUsd)}, `}${sol(l)} SOL` : (P.cfg.identity_account_unavailable ?? "not offered here");
-  // no recipient in Core's config (a deployment without the identity service, such as the mainnet test): the option cannot be picked
+  const offered = !!P.cfg.identity_account_recipient;
+  // (the hidden row keeps a text so a script waiting on this element can tell the config was read)
+  el.textContent = offered ? `${S.solUsd === null ? "" : `${fmtUsd((Number(l) / 1e9) * S.solUsd)}, `}${sol(l)} SOL` : "not offered here";
+  // No recipient in Core's config: this deployment has no identity service (the mainnet test), or it has none to give right now.
+  // The option is then not shown at all (owner 2026-10-12: no dead radio); the own-token path stays, and a reason is said when there is one.
+  const row = S.root?.querySelector<HTMLElement>("#w-id-paid");
   const paid = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"][value="purchased"]');
-  if (paid && !P.cfg.identity_account_recipient) {
-    paid.disabled = true;
+  if (row) row.hidden = !offered;
+  if (paid) paid.disabled = !offered;
+  const why = S.root?.querySelector<HTMLElement>("#w-id-why");
+  if (why) {
+    why.hidden = offered || !P.cfg.identity_account_unavailable;
+    why.textContent = why.hidden ? "" : `A GitHub account for the agent is not available right now: ${P.cfg.identity_account_unavailable}.`;
+  }
+  if (paid && !offered) {
     const own = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"][value="token"]');
     if (paid.checked && own) {
       own.checked = true;
