@@ -1,6 +1,6 @@
 {
   "_note": "OFFICIAL go-live values (docs/MAINNET-RUNBOOK.md 'Go-live (single key, today)'; scripts/mainnet/golive.ts). Public values only. Owner decisions 2026-10-12: no multisig today, the dev wallet is admin, upgrade authority and every wallet-configurable recipient; fee split 70% compute, 30% protocol. Every key under a block named `owner_decision` is a TEST value carried over or a PROPOSAL of the go-live prep lane: the owner confirms or edits it before `golive.ts init --send` (init refuses while `owner_confirmed` is false). Token amounts are whole $UNITS (6 decimals, pump.fun supply 1,000,000,000). Amounts ending in _usd are US dollars and are turned into $UNITS at the price read from $UNITS's own pump.fun market (its curve or pool, times SOL/USD from Jupiter) at the moment `init` first resolves them; the resolution is written to <out>/official-resolved.json and reused on every resume.",
-  "owner_confirmed": false,
+  "owner_confirmed": true,
   "admin": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
   "core_authority": "AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu",
   "runtime_authority": "CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs",
