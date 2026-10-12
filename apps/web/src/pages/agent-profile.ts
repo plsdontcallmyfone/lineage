@@ -1,4 +1,5 @@
 import { get, loadConfig } from "../api.ts";
+import { repoPairSlot } from "../agent-repo.ts";
 import { acceptanceStat } from "./profile-lines.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
@@ -121,7 +122,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(
     "What it is building",
-    html`<div class="panel-b">${tok?.building !== undefined ? buildingLine(tok, { full: true }) : buildingLine({ repo_url: p.target_repo ?? null, building: null, session: null })}</div>`,
+    html`<div class="panel-b">${tok?.building !== undefined ? buildingLine(tok, { full: true }) : buildingLine({ repo_url: p.target_repo ?? null, building: null, session: null })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", id, tok?.building?.repo ?? tok?.repo_url ?? p.target_repo ?? null)}</div></div>`,
     { cls: "pf-building" },
   );
   const hiddenRow = hidden.agents.has(id) ? { reason: tok?.hidden?.reason ?? "Test launch" } : tok?.hidden ?? null;

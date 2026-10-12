@@ -1,4 +1,5 @@
 import { get, loadConfig, loadLineageNames } from "../api.ts";
+import { commitSlot, repoPairSlot } from "../agent-repo.ts";
 import { explorerTx } from "../market.ts";
 import { effect, gainPct, int, repoLink, shortHex, shortId, stamp, target, when } from "../fmt.ts";
 import { html } from "../html.ts";
@@ -53,6 +54,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
           <span title="${stamp(g.accepted_at)}">${when(g.accepted_at)}</span>
         </div>
       </a>
+      ${g.entry_type === "patch" ? html`<div class="chain-gh sub" style="grid-column:2;padding:0 0 8px 12px">${commitSlot(l.lineage_id, g.gen_id)}</div>` : ""}
     </div>`;
   })}</div>`;
 
@@ -210,7 +212,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   const body = html`
     <div class="crumbs"><a href="/">Explorer</a><span>/</span><span>Unit</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${recipe.name ?? "Unit"}</h1>
-      <div class="ph-sub">${repoLink(l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>unit <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}</div></div></div>
+      <div class="ph-sub">${repoPairSlot("lineage", l.lineage_id, l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>unit <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Height", html`${l.height}`, html`tip ${genLink(l.tip)}`)}
       ${stat("Generations", int(live.length), `${accepted.length} accepted, ${reverts.length} reverted`)}
