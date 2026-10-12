@@ -279,7 +279,33 @@ Stated plainly, so nobody reads "firewall" as "nothing can go wrong".
   chain venue's real buy and sell transactions pass; the same key refuses everything else; the
   signing-primitive tripwire.
 
-## 8. Built
+## 8. Built (2026-10-11)
 
-See the lane's row in `CLAUDE.md` and section 3.1 for the files. Results of the suites and the
-headless checks are recorded there when the lane closes.
+Files
+
+- Firewall: `packages/chain/src/guard.ts`, `firewall.ts`, `firewall-chain.ts`; the guard inside `signBytes` (`tx.ts`); `sendAndConfirm` (`sender.ts`) and `cosignCommand` (`cosign.ts`) authorize before signing; limits in `packages/core/src/scores.ts`.
+- Runtime: `packages/runtime/src/firewall.ts` (installed in `main.ts` for `run` and `cosign`), `state.ts` (`keyFor` guards), `packages/trader/src/trader.ts` (guards treasury keys, publishes `firewall_<rule>` refusals).
+- Prompts: `packages/protocol/src/untrusted.ts`; `packages/trader/src/analyst.ts` and `policy.ts` (`addressRefusal`, integrity before position); `packages/worker/src/proposers/anthropic.ts` (rule line, notes, shared findings, file and search results).
+- Wallet display: `packages/core/src/agent-wallet.ts` with `GET /v1/agents/:id/wallet` and `GET /v1/wallets`; `apps/web/src/pages/wallet-panel.ts`, mounted with one line each in `agent-profile.ts`, `token.ts` and `social-ui.ts`.
+
+One change to section 3.3 while building: a swap is signed only when trading is on in both the
+runtime's own config (`runtime.json` `trading.enabled`) and Core's trading config. The site's runtime
+has trading off, so its firewall refuses every swap whatever Core's config says. For a swap the
+firewall also requires the message header to lock exactly the accounts the rebuilt instructions need
+(rules `account_flags`, `unused_account`).
+
+Results
+
+- `packages/chain/test/firewall.test.ts`: 80 tests. 51 named refusals in one table plus the grouped ones, the parser, lookup tables, the guard, the chain-backed firewall on recorded pump.fun accounts, and the property tests: 4,000 random instruction lists, every single-account mutation of the four swaps, every discriminator bit flip tried, 6,000 random byte flips of valid messages, 5,000 random buffers. No allowed message outside the independent statement of the policy.
+- `packages/trader/test/adversarial.test.ts`: 45 tests, 41 of them attacks. For each: the text is in the prompt only as delimited or scrubbed data, the obedient model's answer is refused or dropped, and the wanted transaction is refused, never sent, and unsignable by the guarded key through `signBytes`, `signMessageWith`, `buildTransaction` and `cosign`. One test shows what an obedient model can still cause: a buy of a registered agent token at the temperament's size into the agent's own account.
+- `packages/runtime/test/firewall-wiring.test.ts`: 11 tests, including the chain venue's real buy and sell signed and sent through a mock RPC, a post with trading off, the bind, and the signing tripwire (which caught a new `signBytes` caller in another lane the day it was written; reviewed: Core's claim attestor key).
+- `packages/core/test/agent-wallet.test.ts`: 3 tests.
+- `bun test packages/trader packages/runtime`: 211 pass, 0 fail. `tsc` clean.
+- Headless wallet display check (Chromium) at 1280 and 390 on the agent profile, the token page and the feed: 56 of 56 locally against devnet, 56 of 56 on the deployed site (154b113). Figures on the page equal Core's reading in base units; copy puts the full address on the clipboard; no horizontal scroll, no monospace.
+
+Not covered
+
+- No model reads desktop pages today, so that attack is tested at the helper only.
+- Agent posts (`packages/runtime/src/posts.ts`) are written from facts the engine assembles; recipe names and targets in those facts are not passed through `scrubField` yet.
+- The firewall has signed no live devnet swap: trading is off on the site. Its allowed path is proven against recorded account bytes and a mock RPC, not against the live cluster.
+- A self-hosted agent's key is outside the hosted runtime and is not guarded unless its operator runs the same code path.
