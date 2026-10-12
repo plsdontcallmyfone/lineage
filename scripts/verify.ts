@@ -12,7 +12,8 @@
 //
 // Usage: bun scripts/verify.ts --core http://127.0.0.1:9660 [--candidate <id>] [--lineage <id>]
 //          [--no-draws] [--epoch <n>] [--rpc <url> | --chain]
-//        (no candidate: verifies every final candidate, or every one in the lineage)
+//        (no candidate: verifies every final candidate of every unit, or every one in the lineage;
+//         the list is read per unit and status, so it is not limited to the newest 200)
 import { assignmentSeed, assignReplayers, guardConfigAt, guardConfigDigest, guardRuleFor, H, judge, measuredSplit, Rng, type Calibration, type GuardConfigVersion, type RevealedReplay } from "@units/protocol";
 import { blockAt, blocksBetween, Rpc } from "@units/chain";
 import { devnetRpcUrl } from "../packages/chain/src/endpoint.ts";
@@ -94,9 +95,27 @@ async function verifyOne(id: string): Promise<{ id: string; ok: boolean; detail:
   };
 }
 
-const ids: string[] = opt("candidate")
-  ? [opt("candidate")!]
-  : (await get(`/v1/candidates${opt("lineage") ? `?lineage=${opt("lineage")}` : ""}`)).filter((c: any) => ["accepted", "rejected"].includes(c.status)).map((c: any) => c.commit_id);
+// Every final candidate, not the newest 200: GET /v1/candidates answers at most 1000 rows (200 by
+// default) with no cursor, so the list is read per unit and per final status. A page that comes back
+// full may be cut short: the run says so and fails, since it could not show it checked everything.
+const PAGE = 1000;
+let truncated = 0;
+async function finalCandidates(): Promise<string[]> {
+  const lineages: string[] = opt("lineage") ? [opt("lineage")!] : ((await get("/v1/lineages")) as any[]).map((l) => l.lineage_id);
+  const seen = new Map<string, number>();
+  for (const l of lineages)
+    for (const status of ["accepted", "rejected"]) {
+      const page = (await get(`/v1/candidates?lineage=${l}&status=${status}&limit=${PAGE}`)) as any[];
+      if (page.length >= PAGE) {
+        truncated++;
+        console.log(`WARN unit ${l.slice(0, 12)} has ${PAGE} or more ${status} candidates: the list is cut at ${PAGE}`);
+      }
+      for (const c of page) seen.set(c.commit_id, c.committed_at ?? 0);
+    }
+  // newest first, as before
+  return [...seen.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id]) => id);
+}
+const ids: string[] = opt("candidate") ? [opt("candidate")!] : await finalCandidates();
 let bad = 0;
 for (const id of ids) {
   const r = await verifyOne(id);
@@ -105,6 +124,8 @@ for (const id of ids) {
 }
 console.log(`${ids.length - bad}/${ids.length} verdicts independently recomputed (rule v1: ${ruleCount[1]}, rule v2 with guard limits: ${ruleCount[2]}; ${guardHistory.length} guard config versions${guardHistory[0] ? `, active since ${new Date(guardHistory[0].effective_from_ms).toISOString()}` : ""})`);
 bad += guardFails;
+if (truncated) console.log(`FAIL ${truncated} candidate list(s) were cut at ${PAGE}: not every final candidate was checked`);
+bad += truncated;
 
 // ------------------------------------------------------------------------------------------- draws
 /** Allowed difference between Core's clock and the cluster's block times when checking a slot is not older than its request. */

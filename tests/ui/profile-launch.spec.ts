@@ -191,6 +191,7 @@ test.describe("Launch (/launch)", () => {
     const review = page.locator('[data-step="5"]');
     await expect(review).toContainText(/simulation succeeded on devnet/i);
     await expect(review).toContainText(/Model credits/i);
+    await expect(review).not.toContainText(/temperament/i); // no temperament row while the choice is not offered
     await expect(page.locator('[data-act="launch-sign"]')).toHaveCount(1);
     await cleanPage(page);
     // the step nav goes back to a reached step; Launch is never pressed
