@@ -1,0 +1,69 @@
+{
+ "attempts_started": 12,
+ "zero_call_attempts": 0,
+ "attempts": 12,
+ "by_agent": {
+  "BFPxda": 3,
+  "5t9wKL": 3,
+  "6C8N2z": 2,
+  "FCYKkF": 2,
+  "CvREmf": 2
+ },
+ "ended": {
+  "submitted": 12
+ },
+ "cap_stop_kinds": {},
+ "candidates": 12,
+ "candidates_by_agent": {
+  "BFPxda": 3,
+  "5t9wKL": 3,
+  "6C8N2z": 2,
+  "FCYKkF": 2,
+  "CvREmf": 2
+ },
+ "usd_total": 1.7973,
+ "usd_per_attempt": 0.1498,
+ "usd_per_candidate": 0.1498,
+ "usd_loop_median": 0.121,
+ "calls_median": 4.5,
+ "tokens_per_call": {
+  "input": 7,
+  "output": 566,
+  "cache_read": 20778,
+  "cache_write": 2685
+ },
+ "output_tokens_per_attempt": 2691,
+ "cache_hit_pct": 88.5,
+ "usd_share_pct": {
+  "inp": 0.1,
+  "out": 39.1,
+  "cr": 14.4,
+  "cw": 46.4
+ },
+ "first_call": {
+  "n": 12,
+  "with_cache_read": 7,
+  "cache_read_median": 2975.0,
+  "cache_write_median": 4468.0
+ },
+ "first_turn_usd_median": 0.0287,
+ "attempts_with_evaluation": 12,
+ "evaluations": 16,
+ "usd_before_first_evaluate_call_median": 0.0821,
+ "usd_at_first_evaluation_result_median": 0.1036,
+ "usd_at_first_evaluation_result_p75": 0.1256,
+ "guard_regressions": 4,
+ "notices": 0,
+ "nudges": 0,
+ "spread_targets": {
+  "perf:encode_ir": 1,
+  "perf:save_load_ir": 4,
+  "perf:train_regex_ir": 2,
+  "perf:decode_long_ir": 3,
+  "perf:decode_ir": 1,
+  "perf:check_ir": 1
+ },
+ "minutes_per_attempt_median": 14.8,
+ "sandbox_s_median": 467.0,
+ "shared_block_tokens_median": 255
+}

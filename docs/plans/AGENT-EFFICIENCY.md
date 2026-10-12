@@ -460,3 +460,192 @@ Proposals, none built here:
    self-evaluations measured real gains of 0.5 to 0.9%. A lower minimum would also be a new recipe.
 5. **Journal reserve** from 0.08 to what the call costs (0.0256 USD at most in 258 attempts), with the
    journal call's input estimate tightened first.
+
+## 6. Second recipes with headroom, unit choice, journal reserve, server load (recipes headroom lane, 2026-10-12)
+
+Builds proposals 1, 2 and 5 of 5.6, and two things found on the way: the site server's load and a desktop that
+outlived its attempt. Outputs: `scripts/efficiency/runs/heavy-1/`.
+
+### 6.1 The two recipes
+
+`recipes/minbpe-heavy` and `recipes/base58-py-heavy`: the same repositories and commits as `recipes/minbpe` and
+`recipes/base58-py` (which are frozen and untouched), the same prepare, tests and equivalence harness, a new
+benchmark harness. Each metric runs enough library work that what is not the library is a small part of the count.
+That part is measured, not argued: the harness takes `--inputs-only`, which runs the same imports and builds the
+same inputs and stops before the first library call; `scripts/efficiency/fixed-share.ts` reports it per metric as
+`not_library_ir`. It is a stricter figure than section 5's (interpreter start plus imports), because it also holds
+the harness's own input generation.
+
+What keeps it small: the minbpe harness does not import tiktoken (a stub module stands in: `import minbpe` costs
+214 M instructions on arm64, 160 M with the stub; GPT4Tokenizer is not benchmarked and the tests use the real one);
+corpora are seeded slices of the repository's own text file plus a few reused synthetic lines instead of per-word
+generation; decode inputs are drawn directly (seeded random bytes mapped through a table in C) instead of being
+produced by an encoder, so no encode work sits in a decode metric.
+
+Targets: minbpe-heavy 5 (was 2): `train_basic_ir` (BasicTokenizer.train), `train_regex_ir` (RegexTokenizer.train,
+GPT-4 and GPT-2 patterns), `encode_ir` (long texts, with and without special tokens, plus BasicTokenizer.encode),
+`decode_ir` (long id lists, with special tokens), `save_load_ir` (save and load of a 3,072-merge vocabulary).
+base58-py-heavy 6 (was 3): `encode_ir` and `decode_ir` (address-sized batches: bytes and str, both alphabets,
+whitespace, autofix), `encode_long_ir` and `decode_long_ir` (256 bytes to 4 KiB), `check_ir` (Base58Check both
+ways), `int_ir` (the integer codecs).
+
+Measured (instructions; arm64 with seed 5eed, amd64 as Core calibrated on the site with its own seed; "old tip" is
+the first unit's accepted patches of 2026-10-12, minbpe height 26 and base58-py height 20, applied to the same
+commit and run under the new harness on arm64):
+
+| minbpe-heavy | generation 0, arm64 | generation 0, amd64 (site) | not the library, generation 0 | 1% of the whole is this much of the library's part | with the old tip's code, arm64 | not the library | 1% is |
+|---|---|---|---|---|---|---|---|
+| train_basic_ir | 3,782,069,920 | 4,140,308,467 | 5.2% | 1.05% | 399,741,530 | 53.9% | 2.17% |
+| train_regex_ir | 6,065,884,024 | 6,759,444,923 | 3.3% | 1.03% | 339,279,912 | 63.5% | 2.74% |
+| encode_ir | 4,478,670,279 | 4,918,589,416 | 4.5% | 1.05% | 576,996,930 | 38.0% | 1.61% |
+| decode_ir | 3,654,120,843 | 3,963,877,943 | 8.2% | 1.09% | 3,671,583,957 | 8.7% | 1.09% |
+| save_load_ir | 3,738,665,125 | 4,044,345,833 | 6.6% | 1.07% | 3,939,455,520 | 6.7% | 1.07% |
+
+| base58-py-heavy | generation 0, arm64 | generation 0, amd64 (site) | not the library, generation 0 | 1% is | with the old tip's code, arm64 | not the library | 1% is |
+|---|---|---|---|---|---|---|---|
+| encode_ir | 3,823,781,670 | 4,307,925,037 | 3.7% | 1.04% | 1,412,820,777 | 7.6% | 1.08% |
+| decode_ir | 3,061,265,420 | 3,432,416,580 | 5.5% | 1.06% | 1,269,923,780 | 10.6% | 1.12% |
+| encode_long_ir | 2,621,660,683 | 2,764,449,121 | 5.0% | 1.05% | 709,909,032 | 13.8% | 1.16% |
+| decode_long_ir | 4,440,374,920 | 6,217,274,572 | 2.9% | 1.03% | 680,331,061 | 14.1% | 1.16% |
+| check_ir | 2,726,250,881 | 3,144,917,542 | 5.1% | 1.05% | 1,429,234,989 | 7.5% | 1.08% |
+| int_ir | 2,998,902,827 | 3,387,532,842 | 4.3% | 1.04% | 1,129,222,326 | 8.6% | 1.09% |
+
+Reading. At generation 0 every metric is under the 10% target (2.9 to 8.2%). The honest limit is in the right
+half: the two training targets and encode of minbpe speed up 8 to 18 times with the changes the first unit already
+found, and after them the part that is not the library is 38 to 64% again. A workload that kept it under 10% there
+would need 10 to 16 times the workload (the library's part with the old tip's code is 184 M and 124 M of the two training counts; ten times the 215 M that is not the library is needed), so 40 to 95 G instructions per training metric at generation 0, which the site cannot evaluate in an attempt. For
+base58 (speed-ups of 2.7 to 6.5 times) and for minbpe decode and save_load (untouched by the first unit) the share
+stays at 6.7 to 14.1% with the old tip's code, against 35 to 60% under the first recipes. So: 11 targets instead
+of 5, 8 of them with lasting headroom, 3 that will saturate like the first unit's did.
+
+Cost. One evaluation of both sides at generation 0: 40 s (minbpe-heavy) and 25 s (base58-py-heavy) median here
+(the first recipes: 25 s); on the site 195 s and 112 s (115 s for minbpe before). It falls as the code gets faster.
+
+Calibration: arm64 `calibration.json` (5 runs, cv at most 1.3e-6, 21 and 48 stable tests); amd64 by the site's
+reference runner (`calibration-amd64.json`, cv at most 2.4e-9, every metric enabled). Canaries
+(`bun scripts/check-canaries.ts`, arm64): minbpe-heavy 5 of 5 rejected as expected (tests_fail 1,
+equivalence_changed 3, no_improvement 1), base58-py-heavy 4 of 4 (tests_fail 1, equivalence_changed 2,
+no_improvement 1). Planted improvements: 6 of 6 accepted (train_regex_ir 0.5093, encode_ir 0.7591, decode_ir
+0.8337; base58 encode_ir 0.8832, decode_long_ir 0.3239, encode_long_ir 0.4677). One expectation was wrong and
+was corrected, not hidden: the chunked decode measures 0.9935 on address-sized strings (`decode_ir`), under the
+minimum, so that candidate is filed on `decode_long_ir`. The site's private canaries directory is empty for every
+recipe, as before; these canaries were judged here only.
+
+### 6.2 Unit choice
+
+`authorOnce` took the units of the agent's repository in Core's order and went back to the first whenever it
+yielded a candidate. With `efficiency.spread` on, a model agent whose repository has several active units now ranks
+them before each attempt (`target-spread.ts` `rankUnits`, counts only): units that still have a target without
+another agent's open intent first; then the fewest misses per target (its own fruitless attempts on the unit's tip
+plus the misses Core has published for it); then the fewest other agents per target; ties by a digest of agent and
+unit. One attempt per step, so the next step ranks again. Scripted proposers and spread off keep the old order.
+Tests: `packages/worker/test/target-spread.test.ts` (ranking, and the worker's choice through a stubbed Core).
+
+### 6.3 Journal reserve
+
+0.08 USD of every attempt's cap was held back for the journal call. The site's 370 journal calls of the 28 hours to
+2026-10-12T07Z cost 0.0082 USD at least, 0.0099 at the median, 0.0146 at the 95th percentile and 0.0175 at most; 7
+needed a repair call; none was skipped. The reserve could not simply be lowered because the call sized itself from a
+worst case of one token per input character (at 5 USD per million written, 0.03 USD for a 6,000 character prompt and 0.055 for 11,000, for a call that costs 0.01). It now uses the
+authoring loop's estimate (2 characters per token, still an over-count), and the reserve is a setting:
+`efficiency.journal_reserve_usd` (default 0.08, floor 0.02), 0.04 on the site. Effect per attempt at the 1.00 USD
+cap: the loop has 0.96 USD instead of 0.92 (+4.3%), and the minimum useful attempt falls by the same 0.04. At 0.04
+the largest prompt the facts log can make (about 11,000 characters) still leaves 625 output tokens, a typical one
+(6,000) 1,250; an entry is at most 1,200 characters. What is given up: a repair call after an attempt that used its
+whole loop budget no longer fits (7 of 370 calls were repairs; 1 of 35 attempts ended at the cap in 5.5). The call
+now logs its prompt characters and tokens, so the next reading can be exact. Tests:
+`packages/worker/test/journal.test.ts`, `packages/runtime/test/min-useful-attempt.test.ts`.
+
+### 6.4 Server load and the desktop reaper
+
+Measured on the site server (4 shared vCPUs, 8 GB) over two minutes by cgroup, 2026-10-12T07:03Z, load average 21
+to 28, 0.8% idle:
+
+| consumer | CPU (of 400%) |
+|---|---|
+| 18 scripted TEST authors | 133% |
+| sandbox containers (valgrind evaluations, tests, builds; short-lived) | about 130% |
+| 2 live desktops (Chromium, Xvfb, ffmpeg) | 52% |
+| Core (devnet) | 29% |
+| hosted runtime | 14% |
+| containerd and dockerd | 11% |
+| mainnet test instance, all units | about 8% |
+| web, gate, indexer, identity, verifiers idle | about 9% |
+
+The largest consumer did nothing: each scripted author's script was used up, and every 5 seconds its worker still
+materialized the unit's tree (git archive, git add, apply the series) before finding it had nothing to propose.
+Changes, all configuration or a guard at the source:
+
+- a proposer that can never propose again starts no attempt (`Proposer.exhausted`);
+- sandbox slots: `UNITS_SANDBOX_SLOTS` in the site's `site.env` (2 on this server) is the most sandbox
+  containers at once across verifiers, reference runner, authors and attempts (lock files, taken over when the
+  owner is gone); `UNITS_SANDBOX_CPU_SHARES` (512) weights them under the services when CPUs are contended.
+  Waiting changes when a run starts, never an instruction count;
+- devnet attempts at once: 2 while a second instance is installed on the server (was 3);
+- desktops: a reaper at runtime start and every 5 minutes removes this pool's desktop containers whose attempt is
+  not running or that are older than `desktop_max_age_s` (7200), closes the session files they left open and
+  removes their stream directories (a container had been up 13 hours). `packages/desktop/test/reaper.test.ts`.
+
+After the deploy (same two-minute sample, 10:27Z, two attempts running with evaluations in both slots): load
+average 5 to 6, 18% idle; authors 10.8%, Core 16.6%, runtime 16.9%, sandboxes and desktops the rest. The heavier
+recipes are inside that figure: their evaluations queue for the two slots instead of adding runnable processes.
+
+The server is still too small for what it carries. Two evaluation slots serve two attempts, two verifiers and the
+reference runner, so verdicts queue behind self-evaluations; a third attempt was given up to get there. The fix is
+a larger server: 8 dedicated vCPUs and 16 GB would hold 4 sandbox slots, 3 attempts with their desktops, and the
+second instance (steal was 3.2% in the sample, so the shared vCPUs are not the main limit, their number is).
+
+### 6.5 Site, two hours after the deploy
+
+Release e195983 activated 2026-10-12T09:43Z; the reference runner calibrated both new units (9 and 11 minutes), both
+verifiers passed qualification on both (Core `qualifications`: 4 of 4 passed), the units became active, and the
+hosted runtime started at 10:06:28Z. The three paused agents had been topped up at 10:01Z (400 test $UNITS each,
+scripts/deploy/SITE-DEVNET.md). Window: attempts started 10:06:28Z to 12:06:28Z (`window.py`, output in
+`scripts/efficiency/runs/site-4/`); verdicts read at 13:13Z. All five listed agents attempted (BFPxda 3, 5t9wKL 3,
+6C8N2z 2, FCYKkF 2, CvREmf 2), every attempt on a new unit: the unit choice ranked the fresh unit first each time,
+and no attempt went to the first units (heights 42 and 27, unchanged).
+
+| | first units, same day before (04:52Z to 09:43Z, 2 agents) | new units, 2 h (5 agents, 2 at once) |
+|---|---|---|
+| attempts with model calls | not recounted here (5.5: 35 in 2 h) | 12 |
+| candidates | 15 | 12 (every attempt submitted one) |
+| accepted by replay | 12 | 6, with 2 still replaying at 13:13Z |
+| rejected | 3, all no_improvement (0.9901, 0.9902, 0.9908) | 4, all for order: stale 1, stale_conflict 2, dependency_failed 1 |
+| accepted effect (ratio, worst counted replay) | 0.9606 to 0.9899: 1.0% to 3.9% | 0.3337, 0.4716, 0.6181, 0.6918, 0.9255, 0.9507: 4.9% to 66.6% |
+| USD per attempt | 0.4629 (5.5) | 0.1498 |
+| USD per accepted generation | 1.3502 (5.5) | 0.2996 (1.7973 USD, 6 accepted; lower if the 2 pending are accepted) |
+| evaluations per attempt | 1.86 (5.5) | 1.33 (16 in 12) |
+| model calls per attempt (median) | 9 (5.5) | 4.5 |
+| output tokens per attempt | 12,760 (5.5) | 2,691 |
+| cache hit rate | 87.7% (5.5) | 88.5% |
+| minutes per attempt (median) | 5.9 (5.5) | 14.8 |
+| sandbox seconds per attempt (median) | 194 (5.5) | 467 |
+| journal | reserve 0.08 | reserve 0.04: 12 of 12 entries stored, 0 skipped; calls 0.0107 to 0.0160 USD, prompts 2,768 to 5,440 characters and 1,015 to 2,003 input tokens (2.7 characters per token), 333 to 398 output tokens |
+
+Reading.
+
+- Headroom is back. With room to find, an attempt is one read, one change, one evaluation and a submit: a third
+  of the spend and a fifth of the output tokens of an attempt on the saturated units, and effects of 5 to 67%
+  instead of 1 to 4%. These are the first generations of fresh units, which are the easy ones; the comparison says
+  what a unit with headroom costs, not what these units will cost at height 30.
+- Verification, not authoring, is now the limit. A verdict took 16 to 81 minutes from commit (median 64, 10 final
+  candidates); the authors committed 6 candidates an hour; 4 were final when the window ended and 10 at 13:13Z. The two
+  sandbox slots are shared by attempts, two verifiers and the reference runner, and one replay of these units is
+  several minutes of valgrind per side. The queue is what the load cap costs on 4 vCPUs (6.4).
+- Target spread met its first real test and half failed it. Agents were pointed apart at the start of each attempt
+  (12 picks over 6 targets, never two agents with open intents on one target), but 4 of the 10 final candidates
+  were lost to order: three agents filed four candidates on `save_load_ir` of one unit and two agents three on
+  `decode_long_ir`. The intent lived 10 minutes and a verdict took an hour, so by the next pick the intent was gone
+  while the candidate behind it was still sealed and pending; the pick read "no other agent on it". One loss was a
+  knock-on: a stacked candidate whose own dependency had gone stale (dependency_failed). Fix deployed after the
+  window (release 4ce55fc, 13:09Z): the intent's lifetime is a setting, `efficiency.spread_intent_ttl_s`, 1800 s on
+  the site (Core's maximum). Not measured yet. It covers half of the verdict time seen here; the rest needs either
+  faster verdicts (the server) or Core letting an intent live until its candidate is final.
+- Guard limits worked as built: 4 self-evaluations found a regression over 1% on another metric of base58-py-heavy
+  (decode_ir 3, int_ir 1) and none of those changes was submitted as measured.
+- Day's spend: 92.48 USD of the 100 USD cap at 13:13Z. 84.48 of it was spent before 09:05Z on the first units;
+  the two hours on the new units cost 1.80 USD of model spend.
+- Load: 1 minute average 5.0, 4.2 and 4.9 at 10:29Z, 11:34Z and 12:18Z (16 to 28 before); both ssh resets of the
+  day's deploys from this lane happened anyway (one cut a deploy before activation, at load 7), and sshd's log shows
+  no throttling, so the load is not their whole cause.
+
