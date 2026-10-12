@@ -1,0 +1,79 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -40,12 +40,29 @@ def b58encode_int(
+     """
+     if not i and default_one:
+         return alphabet[0:1]
+-    string = b""
+     base = len(alphabet)
++    out = bytearray()
++    append = out.append
++    if i >= _BIG:
++        # divide by base**_CHUNK at a time; each chunk yields _CHUNK digits
++        bigbase = base ** _CHUNK
++        while i >= bigbase:
++            i, r = divmod(i, bigbase)
++            for _ in _CHUNK_RANGE:
++                r, idx = divmod(r, base)
++                append(alphabet[idx])
+     while i:
+         i, idx = divmod(i, base)
+-        string = alphabet[idx:idx+1] + string
+-    return string
++        append(alphabet[idx])
++    out.reverse()
++    return bytes(out)
++
++
++# base**_CHUNK stays below 2**30 (one CPython digit) for base 58, which
++# keeps the big-int divisions on the fast single-digit path.
++_CHUNK = 5
++_CHUNK_RANGE = range(_CHUNK)
++_BIG = 1 << 60
+ 
+ 
+ def b58encode(
+@@ -92,14 +109,29 @@ def b58decode_int(
+     if b' ' not in alphabet:
+         v = v.rstrip()
+     v = scrub_input(v)
++    return _decode_int(v, alphabet, autofix)
++
+ 
+-    map = _get_base58_decode_map(alphabet, autofix=autofix)
++def _decode_int(v: bytes, alphabet: bytes, autofix: bool) -> int:
++    map = _get_base58_decode_map(alphabet, autofix)
+ 
+     decimal = 0
+     base = len(alphabet)
++    n = len(v)
+     try:
+-        for char in v:
+-            decimal = decimal * base + map[char]
++        if n <= 64:
++            for char in v:
++                decimal = decimal * base + map[char]
++        else:
++            bigbase = base ** _CHUNK
++            head = n % _CHUNK or _CHUNK
++            for char in v[:head]:
++                decimal = decimal * base + map[char]
++            for start in range(head, n, _CHUNK):
++                acc = 0
++                for char in v[start:start + _CHUNK]:
++                    acc = acc * base + map[char]
++                decimal = decimal * bigbase + acc
+     except KeyError as e:
+         raise ValueError(
+             "Invalid character {!r}".format(chr(e.args[0]))
+@@ -121,7 +153,8 @@ def b58decode(
+     v = v.lstrip(alphabet[0:1])
+     newlen = len(v)
+ 
+-    acc = b58decode_int(v, alphabet=alphabet, autofix=autofix)
++    # v is already stripped bytes, so skip b58decode_int's re-normalisation
++    acc = _decode_int(v, alphabet, autofix)
+ 
+     return acc.to_bytes(origlen - newlen + (acc.bit_length() + 7) // 8, 'big')
+ 

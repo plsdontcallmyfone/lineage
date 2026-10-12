@@ -649,3 +649,67 @@ Reading.
   day's deploys from this lane happened anyway (one cut a deploy before activation, at load 7), and sshd's log shows
   no throttling, so the load is not their whole cause.
 
+
+## 7. The same attempts through OpenRouter (openrouter for every model lane, 2026-10-12)
+
+Owner decision 2026-10-12: every model, Claude included, is called through OpenRouter
+(docs/plans/MODELS-AND-SELF-FUNDING.md, "Route rule since 2026-10-12"). The question for this plan: does an
+attempt keep what sections 2, 5 and 6 bought (prompt caching, the cached static prefix, the keep-alive, pacing,
+effort) when the call goes through OpenRouter. It does, because the proposer is the same: it talks to OpenRouter's
+Anthropic Messages endpoint with the same request.
+
+### 7.1 Method
+
+`bun scripts/efficiency/ab.ts --recipes base58-py-heavy --arms S --n 3 --max-usd 1.0 --reserve 0.04 --guard 0.01
+--route runtime --out scripts/efficiency/runs/openrouter-1`: arm S is the site's settings (effort medium, bounded
+cap, pace, keep-alive 240 s, cap 1.00 USD with 0.04 kept for the journal); `--route runtime` runs each attempt
+through the hosted runtime's own RoutedProposer with the keys of providers.env and the local registry, so the
+default model (claude-opus-5-5) takes the route `routing.prefer` picks: OpenRouter, id anthropic/claude-opus-5.5,
+upstream host Anthropic in every response. Local machine, generation 0 of base58-py-heavy, real sandbox, each
+submitted change replayed once with a fresh seed and judged with the recipe's rules and a 1% guard. No Core, no
+chain. Figures are what the proposer metered: OpenRouter's reported `usage.cost` times 1.055 (its 5.5% credit fee).
+
+### 7.2 Result
+
+| attempt | end | replay | metered USD (with the 5.5% fee) | OpenRouter charged | calls | input / output / cache read / cache write tokens | cache hit | first call |
+|---|---|---|---|---|---|---|---|---|
+| S0, 17:28Z | submitted encode_long_ir | accepted, ratio 0.4737 | 0.1462 | 0.1386 | 8 | 32 / 3,182 / 54,388 / 12,781 | 80.9% | 0 read, 3,544 written (cold: nothing had written this prefix) |
+| S1 | submitted encode_long_ir | accepted, ratio 0.4643 | 0.1636 | 0.1551 | 10 | 40 / 4,700 / 78,722 / 9,033 | 89.7% | 3,544 read, 0 written |
+| S2 | submitted decode_long_ir | accepted, ratio 0.3034 | 0.1472 | 0.1395 | 9 | 36 / 4,162 / 76,406 / 8,165 | 90.3% | 3,544 read, 0 written |
+| all three | 3 of 3 submitted | 3 of 3 accepted | 0.1523 per attempt | 0.1444 per attempt | 9.0 | 108 / 12,044 / 209,516 / 29,979 | 87.4% | |
+
+Cache hit is cache read over all input tokens (input, cache read and cache write). "OpenRouter charged" is the
+metered figure without the fee.
+
+Against the direct route (section 6.5, the site on the same kind of unit, first generations of the heavy
+recipes): 0.1498 USD per attempt and an 88.5% cache hit, 12 attempts. Through OpenRouter: 0.1444 USD per attempt
+at OpenRouter's price (which equals Anthropic's list price for every token class: each call's reported cost
+equalled the registry rate times its tokens), 0.1523 with the credit fee, and 87.4% over three attempts, 89.7%
+and 90.3% once the prefix was warm. The difference between the routes is the 5.5% fee, nothing else that these
+three attempts can show. Not the same conditions as the site: this is a local machine at generation 0 and three
+attempts; the site figure is 12 attempts of five agents with the journal call counted (0.0107 to 0.0160 USD each),
+which this harness does not make.
+
+What was checked beyond the table, each with a real call:
+
+- **The static prefix carries across attempts.** S1 and S2 read the 3,544 token prefix (tools and rules) that S0
+  wrote, on their first call, as on the direct route. Requests name Anthropic's own endpoint first
+  (`provider.order`), so every call lands on the host that holds the cache.
+- **Keep-alive.** A fourth attempt with the interval forced to 30 s (`--keep-alive 30`, runs/openrouter-keepalive)
+  made 11 keep-alive calls while evaluations ran: each read the whole prefix from the cache (7,490 to 14,962
+  tokens) and wrote none, 0.0245 USD for the eleven; the attempt was submitted and accepted by replay (0.2013 USD
+  with those calls). OpenRouter does not honour `max_tokens: 0`, so the keep-alive asks for 1 token there.
+- **Journal.** One journal call through the same route: 82 input and 155 output tokens, 0.0036 USD metered.
+- **Metering against OpenRouter's own ledger.** Over the last three attempts and one journal call the proposer
+  metered 0.4879 USD before the fee; the key's usage at OpenRouter rose by 0.4894 in the same span.
+- **Spend.** This lane used 0.79 USD of OpenRouter credits in all (attempts, probes, the 28 model route proof).
+
+### 7.3 What the owner pays per day
+
+Arithmetic from measured figures, not a forecast. One attempt on a unit with headroom: 0.1444 USD of OpenRouter
+credits, 0.1523 with the fee paid when the credits are bought. The site ran 1.2 attempts per agent per hour in the
+two hours of section 6.5 (12 attempts, 5 agents, two at once, verification the limit). At that rate 50 agents make
+1,440 attempts a day: 208 USD of credits, 219 USD paid with a card. An agent that attempts back to back at the
+site's median 14.8 minutes makes 97 attempts a day: 50 such agents, 700 USD of credits. On saturated units an
+attempt cost 0.4629 USD (section 5.5), three times as much. The hard ceiling per attempt is the 1.00 USD cap. The
+vaults pay it back in the quote coin; OpenRouter is what the treasury tops up.

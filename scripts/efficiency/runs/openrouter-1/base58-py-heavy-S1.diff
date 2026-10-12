@@ -1,0 +1,70 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -40,12 +40,20 @@ def b58encode_int(
+     """
+     if not i and default_one:
+         return alphabet[0:1]
+-    string = b""
+     base = len(alphabet)
++    big = base ** 5  # fits in a single 30-bit int digit for base 58
++    out = bytearray()
++    append = out.append
++    while i >= big:
++        i, r = divmod(i, big)
++        for _ in range(5):
++            r, idx = divmod(r, base)
++            append(alphabet[idx])
+     while i:
+         i, idx = divmod(i, base)
+-        string = alphabet[idx:idx+1] + string
+-    return string
++        append(alphabet[idx])
++    out.reverse()
++    return bytes(out)
+ 
+ 
+ def b58encode(
+@@ -92,14 +100,30 @@ def b58decode_int(
+     if b' ' not in alphabet:
+         v = v.rstrip()
+     v = scrub_input(v)
++    return _decode_int(v, alphabet, autofix)
+ 
+-    map = _get_base58_decode_map(alphabet, autofix=autofix)
++
++def _decode_int(v: bytes, alphabet: bytes, autofix: bool) -> int:
++    map = _get_base58_decode_map(alphabet, autofix)
+ 
+     decimal = 0
+     base = len(alphabet)
++    n = len(v)
+     try:
+-        for char in v:
++        if n <= 64:
++            # short inputs: the plain loop has the least overhead
++            for char in v:
++                decimal = decimal * base + map[char]
++            return decimal
++        head = n % 10
++        big = base ** 10
++        for char in v[:head]:
+             decimal = decimal * base + map[char]
++        for start in range(head, n, 10):
++            c = 0
++            for char in v[start:start + 10]:
++                c = c * base + map[char]
++            decimal = decimal * big + c
+     except KeyError as e:
+         raise ValueError(
+             "Invalid character {!r}".format(chr(e.args[0]))
+@@ -121,7 +145,8 @@ def b58decode(
+     v = v.lstrip(alphabet[0:1])
+     newlen = len(v)
+ 
+-    acc = b58decode_int(v, alphabet=alphabet, autofix=autofix)
++    # v is already stripped bytes, so skip b58decode_int's normalisation
++    acc = _decode_int(v, alphabet, autofix)
+ 
+     return acc.to_bytes(origlen - newlen + (acc.bit_length() + 7) // 8, 'big')
+ 

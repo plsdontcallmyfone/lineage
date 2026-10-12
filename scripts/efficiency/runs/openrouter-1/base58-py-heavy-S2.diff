@@ -1,0 +1,57 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -40,12 +40,24 @@ def b58encode_int(
+     """
+     if not i and default_one:
+         return alphabet[0:1]
+-    string = b""
+     base = len(alphabet)
++    # base ** 5 fits in a single 30-bit digit for base 58, keeping the
++    # big-int division on the fast single-digit path.
++    big = base ** 5
++    digits = []
++    append = digits.append
+     while i:
+-        i, idx = divmod(i, base)
+-        string = alphabet[idx:idx+1] + string
+-    return string
++        i, rem = divmod(i, big)
++        if i:
++            for _ in range(5):
++                rem, idx = divmod(rem, base)
++                append(alphabet[idx])
++        else:
++            while rem:
++                rem, idx = divmod(rem, base)
++                append(alphabet[idx])
++    digits.reverse()
++    return bytes(digits)
+ 
+ 
+ def b58encode(
+@@ -98,8 +110,22 @@ def b58decode_int(
+     decimal = 0
+     base = len(alphabet)
+     try:
+-        for char in v:
+-            decimal = decimal * base + map[char]
++        if len(v) < 64:
++            for char in v:
++                decimal = decimal * base + map[char]
++        else:
++            # Accumulate 10 digits at a time in a small int to reduce
++            # the number of big-int operations.
++            big = base ** 10
++            n = len(v)
++            first = n % 10
++            for char in v[:first]:
++                decimal = decimal * base + map[char]
++            for j in range(first, n, 10):
++                c = 0
++                for char in v[j:j + 10]:
++                    c = c * base + map[char]
++                decimal = decimal * big + c
+     except KeyError as e:
+         raise ValueError(
+             "Invalid character {!r}".format(chr(e.args[0]))

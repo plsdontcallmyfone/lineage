@@ -1,0 +1,15 @@
+17:43:02 model route: anthropic/claude-opus-5-5 via OpenRouter (anthropic/claude-opus-5.5)
+17:43:04 anthropic: first call 3544 cache read, 0 cache write, 4 in
+17:43:04 anthropic: turn 1, 0.0019 USD so far
+17:43:18 anthropic: turn 2, 0.0336 USD so far
+17:43:23 anthropic: evaluating (1/4)
+17:45:04 anthropic: turn 3, 0.0457 USD so far
+17:45:09 anthropic: evaluating (2/4)
+17:46:25 anthropic: guard regression on decode_ir (exceeded, limit 0.01); not submittable
+17:46:25 anthropic: turn 4, 0.0551 USD so far
+17:46:35 anthropic: turn 5, 0.0735 USD so far
+17:46:44 anthropic: turn 6, 0.1059 USD so far
+17:46:50 anthropic: turn 7, 0.1178 USD so far
+17:46:55 anthropic: evaluating (3/4)
+17:48:00 anthropic: turn 8, 0.1341 USD so far
+17:48:05 anthropic: usage submitted: 9 calls, 36 in, 4162 out, 76406 cache read, 8165 cache write, 0.1472 USD

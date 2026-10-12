@@ -1,0 +1,350 @@
+[
+ {
+  "recipe": "base58-py-heavy",
+  "parent": "gen 0",
+  "arm": "S",
+  "i": 0,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-12T17:28:15.663Z",
+  "end": "submitted",
+  "calls": 8,
+  "input_tokens": 32,
+  "output_tokens": 3182,
+  "cache_read_tokens": 54388,
+  "cache_write_tokens": 12781,
+  "usd": 0.1462,
+  "cache_hit": 0.8093,
+  "route": {
+   "via": "openrouter",
+   "model": {
+    "provider": "anthropic",
+    "id": "claude-opus-5-5"
+   },
+   "requested": "anthropic/claude-opus-5.5"
+  },
+  "harness": {
+   "name": "anthropic",
+   "version": "anthropic/1",
+   "provider": "openrouter"
+  },
+  "upstream": [
+   "Anthropic"
+  ],
+  "models": [
+   "anthropic/claude-opus-5.5"
+  ],
+  "metered_calls": [
+   {
+    "in": 4,
+    "out": 54,
+    "cache_read": 0,
+    "cache_write": 3544,
+    "usd": 0.019851
+   },
+   {
+    "in": 4,
+    "out": 1400,
+    "cache_read": 3544,
+    "cache_write": 2288,
+    "usd": 0.042374
+   },
+   {
+    "in": 4,
+    "out": 171,
+    "cache_read": 7342,
+    "cache_write": 0,
+    "usd": 0.005174
+   },
+   {
+    "in": 4,
+    "out": 312,
+    "cache_read": 5832,
+    "cache_write": 2024,
+    "usd": 0.018507
+   },
+   {
+    "in": 4,
+    "out": 327,
+    "cache_read": 7856,
+    "cache_write": 577,
+    "usd": 0.011618
+   },
+   {
+    "in": 4,
+    "out": 302,
+    "cache_read": 8433,
+    "cache_write": 833,
+    "usd": 0.012563
+   },
+   {
+    "in": 4,
+    "out": 287,
+    "cache_read": 9266,
+    "cache_write": 2849,
+    "usd": 0.023056
+   },
+   {
+    "in": 4,
+    "out": 329,
+    "cache_read": 12115,
+    "cache_write": 666,
+    "usd": 0.013028
+   }
+  ],
+  "evals": 3,
+  "first_call": "0 cache read, 3544 cache write, 4 in",
+  "max_usd": 1,
+  "author_s": 263,
+  "sandbox_s": 207,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_long_ir",
+   "claimed": 0.4429484643076804
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.473668314323197
+  },
+  "diff_lines": 53
+ },
+ {
+  "recipe": "base58-py-heavy",
+  "parent": "gen 0",
+  "arm": "S",
+  "i": 1,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-12T17:33:56.563Z",
+  "end": "submitted",
+  "calls": 10,
+  "input_tokens": 40,
+  "output_tokens": 4700,
+  "cache_read_tokens": 78722,
+  "cache_write_tokens": 9033,
+  "usd": 0.1636,
+  "cache_hit": 0.8967,
+  "route": {
+   "via": "openrouter",
+   "model": {
+    "provider": "anthropic",
+    "id": "claude-opus-5-5"
+   },
+   "requested": "anthropic/claude-opus-5.5"
+  },
+  "harness": {
+   "name": "anthropic",
+   "version": "anthropic/1",
+   "provider": "openrouter"
+  },
+  "upstream": [
+   "Anthropic"
+  ],
+  "models": [
+   "anthropic/claude-opus-5.5"
+  ],
+  "metered_calls": [
+   {
+    "in": 4,
+    "out": 54,
+    "cache_read": 3544,
+    "cache_write": 0,
+    "usd": 0.001904
+   },
+   {
+    "in": 4,
+    "out": 1254,
+    "cache_read": 3544,
+    "cache_write": 2288,
+    "usd": 0.039293
+   },
+   {
+    "in": 4,
+    "out": 182,
+    "cache_read": 5832,
+    "cache_write": 1364,
+    "usd": 0.012283
+   },
+   {
+    "in": 4,
+    "out": 536,
+    "cache_read": 7196,
+    "cache_write": 525,
+    "usd": 0.015614
+   },
+   {
+    "in": 4,
+    "out": 506,
+    "cache_read": 7721,
+    "cache_write": 1042,
+    "usd": 0.017819
+   },
+   {
+    "in": 4,
+    "out": 147,
+    "cache_read": 8763,
+    "cache_write": 553,
+    "usd": 0.007885
+   },
+   {
+    "in": 4,
+    "out": 355,
+    "cache_read": 9316,
+    "cache_write": 590,
+    "usd": 0.012585
+   },
+   {
+    "in": 4,
+    "out": 1122,
+    "cache_read": 9906,
+    "cache_write": 928,
+    "usd": 0.030676
+   },
+   {
+    "in": 4,
+    "out": 195,
+    "cache_read": 10834,
+    "cache_write": 1232,
+    "usd": 0.012916
+   },
+   {
+    "in": 4,
+    "out": 349,
+    "cache_read": 12066,
+    "cache_write": 511,
+    "usd": 0.012622
+   }
+  ],
+  "evals": 4,
+  "first_call": "3544 cache read, 0 cache write, 4 in",
+  "max_usd": 1,
+  "author_s": 469,
+  "sandbox_s": 386,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_long_ir",
+   "claimed": 0.46462458549819713
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.4642520007754615
+  },
+  "diff_lines": 71
+ },
+ {
+  "recipe": "base58-py-heavy",
+  "parent": "gen 0",
+  "arm": "S",
+  "i": 2,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-12T17:43:01.836Z",
+  "end": "submitted",
+  "calls": 9,
+  "input_tokens": 36,
+  "output_tokens": 4162,
+  "cache_read_tokens": 76406,
+  "cache_write_tokens": 8165,
+  "usd": 0.1472,
+  "cache_hit": 0.9031,
+  "route": {
+   "via": "openrouter",
+   "model": {
+    "provider": "anthropic",
+    "id": "claude-opus-5-5"
+   },
+   "requested": "anthropic/claude-opus-5.5"
+  },
+  "harness": {
+   "name": "anthropic",
+   "version": "anthropic/1",
+   "provider": "openrouter"
+  },
+  "upstream": [
+   "Anthropic"
+  ],
+  "models": [
+   "anthropic/claude-opus-5.5"
+  ],
+  "metered_calls": [
+   {
+    "in": 4,
+    "out": 54,
+    "cache_read": 3544,
+    "cache_write": 0,
+    "usd": 0.001904
+   },
+   {
+    "in": 4,
+    "out": 1444,
+    "cache_read": 5832,
+    "cache_write": 0,
+    "usd": 0.031716
+   },
+   {
+    "in": 4,
+    "out": 126,
+    "cache_read": 5832,
+    "cache_write": 1554,
+    "usd": 0.012103
+   },
+   {
+    "in": 4,
+    "out": 252,
+    "cache_read": 7386,
+    "cache_write": 469,
+    "usd": 0.009367
+   },
+   {
+    "in": 4,
+    "out": 613,
+    "cache_read": 7855,
+    "cache_write": 725,
+    "usd": 0.018433
+   },
+   {
+    "in": 4,
+    "out": 657,
+    "cache_read": 8580,
+    "cache_write": 3160,
+    "usd": 0.032359
+   },
+   {
+    "in": 4,
+    "out": 257,
+    "cache_read": 11740,
+    "cache_write": 767,
+    "usd": 0.011963
+   },
+   {
+    "in": 4,
+    "out": 488,
+    "cache_read": 12507,
+    "cache_write": 623,
+    "usd": 0.016239
+   },
+   {
+    "in": 4,
+    "out": 271,
+    "cache_read": 13130,
+    "cache_write": 867,
+    "usd": 0.013079
+   }
+  ],
+  "evals": 3,
+  "first_call": "3544 cache read, 0 cache write, 4 in",
+  "max_usd": 1,
+  "author_s": 303,
+  "sandbox_s": 243,
+  "submitted": {
+   "kind": "perf",
+   "target": "decode_long_ir",
+   "claimed": 0.2941234797773426
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.30344358757495365
+  },
+  "diff_lines": 58
+ }
+]
