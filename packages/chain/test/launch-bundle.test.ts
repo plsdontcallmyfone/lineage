@@ -101,6 +101,14 @@ describe("one approval: measured sizes", () => {
     expect(txs.map((x) => x.groups)).toEqual([["launch", "soul"], ["sol-to-units", "initial-buy"], ["credits", "units-account", "tip"]]);
     for (const x of txs) expect(x.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
     expect(txs.length).toBeLessThanOrEqual(c.JITO_MAX_TXS);
+    // one approval never mixes legacy and v0 messages when asked not to: every transaction reads the table, none grows
+    const same = c.planLaunchBundle({ payer: launcher, groups: gs, budget, table: t, v0: true, uniform: true });
+    expect(same.map((x) => x.groups)).toEqual(txs.map((x) => x.groups));
+    expect(same.every((x) => x.table === t)).toBe(true);
+    expect(txs.some((x) => x.table === null)).toBe(true);
+    same.forEach((x, i) => expect(x.size).toBeLessThanOrEqual(txs[i]!.size));
+    expect(c.planLaunchBundle({ payer: launcher, groups: gs.filter((x) => x.name === "tip"), budget, table: t, v0: false, uniform: true })[0]!.table).toBeNull();
+    console.log(`measured, the same plan with every transaction v0: ${same.map((x) => `${x.groups.join("+")} ${x.size} bytes`).join("; ")}`);
     // the purchase and everything after it do not fit one packet, with or without the units account payment
     const rest = gs.filter((x) => !["launch", "soul"].includes(x.name)).flatMap((x) => x.ixs);
     expect(c.wireSize(c.compileMessageV0(launcher, [...budget, ...rest], "11111111111111111111111111111111", [t]))).toBeGreaterThan(c.PACKET_LIMIT);

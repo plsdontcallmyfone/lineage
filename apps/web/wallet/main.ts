@@ -863,7 +863,7 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
       { name: "units-account", ixs: fee },
       { name: "tip", ixs: tipIxs },
     ];
-    const plan = planLaunchBundle({ payer: launcher, groups, budget: budgetIxs(CU_MAX), table: P.table, v0: signsV0(S.wallet!), maxTxs: JITO_MAX_TXS - (swap?.plan.txs.length ?? 0) });
+    const plan = planLaunchBundle({ payer: launcher, groups, budget: budgetIxs(CU_MAX), table: P.table, v0: signsV0(S.wallet!), uniform: true, maxTxs: JITO_MAX_TXS - (swap?.plan.txs.length ?? 0) });
     if (plan[0]!.groups[0] !== "launch") throw new Error("the launch transaction must come first");
     // the accounts whose rent the launcher pays: the new agent's and coin's always, the wallet's own and the shared ones only when absent
     const creates = launchCreates({ name: args.name, symbol: args.symbol, uri: args.uri,

@@ -32,14 +32,16 @@ export interface BundleTx {
 const FAKE_BLOCKHASH = "11111111111111111111111111111111";
 
 /** Packs `groups` in order into the fewest transactions of at most PACKET_LIMIT bytes (each group stays whole), at most `maxTxs`. */
-export function planLaunchBundle(o: { payer: Address; groups: BundleGroup[]; budget: Ix[]; table: LookupTable | null; v0: boolean; maxTxs?: number }): BundleTx[] {
+export function planLaunchBundle(o: { payer: Address; groups: BundleGroup[]; budget: Ix[]; table: LookupTable | null; v0: boolean; maxTxs?: number;
+  /** every transaction a v0 message reading the table (when the wallet signs v0 and a table is usable), so one approval never mixes legacy and v0 messages */
+  uniform?: boolean }): BundleTx[] {
   const legacy = (ixs: Ix[]) => {
     const m = compileMessage(o.payer, [...o.budget, ...ixs], FAKE_BLOCKHASH);
     return wireSize({ bytes: m.bytes, numSigners: m.numSigners });
   };
   const fit = (ixs: Ix[]): Omit<BundleTx, "groups"> | null => {
     const l = legacy(ixs);
-    if (l <= PACKET_LIMIT) return { ixs, table: null, size: l };
+    if (l <= PACKET_LIMIT && !(o.uniform && o.v0 && o.table)) return { ixs, table: null, size: l };
     if (!o.v0 || !o.table) return null;
     const s = wireSize(compileMessageV0(o.payer, [...o.budget, ...ixs], FAKE_BLOCKHASH, [o.table]));
     return s <= PACKET_LIMIT ? { ixs, table: o.table, size: s } : null;
