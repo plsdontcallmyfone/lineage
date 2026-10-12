@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { base58Encode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@units/protocol";
 import { addressBytes, Writer, type Address } from "./codec.ts";
 import type { AccountMeta, Ix } from "./registry.ts";
+import { consumeTicket } from "./guard.ts";
 
 // Legacy Solana transactions without an SDK: message compilation, ed25519 signing and the wire
 // format (https://solana.com/docs/core/transactions). Keypairs are Solana CLI JSON files.
@@ -16,7 +17,12 @@ export type Signer = AgentKey;
 
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 
+/**
+ * The one place a transaction signature is made. A guarded key (an agent treasury, guard.ts) signs
+ * only bytes the transaction firewall authorized: docs/plans/AGENT-WALLET-SAFETY.md section 3.
+ */
 export function signBytes(key: Signer, message: Uint8Array): Uint8Array {
+  consumeTicket(key.id, message);
   const k = createPrivateKey({ key: Buffer.concat([PKCS8_PREFIX, Buffer.from(key.secret.subarray(0, 32))]), format: "der", type: "pkcs8" });
   return new Uint8Array(edSign(null, Buffer.from(message), k));
 }

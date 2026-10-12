@@ -94,6 +94,17 @@ export interface TradingConfig {
    * trading does not take the authoring budget); null: each agent's own soul model
    */
   analysis_model: { provider: string; id: string } | null;
+  /**
+   * The transaction firewall's own limits (docs/plans/AGENT-WALLET-SAFETY.md 3.4), checked on the
+   * built transaction right before a treasury key signs, independently of the percentage limits
+   * above: most quote value one swap may carry and a key may sign per UTC day (base units), the least
+   * share of the chain's spot output a swap must demand (bps), the most priority fee per transaction
+   * (lamports).
+   */
+  firewall_max_tx_line: string;
+  firewall_max_day_line: string;
+  firewall_min_out_bps: number;
+  firewall_max_fee_lamports: number;
 }
 
 /** TEST defaults (plan T table; the values the table leaves open are TEST values of this lane). */
@@ -134,6 +145,10 @@ export const TRADING_DEFAULTS: TradingConfig = {
   analysis_max_usd: 0.05,
   analysis_tokens: 20,
   analysis_model: { provider: "anthropic", id: "claude-sonnet-5-5" },
+  firewall_max_tx_line: "100000000",
+  firewall_max_day_line: "1000000000",
+  firewall_min_out_bps: 9000,
+  firewall_max_fee_lamports: 1_000_000,
 };
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -250,6 +265,13 @@ export function mergeTradingConfig(base: TradingConfig, patch: unknown): Trading
       throw new Error("trading config: analysis_model is {provider, id} or null");
     c.analysis_model = v === null ? null : { provider: v.provider as string, id: v.id as string };
   }
+  for (const k of ["firewall_max_tx_line", "firewall_max_day_line"] as const) {
+    if (!(k in p)) continue;
+    if (typeof p[k] !== "string" || !UINT.test(p[k] as string)) throw new Error(`trading config: ${k} is base units as a decimal string`);
+    c[k] = p[k] as string;
+  }
+  int("firewall_min_out_bps", 0, 10_000);
+  int("firewall_max_fee_lamports", 0, 1_000_000_000);
   if ("allocation_escrow" in p) {
     if (p.allocation_escrow !== null && !(typeof p.allocation_escrow === "string" && B58.test(p.allocation_escrow))) throw new Error("trading config: allocation_escrow is an address or null");
     c.allocation_escrow = p.allocation_escrow as string | null;

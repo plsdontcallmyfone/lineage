@@ -1,6 +1,7 @@
 import type { Ix } from "./registry.ts";
 import type { Rpc } from "./rpc.ts";
-import { buildTransaction, computeBudget, type Signer } from "./tx.ts";
+import { buildTransaction, compileMessage, computeBudget, type Signer } from "./tx.ts";
+import { authorizeSigners } from "./guard.ts";
 import { priorityFee, writableAccounts } from "./fees.ts";
 import type { ConfirmPolicy, FeePolicy } from "./profile.ts";
 
@@ -78,6 +79,8 @@ export async function sendAndConfirm(rpc: Rpc, payer: Signer, ixs: Ix[], opts: S
   const attempts = o.attempts ?? 3;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
+    // the transaction firewall: a guarded agent key among the signers must be authorized for exactly these bytes
+    await authorizeSigners(compileMessage(payer.id, all, blockhash).bytes, [payer.id, ...(o.signers ?? []).map((s) => s.id)]);
     const tx = buildTransaction(payer, all, blockhash, o.signers ?? []);
     if (!o.skipSimulation) {
       const sim = await rpc.simulate(tx.wire);

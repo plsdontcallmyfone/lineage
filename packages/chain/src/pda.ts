@@ -44,10 +44,22 @@ export function createProgramAddress(seeds: Uint8Array[], programId: Address): A
   return toAddress(h);
 }
 
+// Derivation is pure and costs a few 255-bit modular exponentiations per bump: results are kept
+// (bounded) by program and seeds, so a caller that derives the same accounts again (the transaction
+// firewall rebuilds every swap it checks) pays once.
+const derived = new Map<string, [Address, number]>();
+const seedKey = (seeds: Uint8Array[], programId: Address) => `${programId}|${seeds.map((s) => Buffer.from(s).toString("base64")).join(",")}`;
+
 export function findProgramAddress(seeds: Uint8Array[], programId: Address): [Address, number] {
+  const k = seedKey(seeds, programId);
+  const hit = derived.get(k);
+  if (hit) return hit;
   for (let bump = 255; bump >= 0; bump--) {
     try {
-      return [createProgramAddress([...seeds, Uint8Array.of(bump)], programId), bump];
+      const out: [Address, number] = [createProgramAddress([...seeds, Uint8Array.of(bump)], programId), bump];
+      if (derived.size >= 8192) derived.clear();
+      derived.set(k, out);
+      return out;
     } catch {
       // next bump
     }

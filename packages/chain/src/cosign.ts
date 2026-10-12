@@ -11,6 +11,7 @@ import { ixDisc, type Address } from "./codec.ts";
 import { REGISTRY_PROGRAM_ID, registryPdas } from "./registry.ts";
 import { Rpc } from "./rpc.ts";
 import { COMPUTE_BUDGET_PROGRAM, signBytes, type Signer } from "./tx.ts";
+import { authorizeSigners } from "./guard.ts";
 import { assertCluster, assertDevnet, DEVNET_GENESIS, sendWire } from "./browser/client.ts";
 import { decodeMessage, parseWire, placeSignature, type DecodedMessage } from "./browser/wire.ts";
 
@@ -97,6 +98,8 @@ export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string
   const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
   for (const s of plan.summary) log(`  ${s}`);
   log(`  fee payer (wallet) ${plan.payer}`);
+  // the transaction firewall: a guarded agent key co-signs only what its policy allows (its own bind or profile)
+  await authorizeSigners(parseWire(wire).message, [o.key.id]);
   const signed = cosign(wire, o.key);
   const sig = base58Encode(parseWire(signed).signatures[0]!);
   if (o.dryRun) {
