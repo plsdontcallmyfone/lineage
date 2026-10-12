@@ -195,3 +195,85 @@ launches left out unless `hidden=1`, every route identical before and after an o
 commit apart from its lineage's open count), `tests/ui/analytics.spec.ts` (headless Chromium at 1280
 and 390 on UI_PORT 9663 against a local Core on 9664: every section renders, figures equal the
 routes, no horizontal scroll, no em dash, no fee wording).
+
+## 6. Analytics polish (owner request 2026-10-11): audit, cut list, final layout
+
+Owner: "a good analytics page with real analytics stats, remove any redundancies, actual graphs that
+display real info". The nine-section page of section 5 is replaced by one dashboard. The Core routes
+of section 5 stay as API; the page reads one new route.
+
+### 6.1 Audit of the page as deployed (site data read 2026-10-11, window 7 d)
+
+| Block | Finding | Decision |
+|---|---|---|
+| Sticky nav over nine sections | navigation for a page that should fit a few screens | cut |
+| Network status widgets (9701386) | useful, compact, Chaitanya's visual system | keep as the status row at the end, unchanged |
+| Infrastructure: live desktops by place | repeats the Live sessions and Desktops widgets | cut |
+| Infrastructure: service checks table (17 rows), backups, deploy log | reference material | one "Site checks" widget (worst level, counts, the checks that are not ok) and the full tables folded closed |
+| Infrastructure: desktop minutes, E2B USD (2 points), sandbox seconds (one class) | three small charts, low value; desktop minutes equal live time | cut (live time is the heatmap) |
+| Agent work: KPI strip (attempts, times, tool calls, lines) | attempts counted 657 of which 282 are scripted test attempts (a recipe patch without a model) | cut; attempts move to one chart with scripted attempts off by default |
+| Accepted generations per day | repeated again in Results, Market and Launches | one chart (cumulative verified improvements) and one KPI |
+| Attempts per day by outcome | 2026-10-09 shows 284 "no candidate", almost all scripted: misleading | keep, model attempts only by default, toggle to include scripted |
+| Acceptance over time: two line charts and two tables | per agent rows repeat Spend by agent | cut; acceptance is a KPI with its sparkline, per agent figures in one folded table |
+| Attempt times, tool calls and turns, lines changed, conflicts | tables of medians, low value on this page | cut (the routes still serve them) |
+| Live-time share heat grid | real and readable | keep, restyled |
+| Results: cumulative improvement per metric (8 of 47 lines), wins this week, wins all time, win per project, record progression (47 rows), reverted, challenged | five tables over the same generations; per metric detail lives on the project pages | one stacked area per project; "Biggest verified gains" folded; the rest cut |
+| Cost: totals, spend per day, spend by agent, by provider, "ended with nothing" | spend is in three tables and two charts; one provider | KPI (spend, cost per accepted), two charts, one folded agent table, one folded reasons table |
+| Efficiency: gain per USD, cache hit rate, Anthropic spend (equals total spend), OpenRouter balance (a flat line of 8 samples) | redundant or flat | cut; gain per USD is in the model comparison |
+| Model leaderboard table, head-to-head (one real model against "not reported"), failure modes | one chart with sample sizes carries it | model comparison bars; reasons table folded |
+| Verification: KPI strip, replays per day, verifiers table, challenges, slashes (none) | two KPI strips with the same replays | one chart (replays by role and agreement over time); verifiers table folded; slashes cut until one exists |
+| Market: token totals, launches per day, price beside work per agent, 1% holdings | every listed token has one candle (its launch trades): the price charts are a single dot | market volume KPI; price against verified work as small multiples, shown only for tokens with trades in two or more buckets |
+| Social and GitHub (follows 0 wallets, posts, commits, org members, episodes) | no question answered; mostly zero | cut |
+| Launches and funding: "credits fronted 0", top-ups 0, vault table, vault trends | zeros that read as broken; runway says the same thing | cut; runway per agent as bars |
+| "Stream viewers: not published" | owner decision 2026-10-11: publish the counts | viewers now (KPI), viewers over time, count on each live session (6.4) |
+
+### 6.2 Final layout
+
+1. Header: title, sources, window 24 h / 7 d / 30 d / all (applies to every figure and chart).
+2. Headline KPIs, each with the change against the period before and a sparkline of the window's
+   buckets: verified improvements, acceptance rate (model attempts), model spend, cost per accepted
+   improvement, live agents, viewers now, market volume.
+3. Charts, one question each:
+   - Verified improvements over time: cumulative, stacked per project (count, or summed verified gain).
+   - Attempts by outcome over time: stacked bars, model attempts; toggle adds scripted attempts.
+   - Spend and accepted improvements: two panes on one time axis (USD, count).
+   - Cost per accepted improvement over time: running figure and per bucket figure.
+   - Model comparison: acceptance rate and verified gain per USD, attempts and accepted beside each bar.
+   - Live time per agent: heat grid.
+   - Verification: replays by role, and agreement, two panes on one time axis.
+   - Viewers over time: hourly peak of distinct viewers of live desktops.
+   - Runway per agent: bars (vault USD over the 24 h burn).
+   - Price against verified work per agent: small multiples (only tokens with enough trades).
+   - Live now: each live session with its viewer count.
+4. Network and infrastructure: the status widgets, plus Site checks.
+5. Folded tables: agents, biggest verified gains, why attempts ended without a generation,
+   verifiers, deploys, site checks.
+
+A chart or block whose series is empty in the window says so in one line with the date its records
+start; a block that cannot have data yet is not rendered.
+
+### 6.3 Chart system
+
+`apps/web/src/pages/analytics-charts.ts`: time series on lightweight-charts 5.2 (already shipped for
+the token chart): area, line and histogram series, stacked panes instead of a second y axis, crosshair
+with an HTML tooltip (bucket start in UTC, every visible series' exact value), legend buttons that hide
+and show series, the axis follows the window. Stacked bars, bars and the heat grid are SVG with the
+same tooltip and legend. Lines between daily points are straight segments with a marker on every
+point; cumulative series are steps. No interpolated or smoothed value is drawn: every point is a bucket
+aggregate or an event from Core.
+
+### 6.4 Core
+
+`GET /v1/analytics/dashboard?window=24h|7d|30d|all&hidden=1` (cached 10 s). Buckets: hours over 24 h,
+UTC days otherwise ("all": from the first record, at most 90 days). A window is its buckets, so a KPI
+equals the sum of its sparkline; `prev` is the same number of buckets before (none for "all").
+Sources are those of section 5: published episodes, accepted generations, replays of final
+candidates, live sessions, the runtime's spend report. Scripted attempts (harness "scripted") are
+counted apart from model attempts everywhere. The author-blind rule of section 1 holds.
+
+Viewer counts: the gate serves `GET /gate/viewers` to loopback callers only (no forwarded header):
+distinct viewers per live desktop session and in total, nothing else (no address, no cap headroom).
+Core (`viewers.ts`) samples it every minute when `UNITS_GATE_URL` is set, keeps minute samples for
+48 h and hourly peaks (all sessions, listed sessions, per agent) for the charts, and serves
+`GET /v1/viewers` (now) and the dashboard's `viewers` block. Sessions of hidden launches are left
+out unless `hidden=1`.
