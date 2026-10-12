@@ -14,6 +14,12 @@
 //   B  effort high, cap_mode bounded
 //   C  effort medium, cap_mode bounded
 //   E  effort medium, cap_mode bounded, pace (budget stated and counted down, submit reserve)
+//   S  the site's settings since 2026-10-12: E plus the cache keep-alive (240 s)
+//   ... --route runtime   run each attempt through the hosted runtime's routing (RoutedProposer with the
+//                      keys of providers.env and the local registry): the default model on the route the
+//                      registry's routing.prefer picks, OpenRouter since 2026-10-12. Without it: the
+//                      Anthropic proposer with the direct key, as before. No Core, no chain.
+//   ... --keep-alive 30   override the cache keep-alive interval of every arm (seconds)
 //   ... --guard 0.01   judge self-evaluations and the replay with guard limits at this default (the
 //                      site's guard config version 1), as replays on the site do
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,6 +29,9 @@ import { canonicalizeDiff, judge, type CandidateView, type GuardRule } from "@un
 import { applyPatch, diffWorkingTree, evaluate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { AnthropicProposer } from "../../packages/worker/src/proposers/anthropic.ts";
 import type { EfficiencyOptions } from "../../packages/worker/src/proposers/efficiency.ts";
+import { loadProviderKeys } from "../../packages/worker/src/proposers/providers.ts";
+import type { Proposer } from "../../packages/worker/src/proposers/types.ts";
+import { RegistrySource, RoutedProposer } from "../../packages/runtime/src/providers.ts";
 
 const argv = process.argv.slice(2);
 const opt = (k: string, d?: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : d);
@@ -39,7 +48,12 @@ const ARMS: Record<string, { effort: "high" | "medium" | "low"; efficiency: Effi
   D: { effort: "medium", efficiency: { cap_mode: "projected" } },
   // agent productivity lane (AGENT-EFFICIENCY.md section 5): the site's settings plus pacing and the submit reserve
   E: { effort: "medium", efficiency: { cap_mode: "bounded", pace: true } },
+  // the site's settings (scripts/deploy/site-config.ts): E plus the cache keep-alive
+  S: { effort: "medium", efficiency: { cap_mode: "bounded", pace: true, keep_alive_s: 240 } },
 };
+const viaRuntime = opt("route") === "runtime";
+// --keep-alive <s>: override the arm's cache keep-alive interval (a short one makes the keep-alive fire during a local evaluation)
+if (opt("keep-alive")) for (const k of Object.keys(ARMS)) ARMS[k]!.efficiency = { ...ARMS[k]!.efficiency, keep_alive_s: Number(opt("keep-alive")) };
 const recipes = opt("recipes", "fixture-b58,minbpe")!.split(",");
 const arms = opt("arms", "A,B,C")!.split(",");
 const n = Number(opt("n", "2"));
@@ -82,8 +96,11 @@ async function attempt(recipe: string, arm: string, i: number) {
       ...loaded.recipe.metrics.filter((m) => calibration.metrics[m.name]?.enabled).map((m) => ({ key: m.name, kind: "metric_target", target: m.name })),
     ];
     const a = ARMS[arm]!;
-    const p = new AnthropicProposer({ max_usd: maxUsd, effort: a.effort, efficiency: a.efficiency });
+    // --route runtime: the runtime's own routing (Core is not there: the soul read fails, so the registry default runs, from the local registry)
+    const ro = { core: "http://127.0.0.1:9", keys: viaRuntime ? loadProviderKeys({ create: false }) : {}, attempt_max_usd: maxUsd, effort: a.effort, max_turns: 40, max_evals: 4, efficiency: a.efficiency };
+    const p: Proposer = viaRuntime ? new RoutedProposer("ab", ro, new RegistrySource(ro)) : new AnthropicProposer({ max_usd: maxUsd, effort: a.effort, efficiency: a.efficiency });
     let sandbox_s = 0;
+    const seen = { route: null as unknown, harness: null as unknown, upstream: [] as string[], models: [] as string[], calls: [] as { in: number; out: number; cache_read: number; cache_write: number; usd: number }[] };
     const spentBox = { usd: 0 };
     const proposal = await p.propose({
       loaded,
@@ -97,7 +114,16 @@ async function attempt(recipe: string, arm: string, i: number) {
       journalReserveUsd: reserve,
       ...(guardRule ? { guardRule: async () => guardRule, guardRegression: null } : {}),
       spent: spentBox,
-      meter: { model: () => {}, sandbox: (s) => (sandbox_s += s) },
+      meter: {
+        model: (u) => {
+          seen.calls.push({ in: u.input_tokens, out: u.output_tokens, cache_read: u.cache_read_tokens, cache_write: u.cache_write_tokens, usd: Number(u.usd.toFixed(6)) });
+          if (!seen.models.includes(u.model)) seen.models.push(u.model);
+        },
+        sandbox: (s) => (sandbox_s += s),
+        harness: (h) => (seen.harness = { name: h.name, version: h.version, provider: h.provider }),
+        route: (r) => (seen.route = r),
+        upstream: (n) => void (seen.upstream.includes(n) || seen.upstream.push(n)),
+      },
     });
     const authorS = (Date.now() - t0) / 1000;
     const usageLine = logs.find((l) => / anthropic: usage /.test(l)) ?? "";
@@ -129,6 +155,13 @@ async function attempt(recipe: string, arm: string, i: number) {
       cache_read_tokens: u ? Number(u[5]) : null,
       cache_write_tokens: u ? Number(u[6]) : null,
       usd: u ? Number(u[7]) : spentBox.usd,
+      // every metered call (keep-alives included) and who ran it: the route, the harness and provider, the router's upstream hosts
+      cache_hit: u && Number(u[3]) + Number(u[5]) + Number(u[6]) > 0 ? Number((Number(u[5]) / (Number(u[3]) + Number(u[5]) + Number(u[6]))).toFixed(4)) : null,
+      route: seen.route,
+      harness: seen.harness,
+      upstream: seen.upstream,
+      models: seen.models,
+      metered_calls: seen.calls,
       evals: logs.filter((l) => / evaluating \(/.test(l)).length,
       first_call: (logs.find((l) => / anthropic: first call /.test(l)) ?? "").replace(/^.*first call /, "") || null,
       max_usd: maxUsd,

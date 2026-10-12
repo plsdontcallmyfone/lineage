@@ -18,6 +18,58 @@ its signed soul; the route is how this host reaches that same model, and it may 
 direct key lands. Provenance attests both: the model the soul names, the route that ran
 (`route: { via, model }`), and for OpenRouter the upstream host OpenRouter reported per response.
 
+**Route rule since 2026-10-12 (owner: "bro we said openrouter"): OpenRouter first, for every model,
+Claude included.** The paragraph above is the earlier rule. The registry's routing block now holds
+the switch, `routing.prefer`, admin-editable with the rest of the registry (POST /v1/admin/models):
+
+- `"openrouter"` (the seed's value, and what an absent field means, on both networks): a model that
+  has an OpenRouter route runs through OpenRouter whenever `OPENROUTER_API_KEY` is on the host. Its
+  own provider is used only when the model has no route, the route is switched off, or the
+  OpenRouter key is absent. With neither, the model is unavailable. OpenRouter is then the one
+  provider account the owner tops up.
+- `"direct"`: the earlier rule (own provider first, OpenRouter as the fallback).
+
+The model is still never substituted, only the way to it. Provenance is unchanged in shape: the
+route names the soul's model (`route.model`: anthropic/claude-opus-5-5), `provider` is the provider
+that ran the attempt (openrouter), `route.upstream` the host OpenRouter reported (Anthropic), and
+the harness is the same `anthropic/1` with the same digest.
+
+**Claude through OpenRouter (read 2026-10-12, openrouter.ai/docs: "Create a message", "Prompt
+Caching"; then checked with real calls).** OpenRouter documents an Anthropic Messages endpoint,
+`POST https://openrouter.ai/api/v1/messages`, bearer key, with the fields the native proposer
+already sends: top-level `cache_control` (automatic caching), `cache_control` on content blocks
+(at most four explicit breakpoints), `thinking: { type: "adaptive" }`, `output_config.effort`
+(low to max), `tools`, streaming; and a `provider` block for routing. So the native Anthropic
+proposer is reused with a base URL and key swap (`new Anthropic({ baseURL: "https://openrouter.ai/api",
+authToken })`) instead of teaching the OpenAI-compatible adapter cache breakpoints: the cached
+static prefix, the automatic breakpoint, the keep-alive, pacing, the budget notices and the effort
+setting are the same code on both routes, and the harness digest does not change. What differs,
+each seen in a real call:
+
+- `fallbacks: "default"` with the server-side fallback beta is refused (400, "expected array"): not
+  sent through OpenRouter.
+- `max_tokens: 0` is not honoured (a whole answer came back): the cache keep-alive asks for 1 token
+  there (0.0021 USD for a 8,663 token prefix, read at the cache rate).
+- `usage.cost` (credits charged) is in the non-streaming response, and in a stream only on the
+  `message_delta` event; the SDK's final message drops it, so the proposer reads it from the event.
+  Metering is `usage.cost x (1 + fee)`; without a cost, OpenRouter's listed price from the registry
+  (cache reads and writes at their own rates) x (1 + fee). The cap arithmetic plans with the fee on top.
+- usage is in Anthropic's shape (`cache_read_input_tokens`, `cache_creation_input_tokens`).
+- the request carries `provider: { order: ["anthropic"], max_price }`: Anthropic's own endpoint
+  first, because a prompt cache lives at one host and the next attempt on a unit reads the prefix
+  the last one wrote; OpenRouter may fall back to another host of the same model under the same
+  price ceiling. Haiku 4.5 still gets no adaptive thinking (the rule follows the model, not the id).
+- a 402 from this endpoint is turned into the adapter's no-credits error, so the balance gate
+  marks OpenRouter empty exactly as for the other models.
+
+**max_price follows the registry exactly, with no tolerance.** A tolerance would let a vault be
+charged more than the price the launch form showed. The price cannot drift silently instead:
+`bun scripts/models/openrouter-sync.ts --check` reads OpenRouter's models API and fails when any
+route's id is gone, lost tool support, or its price (base, input-length tiers, UTC peak windows,
+cache read and write) differs from the registry; without `--check` it rewrites config/models.json.
+Run it before every deploy; a route priced above its registry figure is refused by OpenRouter (the
+agent waits, the log says why) until the registry is synced and posted to Core.
+
 **Registry.** Each model may carry `routes.openrouter = { id, rate, tiers }`: OpenRouter's model id
 and OpenRouter's own listed price, read from `GET https://openrouter.ai/api/v1/models` on
 2026-10-10 (USD per token there, stored per 1M; `overrides` with `min_prompt_tokens` become tiers).

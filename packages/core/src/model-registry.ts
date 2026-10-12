@@ -61,6 +61,8 @@ export interface OpenRouterRoute {
   id: string;
   rate: Rate;
   tiers?: { up_to_input_tokens: number; rate: Rate }[] | null;
+  /** the rate OpenRouter lists inside UTC windows (its `pricing.overrides` with utc_days: DeepSeek's peak) */
+  peak?: { rate: Rate; windows: PeakWindow[] } | null;
   /** off: listed but not offered through OpenRouter */
   enabled?: boolean;
   /** caveat about this route (snapshot naming), in OpenRouter's terms */
@@ -82,6 +84,15 @@ export interface RoutingEntry {
 /** Which way a model runs on this host. */
 export type RouteVia = "direct" | "openrouter";
 
+/** Which route is tried first for a model that has both. */
+export type RoutePreference = "openrouter" | "direct";
+export const DEFAULT_ROUTE_PREFERENCE: RoutePreference = "openrouter";
+
+/** The registry's route preference (absent: OpenRouter first). */
+export function routePreference(r: ModelRegistry): RoutePreference {
+  return r.routing?.prefer === "direct" ? "direct" : DEFAULT_ROUTE_PREFERENCE;
+}
+
 export interface ProviderEntry {
   id: string;
   name: string;
@@ -101,8 +112,14 @@ export interface ModelRegistry {
   default: { provider: string; id: string };
   providers: ProviderEntry[];
   models: ModelEntry[];
-  /** routed providers (OpenRouter): price source and funding fee */
-  routing?: { openrouter?: RoutingEntry | null } | null;
+  /**
+   * routed providers (OpenRouter): price source and funding fee. `prefer` is the route rule (owner
+   * decision 2026-10-12, "every model through OpenRouter"): "openrouter" (also when absent) runs every
+   * model that has an OpenRouter route through OpenRouter, Claude included, and uses the model's own
+   * provider only when the model has no route or the OpenRouter key is absent; "direct" is the earlier
+   * rule (own provider first, OpenRouter as the fallback).
+   */
+  routing?: { openrouter?: RoutingEntry | null; prefer?: RoutePreference | null } | null;
 }
 
 /** What an agent's profile records (soul `model`), and what provenance attests. */
@@ -194,6 +211,15 @@ export function checkRegistry(raw: unknown): string[] {
           checkRate(errs, `${path}.routes.openrouter.tiers[${j}].rate`, t.rate);
         });
       }
+      if (orr.peak) {
+        checkRate(errs, `${path}.routes.openrouter.peak.rate`, orr.peak.rate);
+        if (!Array.isArray(orr.peak.windows) || orr.peak.windows.length === 0) errs.push(`${path}.routes.openrouter.peak.windows: at least one`);
+        else
+          orr.peak.windows.forEach((w, j) => {
+            if (!Array.isArray(w.days) || !w.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6)) errs.push(`${path}.routes.openrouter.peak.windows[${j}].days: 0..6`);
+            if (!HHMM.test(w.start) || !HHMM.test(w.end) || w.start >= w.end) errs.push(`${path}.routes.openrouter.peak.windows[${j}]: start < end, HH:MM UTC`);
+          });
+      }
       if (orr.note != null && (typeof orr.note !== "string" || orr.note.length > 400 || /\u2014/.test(orr.note))) errs.push(`${path}.routes.openrouter.note: up to 400 characters, no em dashes`);
       if (!r.routing?.openrouter) errs.push(`${path}.routes.openrouter: registry.routing.openrouter (price source and funding fee) is required`);
     }
@@ -206,6 +232,7 @@ export function checkRegistry(raw: unknown): string[] {
     if (!(Number.isInteger(ro.funding_fee_bps) && ro.funding_fee_bps >= 0 && ro.funding_fee_bps <= 5000)) errs.push("routing.openrouter.funding_fee_bps: whole basis points, 0 to 5000");
     if (ro.funding_note != null && (typeof ro.funding_note !== "string" || ro.funding_note.length > 400 || /\u2014/.test(ro.funding_note))) errs.push("routing.openrouter.funding_note: up to 400 characters, no em dashes");
   }
+  if (r.routing?.prefer != null && r.routing.prefer !== "openrouter" && r.routing.prefer !== "direct") errs.push('routing.prefer: "openrouter" or "direct"');
   if (!validChoice(r.default)) errs.push("registry.default: { provider, id }");
   else {
     const d = findModel(r, r.default);
@@ -275,23 +302,27 @@ export function directRunnable(r: ModelRegistry, m: ModelEntry): { ok: boolean; 
   return { ok: true, why: null };
 }
 
-/** The OpenRouter route of a model, when it has one this network may use (never for Anthropic, which stays direct). */
+/** The OpenRouter route of a model, when it has one this network may use (any provider's model, Claude included). */
 export function openrouterRoute(r: ModelRegistry, m: ModelEntry): OpenRouterRoute | null {
   const o = m.routes?.openrouter;
-  if (!o || o.enabled === false || m.provider === "anthropic" || !r.routing?.openrouter) return null;
+  if (!o || o.enabled === false || !r.routing?.openrouter) return null;
   return o;
 }
 
 /**
- * Which route a model runs on given the providers with a key: direct when its provider has a key and
- * the direct API runs it, else OpenRouter when that key is present and the model has a route, else
- * none (with why). Shared by Core (pickable), the runtime (routing) and the launch form.
+ * Which route a model runs on given the providers with a key. With routing.prefer "openrouter" (the
+ * default): OpenRouter when its key is present and the model has a route, else direct when the model's
+ * provider has a key and its API runs it. With "direct": the same two in the other order. Else none
+ * (with why). The model is never substituted, only the way to it. Shared by Core (pickable), the
+ * runtime (routing) and the launch form.
  */
 export function routeOf(r: ModelRegistry, m: ModelEntry, keys: Record<string, boolean>): { via: RouteVia; why: null } | { via: null; why: string } {
   const d = directRunnable(r, m);
-  if (d.ok && keys[m.provider]) return { via: "direct", why: null };
   const o = openrouterRoute(r, m);
-  if (o && keys.openrouter) return { via: "openrouter", why: null };
+  const direct = d.ok && !!keys[m.provider];
+  const routed = !!o && !!keys.openrouter;
+  if (routed && (routePreference(r) === "openrouter" || !direct)) return { via: "openrouter", why: null };
+  if (direct) return { via: "direct", why: null };
   if (!d.ok && !o) return { via: null, why: d.why ?? "not offered" };
   if (d.ok && o) return { via: null, why: `no key on the hosted runtime (neither ${m.provider} nor OpenRouter)` };
   if (d.ok) return { via: null, why: "no key on the hosted runtime" };
@@ -307,7 +338,7 @@ export function offerable(r: ModelRegistry, m: ModelEntry): boolean {
 export function routeEntry(r: ModelRegistry, m: ModelEntry, via: RouteVia): ModelEntry {
   if (via === "direct") return m;
   const o = openrouterRoute(r, m)!;
-  return { ...m, id: o.id, provider: "openrouter", status: "verified", rate: o.rate, tiers: o.tiers ?? null, peak: null };
+  return { ...m, id: o.id, provider: "openrouter", status: "verified", rate: o.rate, tiers: o.tiers ?? null, peak: o.peak ?? null };
 }
 
 /** Funding fee multiplier of a route (1 for direct). */

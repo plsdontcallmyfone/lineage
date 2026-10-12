@@ -25,7 +25,39 @@ export interface AnthropicProposerOptions {
   prices?: { input: number; output: number; cache_read: number; cache_write: number };
   /** Attempt efficiency settings (docs/plans/AGENT-EFFICIENCY.md); all off by default. */
   efficiency?: EfficiencyOptions;
+  /**
+   * The client talks to a router's Anthropic Messages endpoint instead of Anthropic (OpenRouter's
+   * POST /api/v1/messages, read 2026-10-12). Same loop, caching, keep-alive and pacing; what differs
+   * is listed on GatewayOptions.
+   */
+  gateway?: GatewayOptions;
 }
+
+/**
+ * A router in front of the model (OpenRouter), as its documentation and a real session on 2026-10-12
+ * showed it: `model` is the router's id; usage carries `cost` (the credits charged, USD), in a stream
+ * only on the message_delta event; `fallbacks: "default"` and the server-side fallback beta are
+ * refused (400); max_tokens 0 is not honoured (a full answer is generated), so the cache keep-alive
+ * asks for 1 token; the response names the upstream host in `provider`.
+ */
+export interface GatewayOptions {
+  /** provider id provenance records as the one that ran the attempt ("openrouter") */
+  provider: string;
+  /** funding fee factor on top of the charged cost (1 + fee_bps / 10^4) */
+  fee_factor: number;
+  /** meter usage.cost when the response reports one; else the price table */
+  reported_cost: boolean;
+  /** extra request fields (OpenRouter's provider preferences) */
+  request_extra?: Record<string, unknown>;
+  /** the model's own id at Anthropic (claude-haiku-4-5), for per-model request rules */
+  model_as?: string;
+}
+
+/** usage.cost of a routed response when it is a usable figure, else null. */
+const costOf = (u: unknown): number | null => {
+  const c = (u as { cost?: unknown } | null | undefined)?.cost;
+  return typeof c === "number" && Number.isFinite(c) && c >= 0 ? c : null;
+};
 
 /** claude-opus-5-5 published rates (USD per million tokens); cache writes at 1.25x input. */
 const OPUS_55 = { input: 4, output: 20, cache_read: 0.2, cache_write: 5 };
@@ -205,7 +237,7 @@ export const HARNESS_DIGEST = sha256Hex(new TextEncoder().encode(JSON.stringify(
 export class AnthropicProposer implements Proposer {
   readonly name = "anthropic";
   private client: Anthropic;
-  private opts: Required<Omit<AnthropicProposerOptions, "prices" | "efficiency">> & { prices: NonNullable<AnthropicProposerOptions["prices"]>; efficiency: EfficiencyOptions };
+  private opts: Required<Omit<AnthropicProposerOptions, "prices" | "efficiency" | "gateway">> & { prices: NonNullable<AnthropicProposerOptions["prices"]>; efficiency: EfficiencyOptions; gateway: GatewayOptions | null };
 
   constructor(opts: AnthropicProposerOptions, client?: Anthropic) {
     this.client = client ?? new Anthropic();
@@ -217,7 +249,36 @@ export class AnthropicProposer implements Proposer {
       max_evals: opts.max_evals ?? 4,
       prices: opts.prices ?? OPUS_55,
       efficiency: opts.efficiency ?? {},
+      gateway: opts.gateway ?? null,
     };
+  }
+
+  /** Request fields that differ by route: Anthropic's server-side refusal fallback direct, the router's own fields through a gateway. */
+  private routeParams(): Record<string, unknown> {
+    const g = this.opts.gateway;
+    return g ? { ...(g.request_extra ?? {}) } : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
+  }
+
+  /** Whether the model takes adaptive thinking and effort (by its own id at Anthropic, whatever the route calls it). */
+  private adaptive(): boolean {
+    return !NO_ADAPTIVE.test(this.opts.gateway?.model_as ?? this.opts.model);
+  }
+
+  /**
+   * USD of one response: direct, the price table; through a gateway, the cost it reports (else the
+   * table, which holds the gateway's listed price) times its funding fee.
+   */
+  private usdOf(u: unknown, table: number): number {
+    const g = this.opts.gateway;
+    if (!g) return table;
+    return ((g.reported_cost ? costOf(u) : null) ?? table) * g.fee_factor;
+  }
+
+  /** The price table the cap arithmetic plans with: through a gateway, with its funding fee on top. */
+  private planPrices() {
+    const p = this.opts.prices;
+    const f = this.opts.gateway?.fee_factor ?? 1;
+    return f === 1 ? p : { input: p.input * f, output: p.output * f, cache_read: p.cache_read * f, cache_write: p.cache_write * f };
   }
 
   async propose(ctx: ProposeContext): Promise<Proposal | null> {
@@ -248,7 +309,7 @@ export class AnthropicProposer implements Proposer {
         cache_write_tokens: n(u?.cache_creation_input_tokens, true),
       };
       lastInput = d.input_tokens + d.cache_read_tokens + d.cache_write_tokens;
-      let usd = (d.input_tokens * p.input + d.output_tokens * p.output + d.cache_read_tokens * p.cache_read + d.cache_write_tokens * p.cache_write) / 1e6;
+      let usd = this.usdOf(u, (d.input_tokens * p.input + d.output_tokens * p.output + d.cache_read_tokens * p.cache_read + d.cache_write_tokens * p.cache_write) / 1e6);
       if (bad) usd = Math.max(usd, cap - usage.usd, 0);
       usage.input_tokens += d.input_tokens;
       usage.output_tokens += d.output_tokens;
@@ -265,7 +326,7 @@ export class AnthropicProposer implements Proposer {
     };
     const tools = new ToolBox(ctx, o.max_evals);
     try {
-      ctx.meter?.harness?.({ name: "anthropic", version: PROPOSER_VERSION, digest: HARNESS_DIGEST, provider: "anthropic" });
+      ctx.meter?.harness?.({ name: "anthropic", version: PROPOSER_VERSION, digest: HARNESS_DIGEST, provider: o.gateway?.provider ?? "anthropic" });
     } catch {
       /* metering must not change what the model sees */
     }
@@ -302,7 +363,8 @@ export class AnthropicProposer implements Proposer {
       const started = Date.now();
       pinging = (async () => {
         try {
-          const res = await this.client.beta.messages.create({ ...lastRequest!, max_tokens: 0 });
+          // a gateway does not honour max_tokens 0 (it generates a whole answer): one token there
+          const res = await this.client.beta.messages.create({ ...lastRequest!, max_tokens: o.gateway ? 1 : 0 });
           addUsage(res.usage, res.model ?? o.model);
           lastCallAt = started;
           ctx.log(`anthropic: cache keep-alive, ${res.usage?.cache_read_input_tokens ?? 0} tokens read, ${res.usage?.cache_creation_input_tokens ?? 0} written`);
@@ -322,7 +384,7 @@ export class AnthropicProposer implements Proposer {
         const cold = turn === 0 || Date.now() - lastCallAt > 270_000;
         // pace: the submit reserve stays out of reach until an evaluation was accepted; then it pays for the submit call
         const ready = pace && tools.accepted;
-        maxTokens = turnAllowance({ room: cap - usage.usd - (ready ? 0 : submitReserve), prefixTokens, outTokens, newChars, cold, prices: o.prices });
+        maxTokens = turnAllowance({ room: cap - usage.usd - (ready ? 0 : submitReserve), prefixTokens, outTokens, newChars, cold, prices: this.planPrices() });
         if (maxTokens < (ready ? Math.min(SUBMIT_MIN_TURN_TOKENS, eff.min_turn_tokens ?? DEFAULT_MIN_TURN_TOKENS) : (eff.min_turn_tokens ?? DEFAULT_MIN_TURN_TOKENS))) {
           ctx.log(`anthropic: spend cap reached (${usage.usd.toFixed(4)} USD spent, cap ${cap.toFixed(4)}, next call could only have ${maxTokens} output tokens)`);
           return end("cap reached", null);
@@ -336,10 +398,9 @@ export class AnthropicProposer implements Proposer {
       calls++;
       const params = {
         model: o.model,
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default" as const,
+        ...(this.routeParams() as { betas: string[]; fallbacks: "default" }),
         // adaptive thinking and effort exist on the 4.6-and-later models; Haiku 4.5 answers 400 to them (plan M real session)
-        ...(NO_ADAPTIVE.test(o.model) ? {} : { thinking: { type: "adaptive" as const }, output_config: { effort: o.effort } }),
+        ...(this.adaptive() ? { thinking: { type: "adaptive" as const }, output_config: { effort: o.effort } } : {}),
         cache_control: { type: "ephemeral" as const },
         // static rules first with their own breakpoint, then soul, notes and findings: an attempt's
         // first call reads tools and rules from the cache the last attempt on this unit wrote
@@ -349,6 +410,10 @@ export class AnthropicProposer implements Proposer {
       // the request as sent, for a cache keep-alive while a slow tool runs (efficiency.keep_alive_s)
       lastRequest = { ...params, messages: messages.slice() };
       const stream = this.client.beta.messages.stream({ ...params, max_tokens: maxTokens, messages });
+      // a gateway reports what it charged on the stream's message_delta event only; the SDK's final message drops it
+      let streamCost: number | null = null;
+      if (o.gateway?.reported_cost) (stream as { on?: (ev: string, f: (e: { type?: string; usage?: unknown }) => void) => unknown }).on?.("streamEvent", (ev) => { if (ev?.type === "message_delta") streamCost = costOf(ev.usage) ?? streamCost; });
+      const withCost = <U>(u: U): U => (streamCost !== null && u && costOf(u) === null ? { ...u, cost: streamCost } : u);
       let message: Anthropic.Beta.BetaMessage;
       try {
         message = await stream.finalMessage();
@@ -365,7 +430,15 @@ export class AnthropicProposer implements Proposer {
         ctx.log("anthropic: unparseable tool input, re-issuing turn");
         continue;
       }
-      addUsage(message.usage, message.model ?? o.model);
+      addUsage(withCost(message.usage), message.model ?? o.model);
+      const upstream = (message as { provider?: unknown }).provider;
+      if (o.gateway && typeof upstream === "string" && upstream) {
+        try {
+          ctx.meter?.upstream?.(upstream.slice(0, 60));
+        } catch {
+          /* metering must not change what the model sees */
+        }
+      }
       if (!firstCall) {
         firstCall = { read: message.usage?.cache_read_input_tokens ?? 0, write: message.usage?.cache_creation_input_tokens ?? 0, input: message.usage?.input_tokens ?? 0 };
         if (eff.log_usage !== false) ctx.log(`anthropic: first call ${firstCall.read} cache read, ${firstCall.write} cache write, ${firstCall.input} in`);
@@ -460,7 +533,7 @@ export class AnthropicProposer implements Proposer {
   async journal(ctx: ProposeContext, req: { system: string; user: string }): Promise<string | null> {
     const o = this.opts;
     const left = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.spent?.usd ?? 0);
-    const p = o.prices;
+    const p = this.planPrices();
     // worst case input: the estimate the authoring loop uses for text the model has not seen (2 characters
     // per token, an over-count: prose runs about 4, figures about 3) at the cache-write rate; the rest of
     // the room is for output. It used to count every character as a token, which alone took 0.03 to
@@ -475,19 +548,18 @@ export class AnthropicProposer implements Proposer {
     const res = await this.client.beta.messages.create({
       model: o.model,
       max_tokens: maxTokens,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      ...(NO_ADAPTIVE.test(o.model) ? {} : { thinking: { type: "adaptive" as const }, output_config: { effort: "low" as const } }),
+      ...(this.routeParams() as { betas: string[]; fallbacks: "default" }),
+      ...(this.adaptive() ? { thinking: { type: "adaptive" as const }, output_config: { effort: "low" as const } } : {}),
       system: req.system,
       messages: [{ role: "user", content: req.user }],
     });
     const model = res.model ?? o.model;
     const base = model.replace(/-\d{8}$/, "");
-    const pr = model === o.model || base === o.model ? p : (MODEL_PRICES[model] ?? MODEL_PRICES[base] ?? PRICE_CEILING);
+    const pr = model === o.model || base === o.model ? o.prices : (MODEL_PRICES[model] ?? MODEL_PRICES[base] ?? PRICE_CEILING);
     const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
     const u = res.usage;
     const d = { input_tokens: n(u?.input_tokens), output_tokens: n(u?.output_tokens) || maxTokens, cache_read_tokens: n(u?.cache_read_input_tokens), cache_write_tokens: n(u?.cache_creation_input_tokens) };
-    const usd = (d.input_tokens * pr.input + d.output_tokens * pr.output + d.cache_read_tokens * pr.cache_read + d.cache_write_tokens * pr.cache_write) / 1e6;
+    const usd = this.usdOf(u, (d.input_tokens * pr.input + d.output_tokens * pr.output + d.cache_read_tokens * pr.cache_read + d.cache_write_tokens * pr.cache_write) / 1e6);
     if (ctx.spent) ctx.spent.usd += usd;
     try {
       ctx.meter?.model({ ...d, usd, model });

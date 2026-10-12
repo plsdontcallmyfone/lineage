@@ -67,22 +67,54 @@ async function setup(o: { over?: Record<string, unknown>; balance?: bigint; pric
 describe("routing per model (direct, OpenRouter, unavailable)", () => {
   const gpt = { provider: "openai", id: "gpt-5.5" };
   const opus = { provider: "anthropic", id: "claude-opus-5-5" };
-  test("direct when the provider's key is here, else OpenRouter, else unavailable; never a substitute", () => {
-    const direct = resolveRoute(REG, gpt, { openai: "o", openrouter: "r" });
-    expect(direct.ok && direct.via).toBe("direct");
-    expect(direct.ok && direct.model.id).toBe("gpt-5.5");
-    expect(direct.ok && direct.fee_factor).toBe(1);
-    const routed = resolveRoute(REG, gpt, { anthropic: "a", openrouter: "r" });
+  test("prefer openrouter (the default): OpenRouter when its key is here, else the provider's own key, else unavailable; never a substitute", () => {
+    expect(REG.routing?.prefer).toBe("openrouter");
+    const routed = resolveRoute(REG, gpt, { openai: "o", openrouter: "r" });
     expect(routed.ok && routed.via).toBe("openrouter");
     expect(routed.ok && routed.model.id).toBe("openai/gpt-5.5");
     expect(routed.ok && routed.chosen.id).toBe("gpt-5.5"); // the soul's model, not another
     expect(routed.ok && routed.fee_factor).toBeCloseTo(1.055, 12);
+    const direct = resolveRoute(REG, gpt, { openai: "o" });
+    expect(direct.ok && direct.via).toBe("direct");
+    expect(direct.ok && direct.model.id).toBe("gpt-5.5");
+    expect(direct.ok && direct.fee_factor).toBe(1);
     expect(resolveRoute(REG, gpt, { anthropic: "a" })).toMatchObject({ ok: false });
-  });
-  test("Anthropic stays direct: with only an OpenRouter key an Anthropic model is unavailable", () => {
-    expect(resolveRoute(REG, opus, { openrouter: "r" })).toMatchObject({ ok: false });
-    const d = resolveRoute(REG, opus, { anthropic: "a", openrouter: "r" });
+    // routing.prefer "direct" is the earlier rule: the provider's own key first
+    const old = structuredClone(REG);
+    old.routing!.prefer = "direct";
+    const d = resolveRoute(old, gpt, { openai: "o", openrouter: "r" });
     expect(d.ok && d.via).toBe("direct");
+    const o = resolveRoute(old, gpt, { openrouter: "r" });
+    expect(o.ok && o.via).toBe("openrouter");
+  });
+  test("Claude runs through OpenRouter too (owner decision 2026-10-12): the default model routes there, direct only without the OpenRouter key", () => {
+    expect(REG.default).toEqual(opus);
+    const def = resolveRoute(REG, null, { anthropic: "a", openrouter: "r" });
+    expect(def.ok && def.via).toBe("openrouter");
+    expect(def.ok && def.model.id).toBe("anthropic/claude-opus-5.5");
+    expect(def.ok && def.chosen).toMatchObject(opus); // provenance names the soul's model
+    expect(def.ok && def.provider.id).toBe("openrouter");
+    expect(def.ok && def.key).toBe("r");
+    expect(def.ok && def.fee_factor).toBeCloseTo(1.055, 12);
+    // Anthropic's own endpoint first (one prompt cache), under the listed price ceiling
+    expect(def.ok && def.request_extra).toEqual({ provider: { order: ["anthropic"], max_price: { prompt: 4, completion: 20 } } });
+    const only = resolveRoute(REG, opus, { openrouter: "r" });
+    expect(only.ok && only.via).toBe("openrouter");
+    const d = resolveRoute(REG, opus, { anthropic: "a" });
+    expect(d.ok && d.via).toBe("direct");
+    expect(d.ok && d.model.id).toBe("claude-opus-5-5");
+    expect(d.ok && d.fee_factor).toBe(1);
+    // a Claude model without a route (a registry stored before 2026-10-12) stays direct, and is unavailable without Anthropic's key
+    const bare = structuredClone(REG);
+    for (const m of bare.models) if (m.provider === "anthropic") delete m.routes;
+    const nr = resolveRoute(bare, opus, { anthropic: "a", openrouter: "r" });
+    expect(nr.ok && nr.via).toBe("direct");
+    expect(resolveRoute(bare, opus, { openrouter: "r" })).toMatchObject({ ok: false });
+    // every Claude model in the registry has its route
+    for (const m of REG.models.filter((x) => x.provider === "anthropic")) {
+      const r = resolveRoute(REG, { provider: m.provider, id: m.id }, { openrouter: "r" });
+      expect(r.ok && r.model.id).toBe(m.routes!.openrouter!.id);
+    }
   });
   test("models the direct API cannot run (no Meta API, GPT-6 Astra without function calling there) run through OpenRouter only", () => {
     const llama = resolveRoute(REG, { provider: "meta", id: "llama-4-maverick" }, { openrouter: "r" });
@@ -200,6 +232,20 @@ describe("OpenRouter balance gate", () => {
     const c = new OpenRouterBalance({ keys: { openrouter: "k" }, floor_usd: 5, fetch: api(FX.key_unlimited) });
     expect(await c.refresh(true)).toMatchObject({ usd: null, source: "unknown" });
     expect(c.room()).toBeNull();
+  });
+
+  test("a Claude agent is gated by the OpenRouter balance now: its route is OpenRouter, so a low balance pauses it with the same words", async () => {
+    const route = resolveRoute(REG, null, { anthropic: "a", openrouter: "k" });
+    if (!route.ok) throw new Error("the default model has no route");
+    expect(route.via).toBe("openrouter");
+    const ob = new OpenRouterBalance({ keys: { openrouter: "k" }, floor_usd: 5, fetch: api(FX.key_limited) });
+    await ob.refresh(true); // 0.30 USD left
+    const s = await setup({ providerBalance: ob });
+    s.r.routes.set(s.agent, { at: T0, r: { via: route.via, model: { provider: route.chosen.provider, id: route.chosen.id }, why: null } });
+    expect(s.rt.budget(s.agent).usd).toBeCloseTo(0.3, 9);
+    ob.markNoCredits();
+    expect(s.rt.budget(s.agent)).toMatchObject({ usd: null, why: expect.stringMatching(/^provider balance low \(OpenRouter has /), vault: false });
+    await s.rt.stop({ flush: false });
   });
 
   test("an OpenRouter-routed attempt waits while the known balance cannot cover its reserve; direct routes do not; a 402 marks it low", async () => {

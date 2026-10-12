@@ -63,8 +63,9 @@ describe("OpenRouter route in the registry", () => {
       if (m.pricing.input_cache_read) expect(r.cached_input!).toBeCloseTo(Number(m.pricing.input_cache_read) * 1e6, 6);
       expect(m.supported_parameters).toContain("tools");
     }
-    // Anthropic models never carry an OpenRouter route: they stay direct
-    expect(REG.models.filter((m) => m.provider === "anthropic" && m.routes?.openrouter)).toEqual([]);
+    // every Claude model carries its OpenRouter route since 2026-10-12 (owner: every model through OpenRouter)
+    expect(REG.models.filter((m) => m.provider === "anthropic" && !m.routes?.openrouter)).toEqual([]);
+    expect(REG.routing?.prefer).toBe("openrouter");
   });
 
   test("providers.env: OPENROUTER_API_KEY makes openrouter available; the management key is not a provider", () => {

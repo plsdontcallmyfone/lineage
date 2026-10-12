@@ -114,6 +114,9 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     // credits charged (Usage Accounting); reasoning goes back unmodified in reasoning_details on assistant
     // turns of a tool loop; HTTP-Referer and X-OpenRouter-Title identify the app; a 200 may carry only
     // an error object; 402 means the credits cannot cover the request
+    // read 2026-10-12: Claude models go to its Anthropic Messages endpoint instead, POST /api/v1/messages
+    // (same bearer key; the Anthropic SDK with baseURL https://openrouter.ai/api), so prompt caching
+    // is the native proposer's (runtime providers.ts anthropicClientFor, GatewayOptions in anthropic.ts)
     headers: { "HTTP-Referer": "https://github.com/plsdontcallmyfone/lineage", "X-OpenRouter-Title": "units" },
     echo_fields: ["reasoning_details"],
     reported_cost: true,

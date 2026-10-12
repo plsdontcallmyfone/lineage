@@ -7,7 +7,9 @@ import { OPENAI_HARNESS_DIGEST } from "../../worker/src/proposers/openai-compat.
 import { HARNESS_DIGEST } from "../../worker/src/proposers/anthropic.ts";
 import { PROVIDERS } from "../../worker/src/proposers/providers.ts";
 import type { ProposeContext } from "../../worker/src/proposers/types.ts";
-import { anthropicPrices, RegistrySource, resolveRoute, RoutedProposer } from "../src/providers.ts";
+import Anthropic from "@anthropic-ai/sdk";
+import { ProviderError } from "../../worker/src/proposers/openai-compat.ts";
+import { anthropicBaseOf, anthropicPrices, RegistrySource, resolveRoute, retryInFlight, routedError, RoutedProposer } from "../src/providers.ts";
 import { provenanceRecord } from "../src/provenance.ts";
 import { fakeClient } from "./fake.ts";
 
@@ -157,5 +159,140 @@ describe("RoutedProposer journal", () => {
     } finally {
       done();
     }
+  });
+});
+
+// Owner decision 2026-10-12: Claude runs through OpenRouter like every other model. The native
+// proposer talks to OpenRouter's Anthropic Messages endpoint, so caching and metering stay the same code.
+describe("Claude through OpenRouter", () => {
+  /** A routed Anthropic client: usage in Anthropic's shape, the charged cost only on the stream's message_delta event (as OpenRouter sends it). */
+  function routedClient(turns: { usage: Record<string, number>; cost?: number; tools?: { name: string; input: Record<string, unknown> }[]; provider?: string }[]) {
+    const requests: any[] = [];
+    let i = 0;
+    const client = {
+      beta: {
+        messages: {
+          stream: (params: any) => {
+            requests.push(params);
+            const t = turns[Math.min(i++, turns.length - 1)]!;
+            const on: ((e: any) => void)[] = [];
+            const content = (t.tools ?? []).map((x, k) => ({ type: "tool_use", id: `tu_${i}_${k}`, name: x.name, input: x.input }));
+            return {
+              on: (ev: string, f: (e: any) => void) => (ev === "streamEvent" && on.push(f), undefined),
+              finalMessage: async () => {
+                for (const f of on) f({ type: "message_delta", usage: { ...t.usage, ...(t.cost !== undefined ? { cost: t.cost } : {}) } });
+                return { id: `msg_${i}`, type: "message", role: "assistant", model: "anthropic/claude-opus-5.5", provider: t.provider ?? "Anthropic", content, stop_reason: content.length ? "tool_use" : "end_turn", stop_details: null, usage: { cache_read_input_tokens: 0, cache_creation_input_tokens: 0, ...t.usage } };
+              },
+            };
+          },
+          create: async (params: any) => {
+            requests.push(params);
+            return { model: "anthropic/claude-opus-5.5", content: [{ type: "text", text: "entry" }], stop_reason: "end_turn", usage: { input_tokens: 500, output_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cost: 0.004 } };
+          },
+        },
+      },
+    } as unknown as Anthropic;
+    return { client, requests };
+  }
+  const opus = REG.models.find((x) => x.provider === "anthropic" && x.id === "claude-opus-5-5")!;
+  const FEE = 1.055;
+
+  test("the default model with both keys runs in the native proposer against OpenRouter: its id, no Anthropic-only fields, cost x fee metered, provenance names the model, the provider and the harness", async () => {
+    const { c, logs, metered, harness, done } = ctx();
+    const upstream: string[] = [];
+    let route: any = null;
+    (c.meter as any).upstream = (n: string) => upstream.push(n);
+    (c.meter as any).route = (r: any) => (route = r);
+    try {
+      // 2,000 fresh, 30,000 read from the cache, 1,000 written, 400 out: OpenRouter charged 0.027 credits
+      const { client, requests } = routedClient([{ tools: [{ name: "give_up", input: { reason: "t" } }], usage: { input_tokens: 2000, output_tokens: 400, cache_read_input_tokens: 30000, cache_creation_input_tokens: 1000 }, cost: 0.027 }]);
+      const opts = { core: "http://core", keys: { anthropic: "sk-a", openrouter: "sk-or" }, attempt_max_usd: 1, effort: "medium" as const, max_turns: 3, max_evals: 1, fetch: fakeCore(null), anthropicClient: client };
+      const p = new RoutedProposer("A", opts, new RegistrySource(opts));
+      expect(await p.propose(c)).toBeNull();
+      expect(logs.join("\n")).toMatch(/model route: anthropic\/claude-opus-5-5 via OpenRouter \(anthropic\/claude-opus-5\.5\)/);
+      const req = requests[0];
+      expect(req.model).toBe("anthropic/claude-opus-5.5");
+      expect(req.betas).toBeUndefined(); // OpenRouter refuses fallbacks: "default" (400)
+      expect(req.fallbacks).toBeUndefined();
+      expect(req.provider).toEqual({ order: ["anthropic"], max_price: { prompt: 4, completion: 20 } });
+      // what keeps attempts affordable goes through unchanged: automatic caching, the static prefix breakpoint, effort
+      expect(req.cache_control).toEqual({ type: "ephemeral" });
+      expect(req.system[0].cache_control).toEqual({ type: "ephemeral" });
+      expect(req.output_config).toEqual({ effort: "medium" });
+      expect(req.thinking).toEqual({ type: "adaptive" });
+      expect(metered[0]).toMatchObject({ input_tokens: 2000, output_tokens: 400, cache_read_tokens: 30000, cache_write_tokens: 1000, model: "anthropic/claude-opus-5.5" });
+      expect(metered[0].usd).toBeCloseTo(0.027 * FEE, 12);
+      expect(route).toEqual({ via: "openrouter", model: { provider: "anthropic", id: "claude-opus-5-5" }, requested: "anthropic/claude-opus-5.5" });
+      expect(upstream).toEqual(["Anthropic"]);
+      const h = harness();
+      expect(h).toMatchObject({ name: "anthropic", provider: "openrouter", digest: HARNESS_DIGEST });
+      const rec = provenanceRecord({ commit_id: "c".repeat(64), agent: "A", recipe_id: "r".repeat(64), lineage_id: "l".repeat(64), amount: 1n, price: { line_per_usd: "1", line_per_sandbox_s: "0" }, requestedModel: "x",
+        totals: { input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0.1, sandbox_s: 0, models: ["anthropic/claude-opus-5.5"], started_at: 1, finished_at: 2, proposer: h, route: { via: "openrouter", model: route.model, upstream } } });
+      expect(rec).toMatchObject({ proposer: { name: "anthropic", version: "anthropic/1" }, provider: "openrouter", harness_digest: HARNESS_DIGEST, route: { via: "openrouter", model: { provider: "anthropic", id: "claude-opus-5-5" }, upstream: ["Anthropic"] } });
+      // the journal call goes to the same route and is metered at its reported cost x fee
+      metered.length = 0;
+      expect(await p.journal({ ...c, spent: { usd: 0 } } as ProposeContext, { system: "s", user: "u" })).toBe("entry");
+      expect(requests[1].model).toBe("anthropic/claude-opus-5.5");
+      expect(requests[1].betas).toBeUndefined();
+      expect(metered[0].usd).toBeCloseTo(0.004 * FEE, 12);
+    } finally {
+      done();
+    }
+  });
+
+  test("without a reported cost the response is metered at OpenRouter's listed price with cache reads and writes at their own rates, x fee", async () => {
+    const { c, metered, done } = ctx();
+    try {
+      const { client } = routedClient([{ tools: [{ name: "give_up", input: { reason: "t" } }], usage: { input_tokens: 2000, output_tokens: 400, cache_read_input_tokens: 30000, cache_creation_input_tokens: 1000 } }]);
+      const opts = { core: "http://core", keys: { openrouter: "sk-or" }, attempt_max_usd: 1, effort: "medium" as const, max_turns: 3, max_evals: 1, fetch: fakeCore(null), anthropicClient: client };
+      await new RoutedProposer("A", opts, new RegistrySource(opts)).propose(c);
+      const r = opus.routes!.openrouter!.rate;
+      const list = (2000 * r.input + 400 * r.output + 30000 * r.cached_input! + 1000 * r.cache_write!) / 1e6;
+      expect(list).toBeCloseTo(0.027, 12); // 0.008 + 0.008 + 0.006 + 0.005
+      expect(metered[0].usd).toBeCloseTo(list * FEE, 12);
+    } finally {
+      done();
+    }
+  });
+
+  test("Haiku 4.5 through OpenRouter still gets no adaptive thinking or effort (its rule follows the model, not the route's id)", async () => {
+    const { c, done } = ctx();
+    try {
+      const { client, requests } = routedClient([{ tools: [{ name: "give_up", input: { reason: "t" } }], usage: { input_tokens: 10, output_tokens: 10 }, cost: 0.0001 }]);
+      const opts = { core: "http://core", keys: { openrouter: "sk-or" }, attempt_max_usd: 1, effort: "medium" as const, max_turns: 3, max_evals: 1, fetch: fakeCore({ provider: "anthropic", id: "claude-haiku-4-5" }), anthropicClient: client };
+      await new RoutedProposer("A", opts, new RegistrySource(opts)).propose(c);
+      expect(requests[0].model).toBe("anthropic/claude-haiku-4.5");
+      expect(requests[0].thinking).toBeUndefined();
+      expect(requests[0].output_config).toBeUndefined();
+    } finally {
+      done();
+    }
+  });
+
+  test("a 402 with Retry-After (OpenRouter's in-flight budget) is waited out and resent, at most twice; a 402 without it is returned at once", async () => {
+    const waits: number[] = [];
+    const replies = [new Response("{}", { status: 402, headers: { "retry-after": "2" } }), new Response("{}", { status: 402, headers: { "retry-after": "90" } }), new Response('{"ok":true}', { status: 200 })];
+    let n = 0;
+    const f = retryInFlight((async () => replies[n++]!) as unknown as typeof fetch, async (ms) => void waits.push(ms));
+    expect((await f("https://x", { method: "POST", body: "{}" })).status).toBe(200);
+    expect(waits).toEqual([2000, 30000]);
+    let m = 0;
+    const g = retryInFlight((async () => (m++, new Response("{}", { status: 402 }))) as unknown as typeof fetch, async () => {});
+    expect((await g("https://x", { method: "POST", body: "{}" })).status).toBe(402);
+    expect(m).toBe(1);
+    let k = 0;
+    const h = retryInFlight((async () => (k++, new Response("{}", { status: 402, headers: { "retry-after": "1" } }))) as unknown as typeof fetch, async () => {});
+    expect((await h("https://x", { method: "POST", body: "{}" })).status).toBe(402);
+    expect(k).toBe(3);
+  });
+
+  test("the SDK base is OpenRouter's documented /api/v1/messages; a 402 becomes the adapter's no-credits error for the balance gate", () => {
+    expect(anthropicBaseOf(PROVIDERS.openrouter!)).toBe("https://openrouter.ai/api"); // the SDK appends /v1/messages
+    const e = routedError("openrouter", new Anthropic.APIError(402, { error: { message: "Insufficient credits" } }, "Insufficient credits", new Headers())) as ProviderError;
+    expect(e).toBeInstanceOf(ProviderError);
+    expect(e.provider).toBe("openrouter");
+    expect(e.noCredits).toBe(true);
+    const other = new Anthropic.APIError(429, {}, "slow down", new Headers());
+    expect(routedError("openrouter", other)).toBe(other);
   });
 });
