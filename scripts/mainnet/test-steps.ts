@@ -132,7 +132,10 @@ export async function checkTest(rpc: Rpc, check: Check, deployer: string, p: Loa
   }
   const curve = await rpc.getAccountInfo(pumpPdas.bondingCurve(p.line_mint));
   const lc0 = curve && curve.owner === PUMP.program ? decodeBondingCurve(curve.data) : null;
-  check("quote: a pump.fun coin paired with SOL (depth 0), not mayhem, curve not complete", !!lc0 && lc0.depth === 0 && !lc0.isMayhemMode && lc0.quoteMint === SOL_QUOTE && !lc0.complete);
+  // a quote coin that has left its curve for PumpSwap is as good as one still on it (the launch table then
+  // names its pool, p.line_pool); only a curve that is complete and NOT yet migrated cannot be traded
+  const migrated = !!lc0 && lc0.complete && !!p.line_pool;
+  check("quote: a pump.fun coin paired with SOL (depth 0), not mayhem, on its curve or migrated to its PumpSwap pool", !!lc0 && lc0.depth === 0 && !lc0.isMayhemMode && lc0.quoteMint === SOL_QUOTE && (!lc0.complete || migrated));
   const g = decodePumpGlobal((await rpc.getAccountInfo(PUMP.global))!.data);
   check("pump.fun Global.max_curve_depth is 1 or more (pump-coin quotes enabled)", g.maxCurveDepth >= 1, `${g.maxCurveDepth}`);
   if (table) {
