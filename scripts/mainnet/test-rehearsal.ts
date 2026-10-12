@@ -10,7 +10,8 @@
 //   2  one agent launched as the wizard plans it on mainnet for this test: create_v2 quoted in the test coin +
 //      register_pump_launch, the soul, SOL to the test coin on its curve, the 1% initial buy, the credits +
 //      wake, the units account payment and the Jito tip, packed by planLaunchBundle and signed on one blockhash
-//   3  a trade from SOL (multi_hop_swap through both curves) and a sell, a fee crank, a split and an epoch post
+//   3  a verifier registered and bonded by the site owner key, a trade from SOL (multi_hop_swap through both
+//      curves) and a sell, a fee crank, a split and an epoch post
 //   4  test.ts close (sweep the hot keys, sell the test coin, close the three programs), then a redeploy
 //      at a closed id is refused
 // Every cost is recorded at mainnet rent (lib.ts measure). The deployer's ledger gives the SOL it must
@@ -102,6 +103,8 @@ const out: Record<string, unknown> = { started: new Date().toISOString(), fork: 
 const COIN = { name: "units mainnet test (fork)", symbol: "UTEST", uri: "https://units.invalid/fork/test-coin.json" };
 const COIN_BUY_SOL = "0.05";
 const HOT_SOL = "0.05";
+const OWNER_SOL = "0.05";
+const OWNER_COINS = "20";
 const LAUNCHER_SOL = 500_000_000n;
 const TRADE_SOL = 20_000_000n;
 
@@ -110,6 +113,8 @@ const dep = forkKey("deployer");
 const launcher = forkKey("launcher"); // stands for the owner's browser wallet
 const agent = forkKey("agent");
 const agentMint = forkKey(`agent-mint-${Date.now()}`);
+const siteOwner = forkKey("site-owner"); // stands for the site instance's owner key (made on the server), which registers its verifiers
+const verifier = forkKey("verifier");
 const LOGF = join(KEYS, "test-cli.jsonl");
 const OUT_DIR = join(KEYS, "out");
 mkdirSync(OUT_DIR, { recursive: true });
@@ -152,10 +157,19 @@ async function bookCli(step: string): Promise<CostRow[]> {
     if (!e.signature) continue;
     const c = await measure(step, e.what, e.signature);
     got.push(c);
-    // a plain SOL transfer to a wallet is booked at face value (the rent conversion applies to accounts with data only)
-    if (c.payer === dep.id) book(e.what, /^fund /.test(e.what) ? BigInt(c.payerDeltaFork) : BigInt(c.payerMainnet));
+    if (c.payer === dep.id) book(e.what, /^fund /.test(e.what) ? faceValue(c) : BigInt(c.payerMainnet));
   }
   return got;
+}
+/**
+ * A funding transfer at mainnet rent: SOL sent to a wallet is face value (a wallet that had no lamports
+ * is not an account being created at a rent price), and only accounts with data (a token account made
+ * for the recipient) are converted from the fork's rent to mainnet's.
+ */
+function faceValue(c: CostRow): bigint {
+  const data = c.created.filter((x) => x.bytes > 0);
+  const forkData = data.reduce((a, x) => a + BigInt(x.forkRent), 0n), mainData = data.reduce((a, x) => a + BigInt(x.mainnetRent), 0n);
+  return BigInt(c.payerDeltaFork) - forkData + mainData;
 }
 const pubkeyOf = (p: string) => spawnSync("solana-keygen", ["pubkey", p], { encoding: "utf8" }).stdout.trim();
 async function programBytes(rpc: typeof fork, program: string): Promise<Uint8Array> {
@@ -261,6 +275,12 @@ async function step1() {
   testCli(["fund", "--core", HOT_SOL, "--runtime", HOT_SOL]);
   await bookCli("1 fund");
   out.hot_keys = { core_authority: state.core_authority, runtime_authority: state.runtime_authority, funded_sol_each: HOT_SOL };
+  check("1: the state file sends the units account payment to the deployer (not to the devnet treasury key of config/network.json)", state.network_overrides?.prepay?.identity_account_recipient === dep.id);
+  // the site instance's owner key registers and bonds its verifiers: SOL and a few test coins from the deployer
+  testCli(["fund", "--to", siteOwner.id, "--sol", OWNER_SOL, "--coin", OWNER_COINS]);
+  const ownerRow = (await bookCli("1 fund owner"))[0]!;
+  check("1: the site owner key holds its SOL and test coins", (await reader.tokenBalance(ata(siteOwner.id, coinMint, T22))) === BigInt(OWNER_COINS) * 1_000_000n && (await fork.getBalance(siteOwner.id)) === BigInt(Math.round(Number(OWNER_SOL) * 1e9)),
+    `${OWNER_SOL} SOL, ${OWNER_COINS} test coins; the transfer cost the deployer ${sol(faceValue(ownerRow) - BigInt(Math.round(Number(OWNER_SOL) * 1e9)))} SOL beyond the SOL sent (its fee and the recipient's token account)`);
   return { coinMint, state, table: state.launch_lookup_table as string };
 }
 
@@ -373,10 +393,20 @@ async function step2(coinMint: string, tableAddr: string, P: ReturnType<typeof p
   return { costs, spentMainnet };
 }
 
-// ---------------------------------------------------------------- 3: a trade, a crank, an epoch post
-async function step3(coinMint: string) {
+// ---------------------------------------------------------------- 3: a verifier, a trade, a crank, an epoch post
+let ownerSpent = 0n;
+async function step3(coinMint: string, P: ReturnType<typeof parseLaunchParams>) {
   const launcherCosts: CostRow[] = [];
   const core = forkKey("core-authority");
+  // one of the instance's verifiers, registered and bonded by the site owner key (the kit's `chain` step sends the same instructions)
+  const ownerCoin = ata(siteOwner.id, coinMint, T22);
+  const reg = await send("3", "register a verifier (burns register_burn; 2 signatures)", siteOwner, [
+    registry.register({ owner: siteOwner.id, agent: verifier.id, mint: coinMint, ownerToken: ownerCoin, operator: H("operator", "fork"), capabilities: "00".repeat(32), tokenProgram: T22 })], { signers: [verifier] });
+  const bond = await send("3", "bond min_bond", siteOwner, [registry.bond({ owner: siteOwner.id, agent: verifier.id, mint: coinMint, ownerToken: ownerCoin, amount: P.params.minBond, tokenProgram: T22 })]);
+  const va = (await reader.agent(verifier.id))!;
+  check("3: a verifier is registered and bonded by the site owner key, paid in the test coin", va.bond === P.params.minBond, `burn ${P.params.registerBurn}, bond ${P.params.minBond} base units`);
+  out.verifier = { register_mainnet_lamports: reg.cost.payerMainnet, bond_mainnet_lamports: bond.cost.payerMainnet, register_burn_base_units: P.params.registerBurn.toString(), min_bond_base_units: P.params.minBond.toString() };
+  ownerSpent = BigInt(reg.cost.payerMainnet) + BigInt(bond.cost.payerMainnet);
   const buy = await send("3", `trade: multi_hop_swap ${sol(TRADE_SOL)} SOL -> test coin curve -> agent coin curve`, launcher, [
     token.createAtaIdempotent(launcher.id, launcher.id, PUMP.wsol, TOKEN_PROGRAM), token.createAtaIdempotent(launcher.id, launcher.id, agentMint.id, T22),
     pumpAmm.multiHopSwap({ user: launcher.id, userIn: ata(launcher.id, PUMP.wsol, TOKEN_PROGRAM), userOut: ata(launcher.id, agentMint.id, T22), amountIn: TRADE_SOL, minOut: 1n,
@@ -437,6 +467,11 @@ async function step4(coinMint: string, launcherSpent: bigint, corePost: CostRow)
   check("4: the launcher wallet sold its coins and returned its SOL", moved > 0n, `${sol(moved)} SOL on the fork; ${sol(back)} SOL at mainnet rent`);
   book("launcher wallet swept back (funded amount less what it spent at mainnet rent)", -back);
 
+  // the site owner key's SOL comes back the same way (on the server it is the kit's key; here it is swept directly)
+  const ownerBack = BigInt(Math.round(Number(OWNER_SOL) * 1e9)) - ownerSpent - 5_000n;
+  await sweepKey(fork, fwd("4"), siteOwner, dep.id, "the site owner key");
+  book("site owner key swept back (funded SOL less what registering and bonding one verifier cost)", -ownerBack);
+
   const b0 = await fork.getBalance(dep.id);
   const refuse = testCli(["close"], { expectFail: true });
   check("4: close without --confirm <registry id> refuses", /--confirm/.test(refuse));
@@ -491,7 +526,7 @@ try {
   const raw = JSON.parse(readFileSync(join(import.meta.dir, "test-params.json"), "utf8"));
   const P = parseLaunchParams({ ...raw, core_authority: state.core_authority, runtime_authority: state.runtime_authority, line_mint: coinMint });
   const l = await step2(coinMint, table, P);
-  const t = await step3(coinMint);
+  const t = await step3(coinMint, P);
   await step4(coinMint, l.spentMainnet + t.launcherCosts.reduce((a, c) => a + BigInt(c.payerMainnet), 0n), t.corePost);
   out.deployer = {
     note: "at mainnet rent and the base fee of 5,000 lamports per signature; no priority fee; the launcher wallet and the hot keys are funded from the deployer and swept back to it",

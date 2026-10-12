@@ -14,7 +14,8 @@
 //   deploy    write-buffer + deploy each program at its mainnet id, upgrade authority = the deployer, ProgramData sized to the build
 //   init      initialize registry, launch and messages with admin = the deployer, the lookup table, bounty and challenge configs;
 //             writes the state file and the profile overlay into --out
-//   fund      SOL from the deployer to the hot keys: --core <SOL> --runtime <SOL>
+//   fund      SOL from the deployer to the hot keys: --core <SOL> --runtime <SOL>; and to another wallet (the site instance's
+//             owner key, for its verifiers' registration burns and bonds): --to <address> --sol <SOL> --coin <whole test coins>
 //   check     read the whole deployment back (read only)
 //   close     end of the test: sweep the hot keys, optionally sell the deployer's test coin (--sell-coin), close the three programs
 //             and any buffer to the deployer. Needs --confirm <registry program id>. A closed program id can never be deployed again.
@@ -44,6 +45,7 @@ import {
   Rpc,
   sendAndConfirm,
   system,
+  token,
   TOKEN_2022_PROGRAM,
   TxError,
   type Ix,
@@ -288,6 +290,9 @@ async function init() {
     line_mint: P.line_mint, line_token_program: P.line_token_program, line_decimals: P.line_decimals, line_venue: "pump.fun",
     admin: dep.id, core_authority: P.core_authority, runtime_authority: P.runtime_authority,
     launch_lookup_table: r.lookupTable, compute_sink: lc.computeSink, agent_compute_bps: Number(P.net.agent_compute_bps), protocol_bps: Number(P.net.protocol_bps),
+    // Core config keys the mainnet instance replaces (scripts/deploy, docs/DEPLOY-SITE.md "Second instance"): the units account
+    // payment goes to the deployer, not to config/network.json's devnet treasury key
+    network_overrides: { prepay: { identity_account_recipient: dep.id } },
   }, null, 2) + "\n");
   writeFileSync(join(OUT, "profile.local.json"), JSON.stringify({
     _note: "Local overlay for the mainnet TEST instance (UNITS_PROFILE_LOCAL, packages/chain/src/profile-node.ts): the quote is the throwaway test coin, and SOL is turned into it on its own pump.fun curve, not through Jupiter. Untracked.",
@@ -314,6 +319,20 @@ async function fund() {
     const v = flag(f);
     if (!v) continue;
     await send(`fund ${n} ${hot(n).id} with ${v} SOL`, dep, [system.transfer(dep.id, hot(n).id, lamports(v))]);
+  }
+  // another wallet (the site instance's owner key, which registers and bonds its verifiers): SOL and whole test coins
+  const to = flag("--to");
+  if (to) {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(to)) throw new Error("--to must be a base58 address");
+    const P = loadParams();
+    const coins = flag("--coin"), solAmount = flag("--sol");
+    if (!coins && !solAmount) throw new Error("--to needs --sol <SOL> and/or --coin <whole test coins>");
+    if (coins && !/^\d+$/.test(coins)) throw new Error("--coin is a whole number of test coins");
+    const ixs: Ix[] = [];
+    if (solAmount) ixs.push(system.transfer(dep.id, to, lamports(solAmount)));
+    if (coins) ixs.push(token.createAtaIdempotent(dep.id, to, P.line_mint, P.line_token_program),
+      token.transferChecked(ata(dep.id, P.line_mint, P.line_token_program), P.line_mint, ata(to, P.line_mint, P.line_token_program), dep.id, BigInt(coins) * 10n ** BigInt(P.line_decimals), P.line_decimals, P.line_token_program));
+    await send(`fund ${to} with ${solAmount ?? "0"} SOL and ${coins ?? "0"} test coins`, dep, ixs);
   }
 }
 

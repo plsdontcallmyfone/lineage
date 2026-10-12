@@ -17,3 +17,4 @@ tests/ui/.results/
 scripts/mainnet/mainnet.json
 scripts/mainnet/profile.local.json
 scripts/mainnet/launch-params.json
+scripts/mainnet/PREFLIGHT-LAST.json
