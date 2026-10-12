@@ -104,6 +104,44 @@ describe("social (plan S)", () => {
     expect(JSON.stringify(mod)).not.toContain("measured the decoder");
   });
 
+  test("a coin's image: signed by the agent key before the launch, the app's avatar after it, fixed once launched", async () => {
+    const e = (env = await setup({ verifiers: 0 }));
+    const k = generateAgentKey();
+    const JPG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
+    // nobody but the agent key speaks for an agent that is not on chain yet
+    expect((await media(e, generateAgentKey(), k.id, "coin", PNG)).status).toBe(403);
+    expect((await media(e, k, k.id, "avatar", PNG)).status).toBe(404);
+    expect((await media(e, k, k.id, "coin", new TextEncoder().encode("<svg/>"), "image/svg+xml")).body.error).toBe("bad_image");
+    expect((await media(e, k, k.id, "coin", new Uint8Array(SOCIAL_LIMITS.avatar_max_bytes + 1).fill(1))).status).toBe(413);
+    const up = await expectOk(media(e, k, k.id, "coin", PNG));
+    expect(up).toMatchObject({ slot: "coin", type: "image/png", sha256: sha256Hex(PNG) });
+    // public at once, before any launch: this is what the coin's metadata will name
+    const img = await fetch(`${e.base}/v1/media/${up.sha256}`);
+    expect(img.status).toBe(200);
+    expect(img.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await img.arrayBuffer())).toEqual(PNG);
+    // the launcher picks another image before launching: the later one is the agent's
+    await expectOk(media(e, k, k.id, "coin", JPG, "image/jpeg"));
+    // a second agent choosing the same bytes does not take the first one's image away
+    const k2 = generateAgentKey();
+    await expectOk(media(e, k2, k2.id, "coin", JPG, "image/jpeg"));
+    // picked, then removed again: nothing is kept for that key
+    const k3 = generateAgentKey();
+    await expectOk(media(e, k3, k3.id, "coin", PNG));
+    const clear = { v: 1, kind: "lineage-media", agent: k3.id, slot: "coin", sha256: "", type: "", size: 0, signer: k3.id, created_at: nowS(e), nonce: nonce() };
+    expect(await expectOk(e.anon.post(`/v1/agents/${k3.id}/media`, { statement: clear, sig: signStatement(k3, "media", clear), data: "" }))).toMatchObject({ cleared: true });
+    const launcher = generateAgentKey();
+    for (const x of [k, k2, k3]) await expectOk(e.admin.c.post("/v1/admin/launches", { agent: x.id, mint: generateAgentKey().id, launcher: launcher.id, target_repo: RECIPE.repo, hosted: true, identity_mode: "app" }));
+    // launched: the avatar everywhere is the chosen image, with no soul naming one
+    for (const x of [k, k2]) expect((await expectOk(e.anon.get(`/v1/agents/${x.id}/profile`))).media.avatar).toMatchObject({ sha256: sha256Hex(JPG), type: "image/jpeg", url: `/v1/media/${sha256Hex(JPG)}` });
+    expect((await expectOk(e.anon.get(`/v1/agents/${k3.id}/profile`))).media.avatar).toBeNull();
+    // and it is fixed: not the agent key, not the launcher, not a stranger can put another coin image
+    expect((await media(e, k, k.id, "coin", PNG)).status).toBe(409);
+    expect((await media(e, launcher, k.id, "coin", PNG)).status).toBe(403);
+    expect((await media(e, generateAgentKey(), k.id, "coin", PNG)).status).toBe(403);
+    expect((await expectOk(e.anon.get(`/v1/agents/${k.id}/profile`))).media.avatar.sha256).toBe(sha256Hex(JPG));
+  });
+
   test("profile media: uploaded by the launcher, shown once a signed soul version names it, hidden by the admin with a record", async () => {
     const e = (env = await setup({ verifiers: 0 }));
     const k = generateAgentKey();

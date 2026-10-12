@@ -4,9 +4,13 @@
 // 5N3mG2A5..., beer 8nejek5U...): {name, symbol, description, showName: true, image, createdOn:
 // "https://pump.fun"} plus twitter, telegram and website only when the launcher gave them.
 //
-// Where it lives (decided 2026-10-12): on our own site, at <metadata origin>/coin/<mint>.json with the
-// image at <metadata origin>/coin/face/<agent>.png, both answered from chain data alone
-// (apps/web/coin-metadata.ts). Not IPFS: pump.fun's upload endpoint (pump.fun/api/ipfs) is closed to
+// Where it lives (decided 2026-10-12): on our own site, at <metadata origin>/coin/<mint>.json, answered
+// from chain data alone (apps/web/coin-metadata.ts). The image is the one the launcher chose in the
+// wizard (owner 2026-10-12: "people get to choose the images"): the URI carries its sha256 as ?i=<base58>,
+// so the choice is on chain with the coin and nothing behind the URI can swap it, and the document names
+// <metadata origin>/coin/image/<that id>, the bytes with that hash from Core's blob store. A launch with
+// no chosen image has no ?i= and shows the agent's generated face, <metadata origin>/coin/face/<agent>.png.
+// Not IPFS: pump.fun's upload endpoint (pump.fun/api/ipfs) is closed to
 // outside callers (PumpPortal's creation docs, read 2026-10-12: "no longer supported", they now ask for
 // a Pinata account and key), and the public gateway its URIs name (ipfs.io, also dweb.link) answered
 // 429 "switching to a service worker gateway only" to every programmatic read on 2026-10-12, so an
@@ -16,6 +20,8 @@
 //
 // Pure (no fetch of its own unless one is passed), so the launch page, the web server, the owner's
 // check script and tests share one rule for "this URI resolves to usable metadata".
+
+import { addressBytes, bytesToHex, hexToBytes, sha256, toAddress } from "./codec.ts";
 
 export interface CoinMetadata {
   name: string;
@@ -37,20 +43,43 @@ export function metadataOrigin(origin: string): string {
 }
 export const coinMetadataPath = (mint: string) => `/coin/${mint}.json`;
 export const coinFacePath = (agent: string) => `/coin/face/${agent}.png`;
-/** The URI create_v2 writes into the coin. */
-export const coinMetadataUri = (origin: string, mint: string) => `${metadataOrigin(origin)}${coinMetadataPath(mint)}`;
-/** The longest such URI in bytes (a mint address is at most 44 characters). */
-export const coinMetadataUriBytes = (origin: string) => coinMetadataUri(origin, "1".repeat(44)).length;
+export const coinImagePath = (imageId: string) => `/coin/image/${imageId}`;
+/** A chosen image's id in a URI: its sha256 in base58 (43 or 44 characters). */
+export const coinImageId = (sha256Hex: string): string => {
+  if (!/^[0-9a-f]{64}$/.test(sha256Hex)) throw new Error("a coin image is named by its sha256 (64 hex)");
+  return toAddress(hexToBytes(sha256Hex));
+};
+/** The sha256 (hex) an image id stands for, or null when it is not one. */
+export const coinImageSha = (imageId: string | null | undefined): string | null => {
+  try {
+    return imageId && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(imageId) && addressBytes(imageId).length === 32 ? bytesToHex(addressBytes(imageId)) : null;
+  } catch {
+    return null;
+  }
+};
+/** The URI create_v2 writes into the coin; `imageId` when the launcher chose an image. */
+export const coinMetadataUri = (origin: string, mint: string, imageId?: string | null) => `${metadataOrigin(origin)}${coinMetadataPath(mint)}${imageId ? `?i=${imageId}` : ""}`;
+/** The longest such URI in bytes (a mint address and an image id are at most 44 characters each). */
+export const coinMetadataUriBytes = (origin: string, withImage = false) => coinMetadataUri(origin, "1".repeat(44), withImage ? "1".repeat(44) : null).length;
+/** The image id a coin's on-chain URI names, or null (no chosen image, or not a URI of ours). */
+export function coinImageOfUri(uri: string | null | undefined): string | null {
+  try {
+    const i = new URL(uri ?? "").searchParams.get("i");
+    return coinImageSha(i) ? i : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The document served at a coin's URI: built from what the chain records about the launch, nothing else. */
-export function coinMetadataDoc(o: { origin: string; mint: string; agent: string; name: string; symbol: string; repoUrl: string }): CoinMetadata {
+export function coinMetadataDoc(o: { origin: string; mint: string; agent: string; name: string; symbol: string; repoUrl: string; imageId?: string | null }): CoinMetadata {
   const origin = metadataOrigin(o.origin);
   return {
     name: o.name,
     symbol: o.symbol,
     description: `${o.name.trim()} is an autonomous coding agent launched on units. It works on ${o.repoUrl}.`,
     showName: true,
-    image: `${origin}${coinFacePath(o.agent)}`,
+    image: `${origin}${o.imageId ? coinImagePath(o.imageId) : coinFacePath(o.agent)}`,
     createdOn: origin,
     website: `${origin}/tokens/${o.mint}`,
   };
@@ -84,7 +113,7 @@ export interface UriCheck {
   problem: string | null;
   metadata: CoinMetadata | null;
   /** the image answered with an image content type */
-  image: { url: string; type: string; bytes: number } | null;
+  image: { url: string; type: string; bytes: number; sha256: string } | null;
 }
 
 /**
@@ -110,7 +139,7 @@ export async function checkMetadataUri(
   const signal = () => AbortSignal.timeout(o.timeoutMs ?? 15_000);
   let doc: unknown;
   try {
-    const r = await f(`${via(uri)}${o.query ? `?${o.query}` : ""}`, { signal: signal(), headers: { accept: "application/json" } });
+    const r = await f(`${via(uri)}${o.query ? `${uri.includes("?") ? "&" : "?"}${o.query}` : ""}`, { signal: signal(), headers: { accept: "application/json" } });
     if (!r.ok) return bad(`the URI answered HTTP ${r.status}`);
     const text = await r.text();
     try {
@@ -128,10 +157,10 @@ export async function checkMetadataUri(
     const r = await f(via(metadata.image), { signal: signal() });
     if (!r.ok) return bad(`the image answered HTTP ${r.status}`, metadata);
     const type = (r.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
-    const bytes = (await r.arrayBuffer()).byteLength;
+    const body = new Uint8Array(await r.arrayBuffer());
     if (!type.startsWith("image/")) return bad(`the image answered with content type ${type || "none"}`, metadata);
-    if (!bytes) return bad("the image is empty", metadata);
-    return { ok: true, problem: null, metadata, image: { url: metadata.image, type, bytes } };
+    if (!body.length) return bad("the image is empty", metadata);
+    return { ok: true, problem: null, metadata, image: { url: metadata.image, type, bytes: body.length, sha256: bytesToHex(sha256(body)) } };
   } catch (e) {
     return bad(`the image did not answer (${(e as Error).message})`, metadata);
   }

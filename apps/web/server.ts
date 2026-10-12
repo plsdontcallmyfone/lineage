@@ -20,7 +20,7 @@
 //   /souls/config      GET soul draft service state (caps, today's spend; TEST values)
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
-//   /coin/<mint>.json, /coin/face/<agent>.png, /coin/origin   a launched coin's metadata document and image, the
+//   /coin/<mint>.json, /coin/image/<id>, /coin/face/<agent>.png, /coin/origin   a launched coin's metadata document and image, the
 //                      target of its on-chain URI, built from chain data alone (coin-metadata.ts)
 //   /market/<path>     GET proxy to the market indexer (packages/indexer; --market, default http://127.0.0.1:9668)
 //   /embed/units-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
@@ -230,6 +230,7 @@ const chainRoute = (req: Request, p: string) => chain.route(req, p);
 // app domain) and the devnet site on devnet. It can never be changed for a coin once launched. Chain
 // reads go through this server's own /chain/rpc route (its retries, its upstream).
 const coin = coinRoutes({
+  core: CORE,
   origin: process.env.UNITS_METADATA_ORIGIN || (PROFILE.network === "mainnet" ? sites.metadata_origin : sites.devnet_site_url),
   rpc: new Rpc(async (method, params) => {
     const r = await chain.route(new Request("http://127.0.0.1/chain/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }), "/chain/rpc");

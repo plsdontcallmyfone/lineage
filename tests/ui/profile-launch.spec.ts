@@ -132,6 +132,10 @@ test.describe("Launch (/launch)", () => {
     // 1 coin
     await page.fill('[name="l_name"]', `ui test ${narrow ? 390 : 1280}`);
     await page.fill('[name="l_desc"]', "A check of the launch wizard. Nothing is launched by this run.");
+    // the coin image is stored before Review, signed by the agent key (apps/web/wallet/coin-uri.ts): this run stores nothing,
+    // so the upload and the read-back of the image are answered here
+    await page.route("**/social/media/*", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+    await page.route("**/coin/image/*", (r) => r.fulfill({ status: 200, contentType: "image/png", body: ONE_PX_PNG }));
     await page.locator('[name="l_image"]').setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: ONE_PX_PNG });
     await page.fill('[name="l_links"]', "https://example.com");
     await page.locator('[data-act="lz-next"]:not([disabled])').waitFor({ timeout: 60_000 });

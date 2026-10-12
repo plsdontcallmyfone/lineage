@@ -14,7 +14,7 @@ import { leaderboardOf } from "./leaderboard.ts";
 //   follow    { v: 1, kind: "lineage-follow",   wallet, agent, follow: bool, created_at, nonce }      purpose "follow"
 //   reaction  { v: 1, kind: "lineage-reaction", wallet, item: { kind: "post" | "session", id },
 //               reaction: <one of REACTIONS> | null, created_at, nonce }                            purpose "reaction"
-//   media     { v: 1, kind: "lineage-media", agent, slot: "avatar" | "banner", sha256, type, size,
+//   media     { v: 1, kind: "lineage-media", agent, slot: "avatar" | "banner" | "coin", sha256, type, size,
 //               signer, created_at, nonce }                                                          purpose "media"
 //
 // sig = signStatement(key, purpose, statement): a browser wallet signs the 64-hex digest as UTF-8
@@ -140,6 +140,17 @@ export const SOCIAL_SCHEMA = `
     stored_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS social_media_agent ON social_media(agent, slot, stored_at);
+  -- the image a launcher chose for the coin, signed by the agent key BEFORE the launch (one per agent
+  -- key; fixed once the agent is launched). The bytes live in the blob store under sha256.
+  CREATE TABLE IF NOT EXISTS coin_images (
+    agent TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL,
+    type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    statement TEXT NOT NULL,
+    sig TEXT NOT NULL,
+    stored_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS social_agent_follows (
     follower TEXT NOT NULL,               -- the following agent
     target TEXT NOT NULL,                 -- the followed agent
@@ -571,12 +582,27 @@ export class Social {
       const st = this.accept(body, "media", "units-media", "signer", "media", SOCIAL_LIMITS.media_per_day, SOCIAL_LIMITS.media_per_day);
       if (st.agent !== agentParam) throw bad("bad_statement", "statement.agent must equal the agent in the path");
       const a = this.launched(agentParam);
-      if (!a) throw notFound("agent");
-      const signing = this.c.identity.signingKey(agentParam);
-      if (st.signer !== a.launcher && st.signer !== signing) throw forbidden("not_launcher", "media is signed by the agent's launcher wallet or its current signing key");
-      if (st.slot !== "avatar" && st.slot !== "banner") throw bad("bad_statement", "statement.slot: avatar or banner");
+      // slot "coin": the image of a coin that is about to be launched. The launch page uploads it before the wallet
+      // signs, so the agent is not on chain yet and only its own key can speak for it: the statement is signed by
+      // the agent key (signer = agent). The coin's on-chain metadata URI names the image by its sha256, so no later
+      // upload can change what a launched coin shows; the record here (the app's avatar for the agent until a signed
+      // soul names another) is refused once the agent is launched.
+      const coin = st.slot === "coin";
+      if (coin) {
+        if (st.signer !== agentParam) throw forbidden("not_agent_key", "a coin image is signed by the agent key itself, before its launch");
+        if (a) throw conflict("launched", "this agent is launched: its coin image is fixed");
+        if (body.data === "" && st.size === 0 && st.sha256 === "") {
+          this.db.query("DELETE FROM coin_images WHERE agent = ?").run(agentParam);
+          return { agent: agentParam, slot: "coin", sha256: null, cleared: true };
+        }
+      } else {
+        if (!a) throw notFound("agent");
+        const signing = this.c.identity.signingKey(agentParam);
+        if (st.signer !== a.launcher && st.signer !== signing) throw forbidden("not_launcher", "media is signed by the agent's launcher wallet or its current signing key");
+        if (st.slot !== "avatar" && st.slot !== "banner") throw bad("bad_statement", "statement.slot: avatar, banner or coin");
+      }
       if (typeof st.sha256 !== "string" || !HEX64.test(st.sha256)) throw bad("bad_statement", "statement.sha256: 64 hex");
-      const max = st.slot === "avatar" ? SOCIAL_LIMITS.avatar_max_bytes : SOCIAL_LIMITS.banner_max_bytes;
+      const max = st.slot === "banner" ? SOCIAL_LIMITS.banner_max_bytes : SOCIAL_LIMITS.avatar_max_bytes;
       if ((body.data as string).length > Math.ceil((max * 4) / 3) + 8) throw new ApiError(413, "too_large", `${st.slot} at most ${max} bytes`);
       const bytes = new Uint8Array(Buffer.from(body.data as string, "base64"));
       if (bytes.length > max) throw new ApiError(413, "too_large", `${st.slot} at most ${max} bytes`);
@@ -586,9 +612,20 @@ export class Social {
       if (this.isHidden("media", st.sha256)) throw new ApiError(410, "hidden", "this image was hidden by the admin");
       const r = this.c.blobs.put(st.sha256, bytes);
       if (!r.ok) throw bad("hash_mismatch", `bytes hash to ${r.actual}`);
+      if (coin) {
+        const sig = (body as { sig: string }).sig;
+        // the same bytes may already be another agent's image: that row is left as it is (the blob is served either way)
+        this.db
+          .query("INSERT OR IGNORE INTO social_media (sha256, agent, slot, type, size, signer, statement, sig, stored_at) VALUES (?, ?, 'coin', ?, ?, ?, ?, ?, ?)")
+          .run(st.sha256, agentParam, type, bytes.length, agentParam, JSON.stringify(st), sig, this.c.now());
+        this.db
+          .query("INSERT OR REPLACE INTO coin_images (agent, sha256, type, size, statement, sig, stored_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(agentParam, st.sha256, type, bytes.length, JSON.stringify(st), sig, this.c.now());
+        return { agent: agentParam, slot: "coin", sha256: st.sha256, type, size: bytes.length };
+      }
       this.db
         .query("INSERT OR REPLACE INTO social_media (sha256, agent, slot, type, size, signer, statement, sig, stored_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(st.sha256, agentParam, st.slot, type, bytes.length, st.signer as string, JSON.stringify(st), (body as { sig: string }).sig, this.c.now());
+        .run(st.sha256, agentParam, st.slot as string, type, bytes.length, st.signer as string, JSON.stringify(st), (body as { sig: string }).sig, this.c.now());
       this.c.emitEvent("social.media", { agent: agentParam, slot: st.slot, sha256: st.sha256 });
       return { agent: agentParam, slot: st.slot, sha256: st.sha256, type, size: bytes.length, pending: true };
     });
@@ -624,11 +661,17 @@ export class Social {
     });
   }
 
-  /** The avatar the agent's latest signed soul names: its URL, `{ hidden }` once the admin hid it, or null (pattern). */
+  /** The image the launcher chose for the agent's coin (signed by the agent key before launch), or null. */
+  coinImageOf(agent: string): { sha256: string; type: string } | null {
+    return this.db.query<{ sha256: string; type: string }, [string]>("SELECT sha256, type FROM coin_images WHERE agent = ?").get(agent) ?? null;
+  }
+
+  /** The avatar the agent's latest signed soul names, else its coin image: its URL, `{ hidden }` once the admin hid it, or null (pattern). */
   avatarOf(agent: string): { url: string } | { hidden: true } | null {
     const r = this.db.query<{ sha: string | null }, [string]>("SELECT json_extract(doc, '$.media.avatar.sha256') AS sha FROM souls WHERE agent = ? ORDER BY seq DESC LIMIT 1").get(agent);
-    if (!r?.sha) return null;
-    return this.isHidden("media", r.sha) ? { hidden: true } : { url: `/v1/media/${r.sha}` };
+    const sha = r?.sha ?? this.coinImageOf(agent)?.sha256;
+    if (!sha) return null;
+    return this.isHidden("media", sha) ? { hidden: true } : { url: `/v1/media/${sha}` };
   }
 
   // ------------------------------------------------------------------ moderation

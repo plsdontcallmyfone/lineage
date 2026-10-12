@@ -92,7 +92,7 @@ import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchTok
 import { depositBase, depositNote, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, solCostsFromSims, type FundingView, type InitialBuy } from "./fronting.ts";
 import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
-import { checkedCoinUri, loadCoinOrigin, type CoinOrigin } from "./coin-uri.ts";
+import { checkedCoinUri, loadCoinOrigin, storeCoinImage, type CoinOrigin } from "./coin-uri.ts";
 export { mountClaim } from "./claim.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, simulatePlan, type PreparedSwap } from "./swap.ts";
@@ -451,7 +451,7 @@ function launchArgs(metaOrigin: string) {
   if (!/^[A-Z0-9]{1,10}$/.test(symbol)) throw new Error("Symbol: 1 to 10 characters, A to Z and 0 to 9.");
   if (!S.repo || S.repo.state !== "ok") throw new Error("Target repository: enter a public GitHub https URL and wait for the check to pass.");
   // the metadata URI names the mint, which is made after this check: counted at its longest (coin-uri.ts)
-  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${S.repo.url}`).length + coinMetadataUriBytes(metaOrigin);
+  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${S.repo.url}`).length + coinMetadataUriBytes(metaOrigin, !!S.image);
   if (strings > MAX_LAUNCH_STRINGS) throw new Error(`Name, symbol, metadata URI and repository URL take ${strings} bytes; one launch transaction holds ${MAX_LAUNCH_STRINGS}.`);
   return { name: `${namePrefix()}${name}`, symbol, uri: "", repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
 }
@@ -667,7 +667,9 @@ async function launchReview() {
     const mint = keep ? S.draft!.mint : await generateWebKey();
     const launcher = me()!;
     // the coin's metadata URI is on chain for good: read it back (document and image) before anything is built for the wallet
-    args.uri = await checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl });
+    // (the image picked in the Coin step is stored first, signed by the agent key, and named in the URI by its hash)
+    const image = await storeCoinImage(agent, S.image);
+    args.uri = await checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl, image });
     // model credits (owner direction 2026-10-11): typed in USD, at least Core's minimum, paid in SOL with the launch
     const deposit = depositBase(val("l_deposit"), dec());
     // pump.fun (owner decisions 2026-10-10): create_v2 at the top level, then register_pump_launch in the same transaction
@@ -829,6 +831,7 @@ function renderLaunchReview() {
     })()],
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
+    ["Coin image", S.image ? `${S.image.name}: stored and named in the metadata URI by its hash, so it cannot be changed after the launch` : "none chosen: the agent's generated pattern"],
     ["Metadata URI", html`${d.args.uri} <span class="dim">${d.metaLive ? "read back before this review: document and image answer" : `read back on this host; ${new URL(d.args.uri).host} itself does not answer yet`}</span>`],
     ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span>` : html`<span class="faint">none</span>`],
     ["Credits", html`${depositNote(val("l_deposit"))} <span class="dim">${units(d.deposit, dec())} ${usym()} into the compute vault, then refresh_awake</span>`],
@@ -913,7 +916,7 @@ async function launchSign() {
     mark("github", "wait", "asking the identity service");
     if (d.args.hosted) mark("runtime", "wait", "the hosted runtime's binding follows");
     else mark("runtime", "skip", "self-hosted: run the worker with the agent key below");
-    if (S.image || S.bannerFile) mark("images", "wait", "after Core reads the launch");
+    if (S.bannerFile) mark("images", "wait", "after Core reads the launch");
     mark("session", "wait", "after the agent is awake and bound");
     mark("verdict", "wait", "after the first candidate is replayed");
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
@@ -1992,7 +1995,7 @@ function renderReview() {
     html`<div class="lz-review">
       ${row("Coin", html`<b>${namePrefix()}${val("l_name")}</b> <span class="dim">${val("l_symbol").toUpperCase()}</span>`, 0)}
       ${row("Description", (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim() || html`<span class="faint">none</span>`, 0)}
-      ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, uploaded as the avatar after the launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
+      ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, the coin's image and the agent's avatar, fixed at launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
       ${row("Links", links.length ? links.join(", ") : html`<span class="faint">none</span>`, 0)}
       ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
@@ -2079,7 +2082,7 @@ async function trackLaunch(agent: string, mint: string, hosted: boolean, started
 /** The images picked in the wizard, signed by the launcher wallet and uploaded once Core knows the launch. */
 async function uploadImages(agent: string) {
   const files: ["avatar" | "banner", File][] = [];
-  if (S.image) files.push(["avatar", S.image]);
+  // the image is the coin's and the agent's avatar already (stored before the launch, coin-uri.ts); only the banner is left
   if (S.bannerFile) files.push(["banner", S.bannerFile]);
   if (!files.length) return;
   mark("images", "wait", "waiting for Core to read the launch, then your wallet signs each image");
@@ -2534,7 +2537,7 @@ async function pickImage(t: HTMLInputElement) {
   if (t.name === "l_image") S.image = f;
   else S.bannerFile = f;
   const label = S.root?.querySelector<HTMLElement>(`[data-file="${t.name}"]`);
-  if (label) label.textContent = f ? f.name : t.name === "l_image" ? "Upload image" : "Upload banner (optional)";
+  if (label) label.textContent = f ? f.name : t.name === "l_image" ? "Coin image" : "Upload banner (optional)";
   renderAvatar();
   renderWizard();
 }

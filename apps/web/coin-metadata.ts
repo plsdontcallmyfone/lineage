@@ -4,13 +4,17 @@
 //
 //   GET /coin/<mint>.json        the coin's metadata, built from chain data alone: the name and symbol in
 //                                the mint's Token-2022 metadata, the agent and repository in its
-//                                AgentLaunch record. Nothing is stored: any server of this deployment with
+//                                AgentLaunch record, the chosen image in the mint's own URI (?i=). Nothing is stored: any server of this deployment with
 //                                a chain RPC answers it again, for good. 404 for a mint this deployment's
 //                                launch program did not register.
 //                                Before the coin exists (the launch page checks the route before it lets
 //                                the wallet sign) the same path answers a preview built from
-//                                ?name=&symbol=&agent=&repo=, marked `x-units-coin: preview`, never cached;
+//                                ?name=&symbol=&agent=&repo= (and ?i=), marked `x-units-coin: preview`, never cached;
 //                                once the mint is on chain the query is ignored.
+//   GET /coin/image/<id>         the image the launcher chose: <id> is its sha256 in base58, the same id the coin's
+//                                on-chain URI carries as ?i=, so what a coin shows is fixed by the chain. The bytes
+//                                come from Core's blob store (GET /v1/media/<sha256>; uploaded by the launch page
+//                                before the wallet signs, signed by the agent key); served immutable
 //   GET /coin/face/<agent>.png   the agent's generated face (packages/embed/src/pattern.ts avatarGrid, the
 //                                one every page draws for it), 512 by 512; a pure function of the agent id
 //   GET /coin/origin             {origin, here, answers}: the origin written on chain and whether it
@@ -18,7 +22,7 @@
 //
 // Every answer is readable from any origin (wallets and explorers fetch it from their own pages).
 import { deflateSync } from "node:zlib";
-import { addressBytes, coinFacePath, coinMetadataDoc, coinMetadataPath, decodeAgentLaunch, launchPdas, LAUNCH_PROGRAM_ID, metadataOrigin, type CoinMetadata, type Rpc } from "../../packages/chain/src/index.ts";
+import { addressBytes, coinFacePath, coinImageOfUri, coinImageSha, coinMetadataDoc, coinMetadataPath, decodeAgentLaunch, launchPdas, LAUNCH_PROGRAM_ID, metadataOrigin, type CoinMetadata, type Rpc } from "../../packages/chain/src/index.ts";
 import { readMint } from "../../packages/indexer/src/accounts.ts";
 import { avatarGrid } from "../../packages/embed/src/pattern.ts";
 
@@ -101,6 +105,8 @@ export interface CoinRoutesOptions {
   /** the origin written on chain (config/sites.json metadata_origin, UNITS_METADATA_ORIGIN) */
   origin: string;
   rpc: Rpc;
+  /** Core's base URL: the chosen images live in its blob store (GET /v1/media/<sha256>) */
+  core: string;
   fetch?: typeof fetch;
   now?: () => number;
   /** coins and faces kept in memory (both are immutable) */
@@ -130,7 +136,8 @@ export function coinRoutes(o: CoinRoutesOptions) {
     const meta = readMint(m.data);
     const launch = decodeAgentLaunch(l.data);
     if (meta.name === null || meta.symbol === null || launch.mint !== mint) return null;
-    return coinMetadataDoc({ origin, mint, agent: launch.agent, name: meta.name, symbol: meta.symbol, repoUrl: launch.repoUrl });
+    // the chosen image is the one the coin's own on-chain URI names, never one a request names
+    return coinMetadataDoc({ origin, mint, agent: launch.agent, name: meta.name, symbol: meta.symbol, repoUrl: launch.repoUrl, imageId: coinImageOfUri(meta.uri) });
   }
 
   async function route(req: Request, path: string): Promise<Response> {
@@ -153,6 +160,17 @@ export function coinRoutes(o: CoinRoutesOptions) {
       if (!png) keep(faces, face[1]!, (png = facePng(face[1]!)));
       return new Response(png as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000, immutable", ...CORS } });
     }
+    const image = /^\/coin\/image\/([^/.]+)$/.exec(path);
+    if (image) {
+      const sha = coinImageSha(image[1]);
+      if (!sha) return json({ error: "not_found" }, 404, "no-store");
+      const r = await f(`${o.core.replace(/\/+$/, "")}/v1/media/${sha}`, { signal: AbortSignal.timeout(10_000) } as RequestInit).catch(() => null);
+      if (!r) return json({ error: "core_unavailable", message: "the image store did not answer; try again" }, 503, "no-store", { "retry-after": "5" });
+      const type = (r.headers.get("content-type") ?? "").split(";")[0]!.trim();
+      if (r.status !== 200 || !/^image\/(png|jpeg|webp)$/.test(type)) return json({ error: r.status === 410 ? "hidden" : "not_found" }, r.status === 410 ? 410 : r.status >= 500 ? 503 : 404, "no-store");
+      // named by its hash: the bytes can never change
+      return new Response(r.body, { headers: { "content-type": type, "cache-control": "public, max-age=31536000, immutable", "content-security-policy": "default-src 'none'", ...CORS } });
+    }
     const doc = /^\/coin\/([^/]+)\.json$/.exec(path);
     if (!doc || !isAddress(doc[1]!)) return json({ error: "not_found" }, 404, "no-store");
     const mint = doc[1]!;
@@ -170,9 +188,9 @@ export function coinRoutes(o: CoinRoutesOptions) {
     }
     if (c === "absent") {
       const q = url.searchParams;
-      const name = q.get("name"), symbol = q.get("symbol"), agent = q.get("agent"), repo = q.get("repo");
-      if (name && symbol && agent && repo && isAddress(agent) && new TextEncoder().encode(name).length <= 32 && /^[A-Z0-9]{1,10}$/.test(symbol) && /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repo))
-        return json(coinMetadataDoc({ origin, mint, agent, name, symbol, repoUrl: repo }), 200, "no-store", { "x-units-coin": "preview" });
+      const name = q.get("name"), symbol = q.get("symbol"), agent = q.get("agent"), repo = q.get("repo"), i = q.get("i");
+      if (name && symbol && agent && repo && isAddress(agent) && (i === null || coinImageSha(i)) && new TextEncoder().encode(name).length <= 32 && /^[A-Z0-9]{1,10}$/.test(symbol) && /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repo))
+        return json(coinMetadataDoc({ origin, mint, agent, name, symbol, repoUrl: repo, imageId: i }), 200, "no-store", { "x-units-coin": "preview" });
     }
     return json({ error: "not_found", message: "no coin launched here has this mint" }, 404, "no-store");
   }

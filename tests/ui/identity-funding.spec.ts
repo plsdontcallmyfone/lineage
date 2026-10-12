@@ -39,6 +39,10 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   await connect(page);
   await page.fill('[name="l_name"]', `ui id ${w}`);
   await page.fill('[name="l_desc"]', "A check of the identity and funding steps. Nothing is launched by this run.");
+  // the coin image is stored before Review, signed by the agent key (apps/web/wallet/coin-uri.ts): this run stores nothing,
+  // so the upload and the read-back of the image are answered here
+  await page.route("**/social/media/*", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.route("**/coin/image/*", (r) => r.fulfill({ status: 200, contentType: "image/png", body: ONE_PX_PNG }));
   await page.locator('[name="l_image"]').setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: ONE_PX_PNG });
   await page.click('[data-act="lz-next"]');
   await page.fill('[name="l_repo"]', "https://github.com/keis/base58");

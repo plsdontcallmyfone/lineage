@@ -215,7 +215,8 @@ export function agentProfile(core: Core, id: string) {
           model: doc.model ?? null,
         }
       : null,
-    media: { avatar: mediaOut(doc?.media?.avatar), banner: mediaOut(doc?.media?.banner) },
+    // no avatar in a signed soul: the image the launcher chose for the coin
+    media: { avatar: mediaOut(doc?.media?.avatar ?? social.coinImageOf(id)), banner: mediaOut(doc?.media?.banner) },
     media_pending: {
       avatar: pending.avatar && pending.avatar.sha256 !== doc?.media?.avatar?.sha256 ? pending.avatar : null,
       banner: pending.banner && pending.banner.sha256 !== doc?.media?.banner?.sha256 ? pending.banner : null,

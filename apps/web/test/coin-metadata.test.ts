@@ -6,10 +6,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
-import { checkMetadataUri, coinMetadataDoc, LAUNCH_PROGRAM_ID, launchPdas, Rpc, TOKEN_2022_PROGRAM } from "../../../packages/chain/src/index.ts";
+import { bytesToHex, checkMetadataUri, coinImageId, coinImageOfUri, coinMetadataDoc, coinMetadataUri, LAUNCH_PROGRAM_ID, launchPdas, Rpc, sha256, TOKEN_2022_PROGRAM } from "../../../packages/chain/src/index.ts";
+import { generateWebKey } from "../../../packages/chain/src/browser/wire.ts";
+import { verifyStatement } from "../../../packages/core/src/protocol.ts";
 import { avatarGrid } from "../../../packages/embed/src/pattern.ts";
 import { coinRoutes, facePng, hslToRgb } from "../coin-metadata.ts";
-import { checkedCoinUri, loadCoinOrigin } from "../wallet/coin-uri.ts";
+import { checkedCoinUri, loadCoinOrigin, storeCoinImage } from "../wallet/coin-uri.ts";
 
 const fx = JSON.parse(readFileSync(join(import.meta.dir, "fixtures/coin-tbasalt.json"), "utf8")) as { mint: string; mint_data: string; launch_data: string };
 const ORIGIN = "https://app.units.gg";
@@ -19,29 +21,67 @@ const AGENT = "FScgU8v8PtabhWzCxhX1iQEs7JyMP34MV4UWH2gpZrKG";
 const NEW_MINT = "C5dYJH9gpLkPrmbWatMhFj2mWGx9pvyRoUenJmFhL6br";
 const acct = (owner: string, data: string) => ({ lamports: 1, owner, executable: false, data: [data, "base64"], space: 0 });
 
+const PNG = Uint8Array.from(Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5f6b3b10000000049454e44ae426082", "hex"));
+const PNG_SHA = bytesToHex(sha256(PNG));
+const PNG_ID = coinImageId(PNG_SHA);
+const file = (bytes: Uint8Array, type = "image/png") => ({ type, size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) as ArrayBuffer });
+/** The recorded mint with another URI in its metadata extension (the name and symbol before it are untouched). */
+function mintWithUri(uri: string): string {
+  const d = Buffer.from(fx.mint_data, "base64");
+  const old = "https://lineage.invalid/mainnet/agents/tbasalt.json?class=python";
+  const at = d.indexOf(Buffer.from(old));
+  if (at < 0 || uri.length > old.length) throw new Error("the stand-in URI must fit the recorded one");
+  d.write(uri.padEnd(old.length, "&"), at);
+  return d.toString("base64");
+}
+
 /** A chain that holds the recorded coin (its AgentLaunch owned by the active launch program) and nothing else. */
-function chain(o: { down?: boolean; foreign?: boolean } = {}) {
+function chain(o: { down?: boolean; foreign?: boolean; mintData?: string } = {}) {
   const calls: string[][] = [];
   const rpc = new Rpc(async (method, params) => {
     if (o.down) throw new Error("mainnet RPC did not answer (HTTP 429)");
     if (method !== "getMultipleAccounts") throw new Error(`unexpected ${method}`);
     const keys = params[0] as string[];
     calls.push(keys);
-    return { value: keys.map((k) => (k === MINT ? acct(TOKEN_2022_PROGRAM, fx.mint_data) : k === launchPdas.agentLaunch(MINT) && !o.foreign ? acct(LAUNCH_PROGRAM_ID, fx.launch_data) : null)) };
+    return { value: keys.map((k) => (k === MINT ? acct(TOKEN_2022_PROGRAM, o.mintData ?? fx.mint_data) : k === launchPdas.agentLaunch(MINT) && !o.foreign ? acct(LAUNCH_PROGRAM_ID, fx.launch_data) : null)) };
   });
   return { rpc, calls };
 }
-/** The site as a fetch: the routes answer on HERE; ORIGIN has no DNS record unless `dns`. */
+const CORE = "http://core.test";
+/**
+ * The site as a fetch: the /coin routes answer on HERE; ORIGIN has no DNS record unless `dns`. Behind it a
+ * stand-in for Core's media store: POST /social/media/<agent> keeps a coin image when its statement verifies
+ * with Core's own verifier as signed by the agent key (the rule of packages/core/src/social.ts uploadMedia,
+ * whose own test is packages/core/test/social.test.ts), GET /v1/media/<sha256> serves it.
+ */
 function site(c = chain(), dns = false) {
   const seen: string[] = [];
-  const routes: ReturnType<typeof coinRoutes> = coinRoutes({ origin: ORIGIN, rpc: c.rpc, fetch: ((u: string) => f(u)) as unknown as typeof fetch });
-  const f = (async (u: string) => {
+  const media = new Map<string, { type: string; bytes: Uint8Array }>();
+  const posts: { agent: string; statement: Record<string, unknown> }[] = [];
+  const routes: ReturnType<typeof coinRoutes> = coinRoutes({ origin: ORIGIN, core: CORE, rpc: c.rpc, fetch: ((u: string) => f(u)) as unknown as typeof fetch });
+  const f = (async (u: string, init?: { method?: string; body?: string }) => {
     const url = new URL(String(u), HERE);
     seen.push(url.href);
+    if (url.origin === CORE) {
+      const m = media.get(url.pathname.replace("/v1/media/", ""));
+      return m ? new Response(m.bytes as unknown as BodyInit, { headers: { "content-type": m.type } }) : Response.json({ error: "not_found" }, { status: 404 });
+    }
     if (url.origin !== HERE && !(dns && url.origin === ORIGIN)) throw new Error("Unable to connect");
+    const up = /^\/social\/media\/([^/]+)$/.exec(url.pathname);
+    if (up && init?.method === "POST") {
+      const b = JSON.parse(init.body!) as { statement: Record<string, any>; sig: string; data: string };
+      const st = b.statement;
+      if (st.slot !== "coin" || st.agent !== up[1] || st.signer !== up[1] || !verifyStatement(st.signer, b.sig, "media", st)) return Response.json({ error: "bad_signature", message: "sig does not verify" }, { status: 401 });
+      posts.push({ agent: up[1]!, statement: st });
+      const bytes = new Uint8Array(Buffer.from(b.data, "base64"));
+      if (st.sha256 === "") return Response.json({ cleared: true });
+      if (bytesToHex(sha256(bytes)) !== st.sha256 || st.size !== bytes.length) return Response.json({ error: "hash_mismatch" }, { status: 400 });
+      media.set(st.sha256, { type: st.type, bytes });
+      return Response.json({ sha256: st.sha256 });
+    }
     return routes.route(new Request(url), url.pathname);
   }) as unknown as typeof fetch;
-  return { f, seen, routes, c };
+  return { f, seen, routes, c, media, posts };
 }
 
 describe("/coin routes", () => {
@@ -154,5 +194,88 @@ describe("the launch page's check before signing", () => {
     await expect(checkedCoinUri({ ...launch, fetch: other })).rejects.toThrow(/a different "description"/);
     // a mint that is already a coin answers its own document, never this launch's
     await expect(checkedCoinUri({ ...launch, mint: MINT, fetch: s.f })).rejects.toThrow(/"name" is "Test Basalt", the coin's is "New One"/);
+  });
+});
+
+describe("the image the launcher chose", () => {
+  const launch = { origin: ORIGIN, here: HERE, mint: NEW_MINT, name: "New One", symbol: "NEW1", repoUrl: "https://github.com/keis/base58" };
+
+  test("the document with a chosen image and without one", () => {
+    const base = { ...launch, agent: AGENT };
+    expect(coinMetadataDoc(base).image).toBe(`${ORIGIN}/coin/face/${AGENT}.png`);
+    expect(coinMetadataDoc({ ...base, imageId: null }).image).toBe(`${ORIGIN}/coin/face/${AGENT}.png`);
+    const chosen = coinMetadataDoc({ ...base, imageId: PNG_ID });
+    expect(chosen.image).toBe(`${ORIGIN}/coin/image/${PNG_ID}`);
+    expect({ ...chosen, image: "" }).toEqual({ ...coinMetadataDoc(base), image: "" });
+    expect(coinMetadataUri(ORIGIN, NEW_MINT, PNG_ID)).toBe(`${ORIGIN}/coin/${NEW_MINT}.json?i=${PNG_ID}`);
+    expect(coinImageOfUri(coinMetadataUri(ORIGIN, NEW_MINT, PNG_ID))).toBe(PNG_ID);
+    for (const none of [coinMetadataUri(ORIGIN, NEW_MINT), `${ORIGIN}/coin/${NEW_MINT}.json?i=not-a-hash`, "https://lineage.invalid/mainnet/agents/tbasalt.json?class=python", "", null]) expect(coinImageOfUri(none)).toBeNull();
+  });
+
+  test("picked in the wizard: stored under the agent key's signature before signing, named in the URI by its hash, read back byte for byte", async () => {
+    const s = site();
+    const agent = await generateWebKey();
+    const image = await storeCoinImage(agent, file(PNG), s.f);
+    expect(image).toEqual({ imageId: PNG_ID, sha256: PNG_SHA });
+    // the statement Core's verifier accepted: the agent key speaks for itself, slot coin
+    expect(s.posts).toHaveLength(1);
+    expect(s.posts[0]!.statement).toMatchObject({ kind: "units-media", slot: "coin", agent: agent.id, signer: agent.id, sha256: PNG_SHA, type: "image/png", size: PNG.length });
+    const uri = await checkedCoinUri({ ...launch, agent: agent.id, image, fetch: s.f });
+    expect(uri).toBe(`https://app.units.gg/coin/${NEW_MINT}.json?i=${PNG_ID}`);
+    // the pre-signing check fetched the chosen image on this host, through the app server, from Core
+    expect(s.seen).toContain(`${HERE}/coin/image/${PNG_ID}`);
+    expect(s.seen).toContain(`${CORE}/v1/media/${PNG_SHA}`);
+    const img = await s.f(`${HERE}/coin/image/${PNG_ID}`);
+    expect([img.status, img.headers.get("content-type"), img.headers.get("cache-control"), img.headers.get("access-control-allow-origin")]).toEqual([200, "image/png", "public, max-age=31536000, immutable", "*"]);
+    expect(new Uint8Array(await img.arrayBuffer())).toEqual(PNG);
+  });
+
+  test("no image picked: nothing is uploaded and the coin shows the generated face; a pick taken back is cleared", async () => {
+    const s = site();
+    const agent = await generateWebKey();
+    expect(await storeCoinImage(agent, null, s.f)).toBeNull();
+    expect(s.posts).toHaveLength(0);
+    expect(await checkedCoinUri({ ...launch, agent: agent.id, image: null, fetch: s.f })).toBe(`https://app.units.gg/coin/${NEW_MINT}.json`);
+    expect(s.seen).toContain(`${HERE}/coin/face/${agent.id}.png`);
+    await storeCoinImage(agent, file(PNG), s.f);
+    expect(await storeCoinImage(agent, null, s.f)).toBeNull();
+    expect(s.posts.map((p) => p.statement.sha256)).toEqual([PNG_SHA, ""]);
+  });
+
+  test("no launch is built when the image is refused, is not stored, or comes back as other bytes", async () => {
+    const agent = await generateWebKey();
+    await expect(storeCoinImage(agent, file(new TextEncoder().encode("<svg/>"), "image/svg+xml"))).rejects.toThrow(/PNG, JPEG or WebP, at most 256 KB/);
+    await expect(storeCoinImage(agent, file(new Uint8Array(256 * 1024 + 1)))).rejects.toThrow(/at most 256 KB/);
+    const refused = (async () => Response.json({ error: "social_busy", message: "too many social writes right now" }, { status: 429 })) as unknown as typeof fetch;
+    await expect(storeCoinImage(agent, file(PNG), refused)).rejects.toThrow(/was not stored \(too many social writes right now\).*not built/);
+    // named in the URI but never stored: the image does not load
+    const s = site();
+    await expect(checkedCoinUri({ ...launch, agent: agent.id, image: { imageId: PNG_ID, sha256: PNG_SHA }, fetch: s.f })).rejects.toThrow(/the image answered HTTP 404/);
+    // stored, but the host hands back different bytes
+    s.media.set(PNG_SHA, { type: "image/png", bytes: Uint8Array.from([...PNG, 0]) });
+    await expect(checkedCoinUri({ ...launch, agent: agent.id, image: { imageId: PNG_ID, sha256: PNG_SHA }, fetch: s.f })).rejects.toThrow(/did not come back as the file you chose/);
+  });
+
+  test("after the launch the image is the one the coin's own URI names: a request cannot name another, and an unknown hash is not served", async () => {
+    // the recorded coin, as if launched with the chosen image (its on-chain URI rewritten in place, same length)
+    const onChain = `https://a.gg/?i=${PNG_ID}`;
+    expect(coinImageOfUri(onChain)).toBe(PNG_ID);
+    const s = site(chain({ mintData: mintWithUri(onChain) }));
+    s.media.set(PNG_SHA, { type: "image/png", bytes: PNG });
+    const other = coinImageId("ab".repeat(32));
+    for (const q of ["", `?i=${other}`, `?i=${other}&name=Evil&symbol=EVIL&agent=${AGENT}&repo=https://github.com/a/b`]) {
+      const doc = await (await s.f(`${HERE}/coin/${MINT}.json${q}`)).json();
+      expect(doc).toEqual(coinMetadataDoc({ origin: ORIGIN, mint: MINT, agent: AGENT, name: "Test Basalt", symbol: "TBASALT", repoUrl: "https://github.com/keis/base58", imageId: PNG_ID }));
+    }
+    // the coin launched without one keeps the generated face whatever a request says
+    const plain = await (await site().f(`${HERE}/coin/${MINT}.json?i=${PNG_ID}`)).json();
+    expect(plain.image).toBe(`${ORIGIN}/coin/face/${AGENT}.png`);
+    expect((await s.f(`${HERE}/coin/image/${other}`)).status).toBe(404);
+    expect((await s.f(`${HERE}/coin/image/not-an-id`)).status).toBe(404);
+    // an image the admin hid in Core (410 there) is gone here too, and a non-image is never passed on
+    const hidden = coinRoutes({ origin: ORIGIN, core: CORE, rpc: chain().rpc, fetch: (async () => Response.json({ error: "hidden" }, { status: 410 })) as unknown as typeof fetch });
+    expect((await hidden.route(new Request(`${HERE}/coin/image/${PNG_ID}`), `/coin/image/${PNG_ID}`)).status).toBe(410);
+    const html = coinRoutes({ origin: ORIGIN, core: CORE, rpc: chain().rpc, fetch: (async () => new Response("<html>", { headers: { "content-type": "text/html" } })) as unknown as typeof fetch });
+    expect((await html.route(new Request(`${HERE}/coin/image/${PNG_ID}`), `/coin/image/${PNG_ID}`)).status).toBe(404);
   });
 });
