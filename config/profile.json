@@ -1,5 +1,5 @@
 {
-  "_note": "Network profile switch (M3, SPEC 14.10): the one place that says devnet or mainnet. Every service (Core, indexer, runtime, trader, the web server) and the pages (through /chain/config) read it; UNITS_NETWORK overrides `network` for one process (the site's env file). devnet is the default and behaves as before. mainnet: no faucet, no TEST labels, the quote token below, a keyed RPC from UNITS_MAINNET_RPC (or HELIUS_MAINNET_RPC in ~/.config/lineage/rpc.env; never printed, never sent to a browser, no public fallback), the Jupiter swap path on, priority fees from getRecentPrioritizationFees capped below. $UNITS does not exist on mainnet yet: quote.mint is a stand-in (PYUSD, the same mint as config/swap.json target_mint) and quote.line_mint stays null (TBA) until the owner sets it and quote.status to live. No USD price feed is wired: usd_feed null means quote-token amounts only, no USD figures.",
+  "_note": "Network profile switch (M3, SPEC 14.10): the one place that says devnet or mainnet. Every service (Core, indexer, runtime, trader, the web server) and the pages (through /chain/config) read it; UNITS_NETWORK overrides `network` for one process (the site's env file). devnet is the default and behaves as before. mainnet: no faucet, no TEST labels, the quote token below, a keyed RPC from UNITS_MAINNET_RPC (or HELIUS_MAINNET_RPC in ~/.config/lineage/rpc.env; never printed, never sent to a browser, no public fallback), the Jupiter swap path on, priority fees from getRecentPrioritizationFees capped below. $UNITS does not exist on mainnet yet: quote.mint is a stand-in (PYUSD, the same mint as config/swap.json target_mint). quote.units_mint is the official $UNITS mint the owner named on 2026-10-12, GQdEL4...Hpump, with units_mint_status reserved: a pre-generated pump.fun address that is NOT created yet (no account on mainnet on 2026-10-12), so nothing uses it; `bun scripts/mainnet/units-mint-check.ts` prints its state. Only once it exists as a pump.fun coin paired with SOL or USDC, never mayhem mode, does the owner set quote.mint to it, quote.status to live and units_mint_status to live. No USD price feed is wired: usd_feed null means quote-token amounts only, no USD figures.",
   "network": "devnet",
   "profiles": {
     "devnet": {
@@ -27,7 +27,8 @@
         "decimals": 6,
         "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         "status": "stand-in",
-        "units_mint": null
+        "units_mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+        "units_mint_status": "reserved"
       },
       "state_file": "scripts/mainnet/mainnet.json",
       "faucet": false,

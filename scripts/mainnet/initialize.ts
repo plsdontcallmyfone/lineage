@@ -45,6 +45,15 @@ const send = async (what: string, payer: Signer, ixs: Ix[], o: { signers?: Signe
 };
 
 const P = loadLaunchParams(need("--params"));
+// The real launch: the quote must be the official $UNITS mint the profile records (config/profile.json mainnet
+// quote.units_mint), and that mint must exist. scripts/mainnet/units-mint-check.ts prints its state; initializeAll
+// then checks it is a pump.fun coin paired with SOL or USDC, never mayhem, and Global.max_curve_depth.
+if (isMainnet && cmd !== "multisig") {
+  const official = profile.quote.line_mint;
+  if (!official) throw new Error("the mainnet profile names no $UNITS mint (quote.units_mint)");
+  if (P.line_mint !== official) throw new Error(`line_mint ${P.line_mint} is not the official $UNITS mint ${official} (config/profile.json mainnet quote.units_mint)`);
+  if (!(await rpc.getAccountInfo(official))) throw new Error(`the official $UNITS mint ${official} does not exist on mainnet yet: run scripts/mainnet/units-mint-check.ts`);
+}
 if (cmd === "multisig") {
   const r = await createMultisig(rpc, send, check, loadKeypair(need("--payer")), loadKeypair(need("--create-key")), P);
   console.log(JSON.stringify(r));

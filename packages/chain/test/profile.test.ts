@@ -55,7 +55,13 @@ describe("profile switch", () => {
     expect(m.test_labels).toBe(false);
     expect(m.swap).toBe(true);
     expect(m.quote.source).toBe("config");
-    expect(m.quote.line_mint).toBeNull(); // $UNITS is TBA
+    // the official $UNITS mint is recorded but reserved (not created on chain yet): the stand-in stays the quote in use
+    expect(m.quote.line_mint).toBe("GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump");
+    expect(m.quote.line_mint_status).toBe("reserved");
+    expect(m.quote.mint).not.toBe(m.quote.line_mint);
+    const q = raw.profiles.mainnet.quote;
+    expect(() => parseProfile("mainnet", { ...raw.profiles.mainnet, quote: { ...q, mint: q.units_mint } })).toThrow(/reserved/);
+    expect(() => parseProfile("mainnet", { ...raw.profiles.mainnet, quote: { ...q, status: "live" } })).toThrow(/reserved/);
     expect(m.quote.status).toBe("stand-in");
     expect(m.fees.mode).toBe("recent");
     if (m.fees.mode === "recent") expect(m.fees.cap_micro_lamports).toBeGreaterThan(0);

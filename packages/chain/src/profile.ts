@@ -19,6 +19,11 @@ export interface QuoteConfig {
   token_program?: string;
   /** $UNITS's mainnet mint once it exists; null = TBA (config key `units_mint`; `line_mint` is still read) */
   line_mint?: string | null;
+  /**
+   * "reserved": `line_mint` is an address the owner named for $UNITS that is not created on chain yet (nothing
+   * may use it); "live": it exists. Absent when `line_mint` is null. Config key `units_mint_status`.
+   */
+  line_mint_status?: "reserved" | "live";
   /** how the quote token is named next to its symbol in the UI, e.g. "tUNITS (devnet test)"; defaults to the symbol */
   display?: string;
   /** the token's own on-chain metadata symbol when it differs from `symbol` (the devnet test coin keeps "tLINE") */
@@ -78,6 +83,13 @@ function parseQuote(q: unknown, where: string): QuoteConfig {
   const um = q.units_mint !== undefined ? q.units_mint : q.line_mint;
   if (um !== undefined && um !== null && (typeof um !== "string" || !B58.test(um))) throw new Error(`${where}.quote.units_mint must be null or an address`);
   out.line_mint = (um as string | null | undefined) ?? null;
+  if (q.units_mint_status !== undefined) {
+    if (q.units_mint_status !== "reserved" && q.units_mint_status !== "live") throw new Error(`${where}.quote.units_mint_status must be reserved or live`);
+    if (!out.line_mint) throw new Error(`${where}.quote.units_mint_status needs units_mint`);
+    out.line_mint_status = q.units_mint_status;
+  }
+  // a reserved mint is not on chain: it can be neither the quote in use nor called live
+  if (out.line_mint_status === "reserved" && (out.status === "live" || out.mint === out.line_mint)) throw new Error(`${where}.quote: units_mint is reserved (not created yet); it cannot be the quote mint or status live`);
   for (const k of ["display", "onchain_symbol"] as const) {
     if (q[k] === undefined) continue;
     if (typeof q[k] !== "string" || !q[k] || (q[k] as string).length > 40) throw new Error(`${where}.quote.${k} must be a short string`);

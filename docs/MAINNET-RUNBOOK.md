@@ -14,6 +14,7 @@ Owner items stay unchecked until the owner checks them.
 - [ ] External audit done, findings fixed and the fixed builds re-rehearsed (docs/audit/)
 - [ ] Multisig signers set: members, threshold and time lock (`launch-params.json` `multisig`)
 - [ ] Token parameters set: the `$UNITS` mint and decimals, every SPEC 13 parameter (`network_file`), rebate and debit caps, message caps, bounty and challenge values, `pump_creator_fee_bps` (0n: pump.fun's default, owner decision 2026-10-10)
+- [ ] **The official `$UNITS` mint is `GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump`** (owner, 2026-10-12): a pre-generated pump.fun address, recorded in `config/profile.json` mainnet `quote.units_mint` with `units_mint_status` reserved. **It is not created yet** (no account at it on mainnet on 2026-10-12), so nothing uses it: the profile's quote in use stays the PYUSD stand-in and the parser refuses a reserved mint as the quote or as live. When the owner says it is live, run `bun scripts/mainnet/units-mint-check.ts` (read only; exit 0 only when the mint exists, is a pump.fun coin paired with SOL or USDC, not mayhem, and `Global.max_curve_depth` is 1 or more), then set `quote.mint` to it, `quote.status` and `units_mint_status` to live, `config/swap.json` `target_mint`, and `line_mint` in `$PARAMS`. `initialize.ts` on mainnet refuses any other `line_mint` than the profile's `units_mint` and refuses while the mint has no account.
 - [ ] **Hard requirement: `$UNITS` is a pump.fun coin paired with SOL or USDC and never mayhem mode.** A mayhem coin, or a coin itself quoted in a pump coin, cannot be the quote of a pump.fun custom pair (`QuoteBondingCurveNotEligible`, `CurveDepthExceeded`), so no agent could launch. `initialize.ts` refuses any other `$UNITS` (it reads its bonding curve). While `$UNITS`'s curve is complete but not yet migrated, launches fail with `QuoteCurveAwaitingMigration` (anyone can run `migrate_v2`); after it migrates, add `line_pool` to `$PARAMS` and make a launch table that names it.
 - [ ] pump.fun's `Global.max_curve_depth` still 1 or more on launch day (0 disables pump-coin quotes; read 1 on 2026-10-10), and pump.fun's governance and terms risk accepted (docs/plans/PUMPFUN-LAUNCHES.md D7)
 - [ ] Legal review done
@@ -179,7 +180,9 @@ for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sK
 ### 4. `$UNITS` on pump.fun
 
 `$UNITS` launches on pump.fun before step 5 (the owner's launch): `create_v2` paired with SOL or USDC,
-never mayhem mode. Its mint goes into `$PARAMS.line_mint` (Token-2022, 6 decimals). The curve, supply
+never mayhem mode, at the reserved mint `GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump` (the owner holds
+its keypair). Check it with `bun scripts/mainnet/units-mint-check.ts`, then its mint goes into
+`$PARAMS.line_mint` (Token-2022, 6 decimals) and the profile (go/no-go above). The curve, supply
 and fees are pump.fun's. `$UNITS`'s own creator fees are paid in SOL or USDC, not in `$UNITS`
 (PUMPFUN-LAUNCHES.md 6.9).
 

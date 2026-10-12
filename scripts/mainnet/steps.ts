@@ -12,6 +12,7 @@ import {
   decodeSquadsProgramConfig,
   launch,
   decodeBondingCurve,
+  decodePumpGlobal,
   launchPdas,
   launchTableAddresses,
   pumpPdas,
@@ -186,6 +187,9 @@ export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer
   const lc0 = lineCurve && lineCurve.owner === PUMP.program ? decodeBondingCurve(lineCurve.data) : null;
   check("$UNITS is a pump.fun coin paired with SOL or USDC (depth 0), not mayhem mode", !!lc0 && lc0.depth === 0 && !lc0.isMayhemMode &&
     (lc0.quoteMint === "11111111111111111111111111111111" || lc0.quoteMint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), lc0 ? `quote ${lc0.quoteMint}` : "no pump.fun curve");
+  const global = await rpc.getAccountInfo(PUMP.global);
+  const depth = global ? decodePumpGlobal(global.data).maxCurveDepth : 0;
+  check("pump.fun Global.max_curve_depth is 1 or more (a coin can be quoted in $UNITS)", depth >= 1, `${depth}`);
   if (!(await rpc.getAccountInfo(computeSink(p, vault))))
     await send("compute sink: the vault's $UNITS token account", deployer, [token.createAtaIdempotent(deployer.id, vault, p.line_mint, T)]);
   if (!(await reader.launchConfig()))
