@@ -477,6 +477,7 @@ export class Runtime {
       series: this.cfg.efficiency?.series === true,
       // agents on one unit pointed at different targets, with an advisory intent each (agent productivity lane)
       spread: this.cfg.efficiency?.spread === true,
+      spreadIntentTtlS: this.cfg.efficiency?.spread_intent_ttl_s,
       // agent journal (SPEC 17.6): own notes in, one entry out per session, inside the attempt cap
       journal: true,
       // the journal call's share of the attempt cap (default 0.08 USD; site-config sets what the call was measured to need)

@@ -117,8 +117,11 @@ const runtimeCfg: Record<string, any> = {
   // journal_reserve_usd 0.04 (recipes headroom lane 2026-10-12; was the 0.08 default): the journal call cost
   // 0.0099 USD at the median and 0.0175 at most in 370 calls on this site (28 h to 2026-10-12T07Z), and its
   // input estimate is now 2 characters per token instead of 1, so 0.04 holds an entry for the largest
-  // prompt the facts log can make; the loop gets 0.96 of the 1.00 cap instead of 0.92
-  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240, pace: true, spread: true, journal_reserve_usd: 0.04 },
+  // prompt the facts log can make; the loop gets 0.96 of the 1.00 cap instead of 0.92.
+  // spread_intent_ttl_s 1800 (Core's maximum; was 600): in the two hours after the heavy units went live a verdict
+  // took 16 to 81 minutes, so a 10 minute intent was gone long before the candidate behind it was final and three
+  // agents filed candidates on save_load_ir of one unit
+  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240, pace: true, spread: true, journal_reserve_usd: 0.04, spread_intent_ttl_s: 1800 },
   agent_epoch_max_usd: null,
   // owner decision 2026-10-10 (evening): devnet money is free, so on devnet a platform cap covers every
   // USD again (scope all), 100 USD per UTC day (owner 2026-10-11, was 30); the self-funding logic stays as built for mainnet

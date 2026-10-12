@@ -85,6 +85,8 @@ describe("the suggestion in the prompt", () => {
   test("the runtime block takes spread", () => {
     expect(efficiencyError({ spread: true })).toBeNull();
     expect(efficiencyError({ spread: 1 })).toBe("efficiency.spread is true or false");
+    expect(efficiencyError({ spread: true, spread_intent_ttl_s: 1800 })).toBeNull();
+    expect(efficiencyError({ spread_intent_ttl_s: 10 })).toContain("spread_intent_ttl_s");
   });
 });
 

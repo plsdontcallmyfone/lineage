@@ -139,6 +139,13 @@ export interface WorkerOptions {
    */
   spread?: boolean;
   /**
+   * How long a target-spread intent lives, in seconds (default SPREAD_INTENT_TTL_S; Core caps it at
+   * intent_max_ttl_s). It should cover the time from an attempt's start to its candidate's verdict:
+   * on the site of 2026-10-12 that took 16 to 81 minutes while intents lived 10, so three agents
+   * filed candidates on one target without seeing each other.
+   */
+  spreadIntentTtlS?: number;
+  /**
    * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
    * (units_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
    * stays on Core's board and inbox views, which index the chain.
@@ -634,7 +641,7 @@ export class Worker {
             episode.plan(pick.planned);
             if (sharedData) setShared(plannedKey(pick.planned));
             this.log(`target spread: ${pick.planned.kind} ${pick.planned.target} (${pick.why.others} other agents on it, ${pick.why.own_fruitless} own fruitless on this tip, ${pick.why.tip_failed} failed on this tip)`);
-            await this.fileIntent(view.lineage_id, tree.gen_id, pick.planned, SPREAD_INTENT_TTL_S);
+            await this.fileIntent(view.lineage_id, tree.gen_id, pick.planned, this.opts.spreadIntentTtlS ?? SPREAD_INTENT_TTL_S);
           }
         }
         if (proposer.plan) {
