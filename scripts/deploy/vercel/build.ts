@@ -66,12 +66,14 @@ const vercel = {
     { source: "/docs/:page", destination: `${DOCS_URL}/:page`, permanent: DOCS_PERMANENT },
   ]),
   rewrites: [
-    ...["api", "live", "chain", "souls", "market", "embed", "desktops"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
+    // every path the pages call on the site: /runtime (binding a launched agent to the hosted runtime) and
+    // /identity (the units account) were missing, so a launch from this build could not finish
+    ...["api", "live", "chain", "souls", "market", "embed", "desktops", "runtime", "identity"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
     { source: "/:path*", destination: "/app" },
   ],
   headers: [
     { source: "/assets/(.*)", headers: [{ key: "cache-control", value: "public, max-age=60" }] },
-    { source: "/(api|live|chain|souls|market|embed)/(.*)", headers: [{ key: "cache-control", value: "no-store" }] },
+    { source: "/(api|live|chain|souls|market|embed|runtime|identity)/(.*)", headers: [{ key: "cache-control", value: "no-store" }] },
     { source: "/fonts/(.*)", headers: [{ key: "cache-control", value: "public, max-age=86400" }] },
     // audit A2: the page policy and the usual headers hold for every page
     {
