@@ -212,6 +212,8 @@ const DISC = {
 // ------------------------------------------------------------------------------------------------
 // the policy
 
+const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95" as Address;
+
 /**
  * Allow or refuse `message` for the guarded key of `c`. Pure: same bytes and context, same verdict.
  * The caller (firewall-chain.ts) builds the context from chain and applies the verdict.
@@ -237,13 +239,17 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
 
   // every program must be on the list; nothing else is looked at before this holds
   const allowed = new Set<Address>([COMPUTE_BUDGET_PROGRAM, MSG_PROGRAM_ID, REGISTRY_PROGRAM_ID]);
-  for (const ix of m.instructions) if (!allowed.has(ix.programId)) return refuse("program_not_allowed", `instruction for ${nameOf(ix.programId)} (${ix.programId})`);
+  // A wallet's own guard (Phantom adds Lighthouse assertions to what its owner signs, as on the bind): passed
+  // over when it does not name the guarded key. The key still has to be a read-only signer that pays nothing.
+  const guard = (ix: ParsedIx) => ix.programId === LIGHTHOUSE_PROGRAM && ix.accounts.every((a) => a.pubkey !== c.key);
+  for (const ix of m.instructions) if (!allowed.has(ix.programId) && !guard(ix)) return refuse("program_not_allowed", `instruction for ${nameOf(ix.programId)} (${ix.programId})`);
 
   // compute budget
   let cuLimit: number | null = null;
   let cuPrice: bigint | null = null;
   const rest: ParsedIx[] = [];
   for (const ix of m.instructions) {
+    if (guard(ix)) continue;
     if (ix.programId !== COMPUTE_BUDGET_PROGRAM) {
       rest.push(ix);
       continue;
