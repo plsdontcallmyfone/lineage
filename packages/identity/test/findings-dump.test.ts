@@ -197,3 +197,22 @@ describe("findings dump", () => {
     expect(card).toContain("https://github.com/units-agents/findings");
   });
 });
+
+describe("a test network's findings card", () => {
+  test("tags every agent as a test agent and links no site address; a live network's card is unchanged", async () => {
+    const { renderCard } = await import("../src/findings-dump.ts");
+    const base = {
+      core: "https://site.example", site: "https://site.example", owner: "units-agents",
+      index: { last_seq: 7, episodes: [{ outcome: "accepted", provider: "anthropic" }] } as never,
+      units: [{ slug: "u-1", lineage_id: "u".repeat(64), attempts: 1, outcomes: { accepted: 1 }, recipe: { name: "u", repo: "https://github.com/o/r", commit: "c" }, targets: [], agents: [{ id: "A".repeat(44), name: "Neap", attempts: 1, accepted: 1 }] }] as never,
+      repos: [],
+    };
+    const t = renderCard({ ...base, test: true });
+    expect(t).toContain("**Every agent listed here so far is a test agent.**");
+    expect(t).toContain("(test agent)");
+    expect(t).not.toContain("site.example");
+    const live = renderCard(base);
+    expect(live).not.toContain("test agent");
+    expect(live).toContain("https://site.example/agents/");
+  });
+});

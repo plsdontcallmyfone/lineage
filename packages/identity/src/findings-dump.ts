@@ -177,8 +177,11 @@ export function renderLicenses(units: UnitFindings[]): string {
   return out.join("\n");
 }
 
-export function renderCard(o: { core: string | null; site: string | null; index: DumpIndex; units: UnitFindings[]; repos: { agent: string; status: string; url: string | null }[]; owner: string }): string {
-  const core = o.core?.replace(/\/+$/, "") ?? null;
+export function renderCard(o: { core: string | null; site: string | null; index: DumpIndex; units: UnitFindings[]; repos: { agent: string; status: string; url: string | null }[]; owner: string; test?: boolean }): string {
+  // a test network's agents are tagged as test agents, and its temporary site address is not linked
+  // from the public repository (owner 2026-10-12): routes are named without a host there
+  const test = o.test === true;
+  const core = test ? null : (o.core?.replace(/\/+$/, "") ?? null);
   const eps = o.index.episodes;
   const by = (k: "outcome" | "provider") => eps.reduce<Record<string, number>>((m, e) => ((m[e[k] ?? "none"] = (m[e[k] ?? "none"] ?? 0) + 1), m), {});
   const agents = new Map<string, { name: string | null; n: number; acc: number }>();
@@ -194,6 +197,7 @@ export function renderCard(o: { core: string | null; site: string | null; index:
   return [
     "# units findings",
     "",
+    ...(test ? ["**Every agent listed here so far is a test agent.** These are findings from the units test network.", ""] : []),
     "Everything units agents found while improving real code, in one place: one record for every finished authoring attempt of every listed agent (accepted, rejected, expired, ended without a candidate, or abandoned; a model agent's empty attempt, with no candidate, no recorded step and no model usage, is left out since 2026-10-12), organised by unit (a repository and the lineage of accepted changes on it) and target (the metric or test an attempt aimed at), with lessons distilled from the measured facts. Agents read the same data from Core before each attempt (the shared findings block), so what one agent learned is in every other agent's context.",
     "",
     "## Contents",
@@ -216,7 +220,7 @@ export function renderCard(o: { core: string | null; site: string | null; index:
     "",
     "## Agents",
     "",
-    ...[...agents].sort((a, b) => b[1].n - a[1].n).map(([id, a]) => `- ${a.name ?? "agent"} \`${id}\`: ${plural(a.n, "episode")}, ${a.acc} accepted${repoOf.get(id) ? `; its own learnings repository: ${repoOf.get(id)}` : ""}${o.site ? `; profile ${o.site.replace(/\/+$/, "")}/agents/${id}/profile` : ""}`),
+    ...[...agents].sort((a, b) => b[1].n - a[1].n).map(([id, a]) => `- ${a.name ?? "agent"} \`${id}\`${test ? " (test agent)" : ""}: ${plural(a.n, "episode")}, ${a.acc} accepted${repoOf.get(id) ? `; its own learnings repository: ${repoOf.get(id)}` : ""}${o.site && !test ? `; profile ${o.site.replace(/\/+$/, "")}/agents/${id}/profile` : ""}`),
     "",
     "## Schema",
     "",
@@ -257,6 +261,10 @@ export interface DumpOptions {
   sources: DumpSources;
   site: string | null;
   coreUrl?: string | null;
+  /** the agents are a test network's: tagged as test agents, and the site is not linked (owner 2026-10-12) */
+  test?: boolean;
+  /** the repository's homepage on GitHub when the site is not to be linked (the public app) */
+  homepage?: string | null;
   /** organisation that holds the repository; default the publisher's owner, else units-agents */
   org?: string | null;
   apiBase?: string;
@@ -372,7 +380,7 @@ export class FindingsDumpPublisher {
         }
         files["index.json"] = JSON.stringify(index, null, 1) + "\n";
         files["LICENSES.md"] = renderLicenses(units);
-        files["README.md"] = renderCard({ core: this.o.coreUrl ?? this.o.site, site: this.o.site, index, units, repos, owner: t.owner });
+        files["README.md"] = renderCard({ core: this.o.coreUrl ?? this.o.site, site: this.o.site, index, units, repos, owner: t.owner, test: this.o.test });
         return files;
       };
       if (o.dryRun) {
@@ -386,7 +394,7 @@ export class FindingsDumpPublisher {
         // read after plan(): the index is built there
         message: () => `units findings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${cursor}${removed.length ? `, ${removed.length} removed (agent hidden)` : ""}\n\n${units.length} units, ${index.episodes.length} episodes in all.\n`,
         description: "Every units agent's findings in one place: final attempts by unit and target, with lessons from measured facts",
-        homepage: site ?? undefined,
+        homepage: (this.o.test ? this.o.homepage : site) ?? this.o.homepage ?? undefined,
         apiBase: this.o.apiBase, gitBase: this.o.gitBase, fetch: this.o.fetch, log: (m) => this.log(m), verifyPolls: this.o.verifyPolls,
       });
       const next: DumpRecord = {

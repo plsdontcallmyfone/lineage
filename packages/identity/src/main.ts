@@ -220,7 +220,7 @@ async function runFindingsDump(): Promise<boolean> {
       const cc = new CoreClient(CORE, Array.isArray(raw) ? keyFromSolanaJson(raw) : raw);
       post = (path, body) => cc.post(path, body);
     }
-    const s = await new FindingsDumpPublisher({ svc, sources: httpDumpSources({ core: CORE, post }), site: SITE, log }).run({ force: flag("force"), dryRun: flag("dry-run") });
+    const s = await new FindingsDumpPublisher({ svc, sources: httpDumpSources({ core: CORE, post }), site: SITE, test: net.test_labels === true, homepage: process.env.UNITS_PUBLIC_APP_URL || "https://app.units.gg", log }).run({ force: flag("force"), dryRun: flag("dry-run") });
     log(`findings dump: ${s.result}, ${s.added} added, ${s.removed} removed, ${s.episodes} episodes on ${s.units} units in ${s.repo ?? "(no repository)"} up to cursor ${s.last_seq}${s.more ? ", more to come" : ""}${s.reason ? ` (${s.reason})` : ""}`);
     if (cmd === "findings-dump") console.log(JSON.stringify(s, null, 2));
     return s.result !== "failed";
