@@ -14,6 +14,8 @@
 #                                endpoint is not the instance's network or the programs are not there;
 #                                then the Caddy site block, the release link and the units, each public
 #                                one health-checked (on a failure the instance is stopped again)
+#   remote-instance.sh <name> chain [plan]    register and bond the instance's verifiers (site-chain.ts);
+#                                with plan nothing is sent
 #   remote-instance.sh <name> stop | start | status
 #   remote-instance.sh <name> remove [--purge]   stop, remove the unit files and the Caddy site block;
 #                                --purge also deletes its directories (keys included) and accounts
@@ -263,6 +265,16 @@ activate)
   fi
   echo "active: $NAME instance on $SHA"
   ;;
+chain)
+  # register and bond the instance's verifiers (site-chain.ts) with its own owner key. `plan` reads the
+  # chain and prints what it would send and what the owner key must hold; without it transactions are
+  # sent on the instance's network.
+  REL="$(readlink -f "$BASE/current" 2>/dev/null || true)"; [ -d "$REL" ] || REL="$BASE/releases/$(ls -1t "$BASE/releases" | head -1)"
+  have_rpc || { echo "no keyed RPC ($ETC/rpc.env)" >&2; exit 1; }
+  systemd-run --wait --pipe -q --collect --uid="$P" --gid="$P" -p EnvironmentFile="$ETC/rpc.env" -p WorkingDirectory="$REL" \
+    -E HOME="$UHOME" -E BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 -E UNITS_INSTANCE="$NAME" -E UNITS_NETWORK="$NETWORK" -E UNITS_PROFILE_LOCAL="$ETC/profile.local.json" \
+    /usr/local/bin/bun scripts/deploy/site-chain.ts --caps "$STATE/site/caps.json" ${1:+--plan}
+  ;;
 stop)
   stop_all
   echo "stopped: every $P unit (disabled; Caddy and the first instance keep running)"
@@ -310,7 +322,7 @@ remove)
   fi
   ;;
 *)
-  echo "usage: remote-instance.sh <name> install <sha> | activate <sha> | stop | start | status | remove [--purge]" >&2
+  echo "usage: remote-instance.sh <name> install <sha> | activate <sha> | chain [plan] | stop | start | status | remove [--purge]" >&2
   exit 2
   ;;
 esac

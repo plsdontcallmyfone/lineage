@@ -16,17 +16,22 @@ import { join } from "node:path";
 import { canonicalJson, H } from "@units/protocol";
 import { ata, ChainReader, loadKeypair, registry, Rpc, sendAndConfirm, TOKEN_2022_PROGRAM, type Ix, type Signer } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor } from "../../packages/chain/src/profile-node.ts";
+import { instanceLayout } from "./instance.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
 const PLAN = argv.includes("--plan");
-const LOG = opt("log") ?? "/var/lib/units/site/tx-log.jsonl";
+// a second instance (instance.ts; UNITS_INSTANCE=mainnet): its own state file, directories and endpoint
+const L = instanceLayout(process.env.UNITS_INSTANCE);
+const LOG = opt("log") ?? `${L.state}/site/tx-log.jsonl`;
 const SITE = join(homedir(), ".config", "lineage", "site");
-const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
-const caps = JSON.parse(readFileSync(opt("caps") ?? "/var/lib/units/site/caps.json", "utf8"));
+const devnet = JSON.parse(readFileSync(L.stateFile.startsWith("/") ? L.stateFile : join(ROOT, L.stateFile), "utf8"));
+const caps = JSON.parse(readFileSync(opt("caps") ?? `${L.state}/site/caps.json`, "utf8"));
 const capsDigest = H("caps", canonicalJson(caps));
-const rpc = Rpc.http(devnetRpcUrl(), "confirmed");
+// mainnet: the profile's program ids, fee policy and keyed endpoint (UNITS_MAINNET_RPC in the environment; never printed)
+const rpc = Rpc.http(L.network === "mainnet" ? rpcUrlFor(applyNetworkProfile()) : devnetRpcUrl(), "confirmed");
 const reader = new ChainReader(rpc);
 const T22 = TOKEN_2022_PROGRAM;
 const mint = devnet.line_mint as string;
@@ -50,7 +55,7 @@ async function send(what: string, ixs: Ix[], signers: Signer[] = []) {
 }
 
 const cfg = await reader.registryConfig();
-if (!cfg) throw new Error("registry config not found on devnet");
+if (!cfg) throw new Error(`registry config not found on ${L.network}`);
 const { registerBurn, minBond } = cfg.params;
 const ownerLine = ata(owner.id, mint, T22);
 const recs = await Promise.all(verifiers.map((v) => reader.agent(v.key.id)));
@@ -64,7 +69,7 @@ const sol = await rpc.getBalance(owner.id);
 const line = (await reader.tokenBalance(ownerLine)) ?? 0n;
 log(`owner ${owner.id}: ${(Number(sol) / 1e9).toFixed(6)} SOL, ${line} tUNITS base units; needs ${needLine} tUNITS base units; caps digest ${capsDigest.slice(0, 16)}...`);
 if (needLine > line || (needLine > 0n && sol < 20_000_000n)) {
-  const msg = `owner ${owner.id} is not funded (needs ${needLine} tUNITS base units and 0.02 SOL): run scripts/deploy/deploy.sh <host> fund on the owner's machine`;
+  const msg = `owner ${owner.id} is not funded (needs ${needLine} tUNITS base units and 0.02 SOL): ${L.name ? `send it both on ${L.network} (the owner decides; nothing here funds it)` : "run scripts/deploy/deploy.sh <host> fund on the owner's machine"}`;
   if (PLAN) log(`plan: ${msg}`);
   else throw new Error(msg);
 }

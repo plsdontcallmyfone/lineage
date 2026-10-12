@@ -267,7 +267,7 @@ const keep = ["line_mint", "line_token_program", "line_decimals", "admin", "core
 await Bun.write(process.argv[2] + "/main-state.json", JSON.stringify({ mode: "mainnet", _note: "dry-run stand-in: devnet values under the mainnet program ids (stub RPC)", registry_program: p.registry, launch_program: p.launch, msg_program: p.msg, ...Object.fromEntries(keep.map((k) => [k, d[k]])) }, null, 2));
 await Bun.write(process.argv[2] + "/main-profile.json", JSON.stringify({ profiles: { mainnet: { quote: { source: "config", symbol: "DRYQ", mint: d.line_mint, decimals: d.line_decimals, token_program: d.line_token_program, status: "stand-in", units_mint: null }, swap: false } } }, null, 2));
 ' "$REPO" "$WORK"
-MI=(env UNITS_INSTANCE=mainnet DEPLOY_REF="$HEADSHA" DRY_RUN_ORIGIN="$MU" DEPLOY_HEALTH_WAIT=420)
+MI=(env UNITS_INSTANCE=mainnet SITE_NAMES="$MH" DEPLOY_REF="$HEADSHA" DRY_RUN_ORIGIN="$MU" DEPLOY_HEALTH_WAIT=420)
 # 1. staged before the programs exist: no chain state, no overlay, no RPC
 "${MI[@]}" INSTANCE_STATE_FILE="$WORK/absent.json" INSTANCE_PROFILE_FILE="$WORK/absent.json" UNITS_MAINNET_RPC= INSTANCE_RPC_ENV_FILE=/dev/null "$D" 127.0.0.1 stage > "$WORK/m1.log" 2>&1; rc=$?; tail -4 "$WORK/m1.log"
 check "mainnet instance: stage without chain state, overlay or RPC" "$([ $rc = 0 ] && grep -q 'staged and stopped' "$WORK/m1.log" && echo 1 || echo 0)" "exit $rc"
@@ -339,6 +339,10 @@ ll=$(cat "$WORK"/m*.log | grep -c "$MARK")
 check "the RPC secret is in no journal and no deploy log" "$([ "$jl" = 0 ] && [ "$ll" = 0 ] && echo 1 || echo 0)" "journal $jl, deploy logs $ll"
 sf=$(R "grep -rlI '$MARK' /etc/units-main /etc/units-main-core /var/lib/units-main /opt/units-main /home/units-main /etc/units /var/lib/units /etc/caddy /etc/systemd/system /root/lineage-deploy 2>/dev/null | while read -r f; do printf '%s:%s:%s ' \"\$f\" \"\$(stat -c %a \"\$f\")\" \"\$(stat -c %U \"\$f\")\"; done")
 check "the RPC secret is only in root-owned mode 600 files of the mainnet instance" "$([ -n "$sf" ] && [ -z "$(echo "$sf" | tr ' ' '\n' | grep -v '^$' | grep -v '^/etc/units-main/[a-z]*\.env:600:root$')" ] && echo 1 || echo 0)" "$sf"
+"${MI[@]}" "$D" 127.0.0.1 chain-plan > "$WORK/mchain.log" 2>&1; rc=$?; tail -6 "$WORK/mchain.log"
+check "mainnet instance: verifier registration runs as a plan against its own state and endpoint (nothing sent)" "$([ $rc = 0 ] && grep -q 'plan done (nothing sent)' "$WORK/mchain.log" && grep -q 'plan: register verifier' "$WORK/mchain.log" && echo 1 || echo 0)" "exit $rc"
+"${MI[@]}" "$D" 127.0.0.1 chain > "$WORK/mchain2.log" 2>&1; rc=$?
+check "mainnet instance: sending is refused without MAINNET_SEND=yes" "$([ $rc != 0 ] && grep -q 'MAINNET_SEND=yes' "$WORK/mchain2.log" && echo 1 || echo 0)" "exit $rc"
 "${MI[@]}" "$D" 127.0.0.1 status > "$WORK/mstatus.log" 2>&1; rc=$?; cat "$WORK/mstatus.log"
 check "mainnet instance status" "$([ $rc = 0 ] && grep -q '"ok":true' "$WORK/mstatus.log" && echo 1 || echo 0)"
 "${MI[@]}" "$D" 127.0.0.1 stop >/dev/null 2>&1

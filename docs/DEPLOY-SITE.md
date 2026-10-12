@@ -744,6 +744,104 @@ ok: 12 enabled units active, epoch 17 open and 16 on chain, 3 verifiers heartbea
 old. `systemd-analyze security`: lineage-core 1.8, lineage-web, lineage-gate and lineage-indexer 1.7,
 lineage-monitor 3.4, lineage-backup 4.3 (all "OK").
 
+## Second instance (mainnet test)
+
+Owner decision 2026-10-11: the mainnet test runs as a second instance on the same server, beside the
+devnet site, which stays exactly as it is. `UNITS_INSTANCE=mainnet` selects it; with the variable
+unset every command in this document is the devnet site as before. Nothing below was run on the real
+server by the lane that built it: it was proven in the dry-run container only ("Tested").
+
+```sh
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> stage            # ship + install + configs, starts nothing
+UNITS_INSTANCE=mainnet WITH_RUNTIME=1 scripts/deploy/deploy.sh <host> activate   # only once the programs exist on mainnet
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain-plan       # read only: what the verifiers' registration needs
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> status | stop | start
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> remove [--purge]   # after the test; --purge deletes its keys, data and accounts
+```
+
+`deploy.sh` hands over to `scripts/deploy/instance.sh` (local) and `remote-instance.sh` (server).
+
+| | Devnet site (unset) | Mainnet test (`UNITS_INSTANCE=mainnet`) |
+|---|---|---|
+| Units | `units-*` | `units-main-core`, `-indexer`, `-web`, `-gate`, `-runtime`, `-bootstrap`, `-reference`, `-verifier@v1`, `-verifier@v2` |
+| Release | `/opt/units` | `/opt/units-main` |
+| State | `/var/lib/units` | `/var/lib/units-main` |
+| Config | `/etc/units`, `/etc/units-core` | `/etc/units-main`, `/etc/units-main-core` |
+| Accounts | `units`, `units-core`, `units-web`, `units-gate`, `units-indexer` | `units-main`, `units-main-core`, `units-main-web`, `units-main-gate`, `units-main-indexer` |
+| Ports (127.0.0.1) | Core 9660, web 9661, gate 9662, runtime bind 9667, indexer 9668 | Core 9760, web 9761, gate 9762, runtime bind 9767, indexer 9768 |
+| Host | `<ip with dashes>.sslip.io` | `main-<ip with dashes>.sslip.io` (`SITE_NAMES` or `MAIN_DOMAIN` override) |
+| Network | devnet | `UNITS_NETWORK=mainnet`, `UNITS_PROFILE_LOCAL=/etc/units-main/profile.local.json` |
+
+**How it is built.** The unit files and the Caddy site block are rendered from the devnet site's own
+files (`scripts/deploy/systemd`, `caddy/Caddyfile.tmpl`) by `scripts/deploy/instance.ts`: names,
+accounts, paths and ports moved, every hardening line kept (`instance.test.ts` checks both). The
+accounts are separate so that no devnet process can read a mainnet key; only `units-main` (sandboxes
+and the hosted runtime) is in the docker group, as `units` is for devnet. Core takes its port block
+from `UNITS_PORT_BLOCK=9760-9769` in its unit. The site block lives in
+`/etc/caddy/sites.d/units-main.caddy` and the main Caddyfile imports that directory, so a devnet deploy
+(which rewrites `/etc/caddy/Caddyfile`) keeps the mainnet host; the Caddy admin socket is not touched.
+A Caddy configuration that does not validate is put back as it was before anything reloads.
+
+**What it reads on the owner's machine** (never printed; keys are compared and reported by public key):
+
+| File | Goes to | Notes |
+|---|---|---|
+| `scripts/mainnet/mainnet.json` (untracked) | `/etc/units-main/state.json`, mode 644 | the deployed chain state, same shape as `scripts/devnet/devnet.json`; an optional `network_overrides` object replaces Core config keys (its `prepay` block is merged key by key), e.g. `identity_account_recipient`, which in `config/network.json` is the devnet treasury |
+| `scripts/mainnet/profile.local.json` (untracked) | `/etc/units-main/profile.local.json`, mode 644 | the profile overlay (quote mint, `swap`); the kit adds `state_file` so every service reads the state above |
+| `UNITS_MAINNET_RPC` (environment, or `~/.config/units/rpc.env`) | `/etc/units-main/rpc.env` and the per-role `core.env`, `indexer.env`, `runtime.env`, `web.env`, all mode 600 root | never in `site.env`, a config file, a log or a page |
+| `~/.config/units/mainnet/core-authority.json` | `/etc/units-main-core/core-authority.json`, owner `units-main-core` | must equal the state file's `core_authority` |
+| `~/.config/units/mainnet/runtime-authority.json` | `/home/units-main/.config/lineage/mainnet/`, owner `units-main` | must equal the state file's `runtime_authority` |
+| `model.env`, `providers.env`, `e2b.env` (`WITH_RUNTIME=1`) | `/home/units-main/.config/lineage/`, mode 600 | the same files the devnet runtime uses |
+
+**Stage, then activate.** `stage` works with none of these files: it makes the accounts and
+directories, clones and installs the release, makes the instance's own site keys (admin, owner,
+verifiers) and installs the unit files, enabled and started nowhere. `activate` is refused, on the
+owner's machine and again on the server, until the chain state, the overlay, the RPC and both hot
+keys are there; then `scripts/deploy/instance-preflight.ts` reads the endpoint (genesis is mainnet's,
+the three programs are executable at the profile's ids, registry and launch are initialized, the
+registry's mint is the overlay's quote mint, both authorities equal the state file) and only a READY
+starts anything. Each public unit is health-checked; a failure stops the instance again and leaves the
+devnet site alone.
+
+**Safety values** (`/var/lib/units-main/site/runtime.json`, written by `site-config.ts` under
+`UNITS_INSTANCE=mainnet`; configuration, not code):
+
+- model spend: at most 20 USD per UTC day counting every dollar, vault-paid included
+  (`global_max_usd` 20, `global_cap_scope` all, `global_window_s` 86400);
+- at most 2 attempts at once (`max_concurrent` 1, `max_concurrent_ceiling` 2);
+- a live desktop required for every attempt (`desktop_required`), E2B only (`desktops_max` 0,
+  `e2b_max` 2: the server's two local desktop slots stay with devnet);
+- agent trading off; no faucet and no TEST labels (the mainnet profile refuses both); the hidden list
+  starts empty (a fresh Core database);
+- the quote token is a throwaway stand-in no feed prices, so the runtime uses the configured rate
+  (`price.source` config): the same TEST figures Core publishes from `config/network.json` `prepay`
+  with the state file's `network_overrides`.
+
+**One E2B budget for both instances.** Both runtimes name `desktop_shared`
+(`/var/lib/units-shared/e2b-spend`, root:units-e2b 0770; `units` and `units-main` are in the group).
+Each publishes its E2B spend of the UTC day there every 30 s and before every budget check, and counts
+the other's against the one `desktop_usd_per_day` (16 USD), so the two together stay under one cap,
+not two. The mainnet side is strict: when devnet's file is missing, malformed or older than 10 minutes
+it has no E2B budget at all, and with desktops required it starts no attempt. What the other side's
+desktops running at that moment will cost is published only when they end, so the two can pass the cap
+by at most the other side's running E2B desktops times one session (2 x 0.1656 USD from the mainnet
+side, 6 x 0.1656 from devnet's, at the rates in "Agent desktops"). `units` joins `units-e2b` when the
+instance is first staged; the devnet runtime shares the budget from its next restart on a release
+that has `desktop_shared` in its runtime.json. Until then devnet publishes nothing and the strict
+mainnet side waits.
+
+**Not part of the instance.** The GitHub identity service (the mainnet host has no `/identity/*`
+route, so a launch there cannot be given a pool account), backups, the monitor, rollback (`stage` and
+`activate` an older commit instead) and authors. 
+
+**Verifiers.** Candidates get verdicts only from registered verifiers. The instance has its own three
+(reference, v1, v2; keys made on the server at `stage`, public keys in
+`/var/lib/units-main/site/pubkeys.json`), owned by its own owner key. `chain-plan` reads mainnet and
+prints what registering and bonding them would send and what the owner key must hold first (SOL for
+fees and rent, and the quote token for three registration burns and two bonds); `chain` sends it and
+is refused without `MAINNET_SEND=yes`. Funding that owner key on mainnet is not in the kit
+(`fund-site.ts` is devnet's): the owner sends it. Neither was run on mainnet.
+
 ## Mainnet server layout (recommended)
 
 The devnet site is one box. For mainnet, split by what each part can lose:

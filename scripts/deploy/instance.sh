@@ -11,6 +11,9 @@
 #   activate         stage, then start the instance. Refused (here, and again on the server) unless the
 #                    chain state, the profile overlay, the keyed RPC and both hot keys exist, the endpoint
 #                    is mainnet and the programs are deployed and initialized there.
+#   chain-plan       read only: what registering and bonding the instance's three verifiers would send, and
+#                    the SOL and quote tokens its owner key (made on the server) must hold first
+#   chain            the same, sent on mainnet by the server's owner key; refused without MAINNET_SEND=yes
 #   status           units, ports, what is present, Core health, the shared E2B budget files
 #   stop | start     stop and disable, or start, the instance's units (Caddy and the first instance stay)
 #   remove [--purge] stop it and remove its unit files and Caddy site block; --purge also deletes its
@@ -30,7 +33,7 @@
 set -euo pipefail
 HOST="${1:-}"; MODE="${2:-stage}"; EXTRA="${3:-}"
 NAME="${UNITS_INSTANCE:-}"
-[ -n "$HOST" ] && [ -n "$NAME" ] || { sed -n '2,29p' "$0"; exit 2; }
+[ -n "$HOST" ] && [ -n "$NAME" ] || { sed -n '2,32p' "$0"; exit 2; }
 case "$NAME" in mainnet) TAG=main; NETWORK=mainnet ;; *) echo "unknown UNITS_INSTANCE '$NAME' (known: mainnet)" >&2; exit 2 ;; esac
 P="units-$TAG"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -187,7 +190,12 @@ case "$MODE" in
     if [ "$DRY_RUN" = 1 ]; then r "curl -fsS -m 10 --cacert /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt --resolve $first:443:127.0.0.1 https://$first/v1/health" && echo
     else for i in $(seq 1 30); do curl -fsS -m 10 "https://$first/v1/health" && { echo; break; }; sleep 5; done || true; fi
     echo "site: $(echo "$SITE_NAMES" | tr ',' '\n' | sed 's|^|https://|' | paste -sd' ' -)" ;;
+  chain-plan) put_tools; r "$RI chain plan < /dev/null" ;;
+  chain)
+    # sends transactions on the instance's network with the instance's owner key (on the server)
+    [ "${MAINNET_SEND:-}" = yes ] || { echo "chain sends ${NETWORK} transactions (3 registrations, 2 bonds): run chain-plan first, then MAINNET_SEND=yes with the owner's approval" >&2; exit 1; }
+    put_tools; r "$RI chain < /dev/null" ;;
   status|stop|start) put_tools; r "$RI $MODE < /dev/null" ;;
   remove) put_tools; r "$RI remove $EXTRA < /dev/null" ;;
-  *) echo "unknown mode $MODE (stage, activate, status, stop, start, remove)" >&2; exit 2 ;;
+  *) echo "unknown mode $MODE (stage, activate, chain-plan, chain, status, stop, start, remove)" >&2; exit 2 ;;
 esac
