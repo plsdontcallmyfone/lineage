@@ -40,6 +40,7 @@ import { Telemetry } from "./telemetry.ts";
 import { guardOutcome, guardRuleReader } from "./guard-limits.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { plannedKey, readShared, sharedBlock, type SharedData } from "./shared-findings.ts";
+import { pickTarget } from "./target-spread.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
 import { EpisodeCapture } from "./episode.ts";
@@ -56,6 +57,13 @@ import { CalibrationVerifier } from "./recipe-proposer.ts";
  * qualifies); `fabricate-after-qualify` qualifies honestly, then fabricates every replay.
  */
 export type Dishonesty = "none" | "fabricate" | "fabricate-after-qualify";
+
+/**
+ * How long a target-spread intent lives (seconds). About two attempts: long enough that agents
+ * starting in the same minutes see each other, short enough to stay under Core's three live
+ * intents per agent at one attempt every few minutes.
+ */
+export const SPREAD_INTENT_TTL_S = 600;
 
 export interface WorkerOptions {
   core: string;
@@ -120,6 +128,13 @@ export interface WorkerOptions {
    */
   sharedFindings?: boolean | { max_tokens?: number };
   /**
+   * Target spread (docs/plans/AGENT-EFFICIENCY.md section 5): for a model proposer without a plan step,
+   * pick one of the unit's enabled metric targets from counts (other agents' open intents, this
+   * agent's own fruitless attempts on the tip, candidates that failed on the tip), tell the model,
+   * and file an advisory intent for it. Off by default; needs collab other than "off".
+   */
+  spread?: boolean;
+  /**
    * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
    * (units_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
    * stays on Core's board and inbox views, which index the chain.
@@ -174,6 +189,8 @@ export class Worker {
   draining = false;
   private stateFile: string;
   private submitted = 0;
+  /** target spread: this agent's attempts without a candidate on a unit's current tip, by target */
+  private fruitless = new Map<string, { tip: string; counts: Map<string, number> }>();
   private busy = false;
   /** Reveals in flight, shared by the main loop and the reveal timer so neither sends one twice. */
   private revealing = new Set<string>();
@@ -550,6 +567,26 @@ export class Worker {
         await this.ensureEncryptionKey();
         ctx.board = await this.boardOf(view.lineage_id);
         ctx.inbox = await this.readInbox();
+        if (!proposer.plan && this.opts.spread && proposer.name !== "scripted") {
+          // target spread: a pick from counts, an intent for the others to see, one line for the model
+          const mem = this.fruitless.get(view.lineage_id);
+          const pick = pickTarget({
+            targets: loaded.recipe.metrics.filter((m) => view.calibration?.metrics?.[m.name]?.enabled).map((m) => ({ kind: m.kind as CandidateKind, name: m.name })),
+            intents: ctx.intents ?? [],
+            self: this.id,
+            tip: tree.gen_id,
+            shared: sharedData,
+            fruitless: mem && mem.tip === tree.gen_id ? mem.counts : undefined,
+          });
+          if (pick) {
+            ctx.planned = pick.planned;
+            ctx.suggested = pick.line;
+            episode.plan(pick.planned);
+            if (sharedData) setShared(plannedKey(pick.planned));
+            this.log(`target spread: ${pick.planned.kind} ${pick.planned.target} (${pick.why.others} other agents on it, ${pick.why.own_fruitless} own fruitless on this tip, ${pick.why.tip_failed} failed on this tip)`);
+            await this.fileIntent(view.lineage_id, tree.gen_id, pick.planned, SPREAD_INTENT_TTL_S);
+          }
+        }
         if (proposer.plan) {
           ctx.planned = await proposer.plan(ctx);
           episode.plan(ctx.planned);
@@ -561,6 +598,13 @@ export class Worker {
         }
       }
       const proposal = await proposer.propose(ctx);
+      if (!proposal && ctx.suggested && ctx.planned) {
+        // target spread: remember the miss on this tip, so the next pick moves on
+        let mem = this.fruitless.get(view.lineage_id);
+        if (!mem || mem.tip !== tree.gen_id) this.fruitless.set(view.lineage_id, (mem = { tip: tree.gen_id, counts: new Map() }));
+        const k = plannedKey(ctx.planned)!;
+        mem.counts.set(k, (mem.counts.get(k) ?? 0) + 1);
+      }
       if (!proposal) {
         outcome(ctx.guardRegression ? guardOutcome(ctx.guardRegression) : "no candidate: the session stopped without submitting a change");
         return null;
@@ -672,16 +716,17 @@ export class Worker {
   }
 
   /** Files a signed intent for the planned target. Returns its id, or null if Core refused (cap, rate, stale tip). */
-  async fileIntent(lineage: string, tip: string, planned: PlannedTarget): Promise<string | null> {
+  async fileIntent(lineage: string, tip: string, planned: PlannedTarget, ttlS?: number): Promise<string | null> {
     if (this.intentTtl === null) {
       const c = await this.client.get("/v1/config").catch(() => null);
       this.intentTtl = Math.min(1800, Number(c?.body?.network?.intent_max_ttl_s ?? 1800));
     }
     const target = planned.kind === "fix" ? [...new Set(Array.isArray(planned.target) ? planned.target : [planned.target])].sort() : planned.target;
     const note = planned.note ? planned.note.slice(0, 280) : null;
-    const statement = { v: 1, agent: this.id, lineage_id: lineage, tip, kind: planned.kind, target, finding_id: null, note, ttl_s: this.intentTtl };
+    const ttl = ttlS ? Math.max(1, Math.min(ttlS, this.intentTtl)) : this.intentTtl;
+    const statement = { v: 1, agent: this.id, lineage_id: lineage, tip, kind: planned.kind, target, finding_id: null, note, ttl_s: ttl };
     const r = await this.client
-      .post("/v1/intents", { lineage_id: lineage, tip, kind: planned.kind, target, note, ttl_s: this.intentTtl, sig: signStatement(this.opts.key, "intent", statement) })
+      .post("/v1/intents", { lineage_id: lineage, tip, kind: planned.kind, target, note, ttl_s: ttl, sig: signStatement(this.opts.key, "intent", statement) })
       .catch((e) => ({ status: 0, body: { error: String(e) } }));
     if (r.status >= 300) {
       this.log(`intent not filed (${r.status} ${r.body?.error ?? ""}); authoring anyway, intents are advisory`);

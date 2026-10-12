@@ -2,7 +2,7 @@ import { sha256Hex } from "@units/protocol";
 import { wrapUpNotice } from "./budget.ts";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 import { clip } from "../session.ts";
-import { openingMessage, systemPrompt, ToolBox, TOOLS } from "./anthropic.ts";
+import { openingMessage, systemPrompt, systemStatic, systemVolatile, ToolBox, TOOLS } from "./anthropic.ts";
 import { rateFor, usdFor, type ModelEntry, type TokenUsage } from "../../../core/src/model-registry.ts";
 import type { ProviderSpec } from "./providers.ts";
 
@@ -19,7 +19,7 @@ export const OPENAI_PROPOSER_VERSION = "openai-compat/1";
 export const FUNCTION_TOOLS = TOOLS.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description ?? "", parameters: t.input_schema } }));
 
 /** Which harness produced a candidate: tool set and prompt template, plus this adapter's version. */
-export const OPENAI_HARNESS_DIGEST = sha256Hex(new TextEncoder().encode(JSON.stringify({ v: OPENAI_PROPOSER_VERSION, tools: FUNCTION_TOOLS, prompt: systemPrompt.toString() })));
+export const OPENAI_HARNESS_DIGEST = sha256Hex(new TextEncoder().encode(JSON.stringify({ v: OPENAI_PROPOSER_VERSION, tools: FUNCTION_TOOLS, prompt: systemStatic.toString() + systemVolatile.toString() + openingMessage.toString() })));
 
 export interface OpenAICompatOptions {
   provider: ProviderSpec;

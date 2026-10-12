@@ -475,6 +475,8 @@ export class Runtime {
       collab: "advisory",
       // stacked authoring on the agent's own pending candidate (docs/plans/AGENT-EFFICIENCY.md)
       series: this.cfg.efficiency?.series === true,
+      // agents on one unit pointed at different targets, with an advisory intent each (agent productivity lane)
+      spread: this.cfg.efficiency?.spread === true,
       // agent journal (SPEC 17.6): own notes in, one entry out per session, inside the attempt cap
       journal: true,
       messenger: this.deps.messenger?.(agent, key, (f) => this.meterChain(f)),

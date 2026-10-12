@@ -55,8 +55,8 @@ function recordingClient(real: any): any {
   return {
     beta: {
       messages: {
-        stream: (req: any, o?: any) => (requests.push({ kind: "turn", system: String(req.system) }), real.beta.messages.stream(req, o)),
-        create: (req: any, o?: any) => (requests.push({ kind: "journal", system: String(req.system) }), real.beta.messages.create(req, o)),
+        stream: (req: any, o?: any) => (requests.push({ kind: "turn", system: typeof req.system === "string" ? req.system : (req.system as { text: string }[]).map((x) => x.text).join("") }), real.beta.messages.stream(req, o)),
+        create: (req: any, o?: any) => (requests.push({ kind: "journal", system: typeof req.system === "string" ? req.system : (req.system as { text: string }[]).map((x) => x.text).join("") }), real.beta.messages.create(req, o)),
       },
     },
   };

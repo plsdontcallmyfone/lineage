@@ -85,6 +85,8 @@ export interface ProposeContext {
   notes?: string | null;
   /** Shared findings (docs/plans/AGENT-LEARNINGS.md 12.4): other agents' published outcomes on this unit, labelled, after the notes. */
   shared?: string | null;
+  /** Target spread (agent productivity lane): one labelled line of the opening message naming the target the worker suggests for this attempt and why (counts only). */
+  suggested?: string | null;
   /** USD the proposer keeps back from the attempt's cap for the journal call at the end (SPEC 17.6). */
   journalReserveUsd?: number;
   /** Running model spend of this attempt in USD; the proposer adds every metered response to it. */

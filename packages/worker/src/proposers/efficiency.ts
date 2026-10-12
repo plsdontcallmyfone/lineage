@@ -27,9 +27,26 @@ export interface EfficiencyOptions {
    * and the next turn wrote the whole prefix again.
    */
   keep_alive_s?: number;
+  /**
+   * Pacing (agent productivity lane, docs/plans/AGENT-EFFICIENCY.md section 5; needs cap_mode
+   * "bounded"). On the site 147 of 263 model sessions in a day ended at the cap without an edit, and
+   * the one self-evaluation that came back accepted was never submitted because the cap ended the
+   * attempt first. With `pace` on: the opening message states the attempt's budget, every tool result
+   * ends with one line saying what is left, the wrap-up comes in two steps (a nudge to edit and
+   * evaluate at half the budget when nothing was evaluated yet, the final notice at 80%), and
+   * `submit_reserve_usd` of the cap is kept back until an evaluation was accepted, so the submit
+   * call that follows it always fits.
+   */
+  pace?: boolean;
+  /** pace: USD of the attempt's cap kept for the submit call after an accepted evaluation (default 0.06). */
+  submit_reserve_usd?: number;
 }
 
 export const DEFAULT_MIN_TURN_TOKENS = 4096;
+/** pace: kept for the submit call (a cache read of the prefix, the evaluation result written, about 2000 output tokens). */
+export const DEFAULT_SUBMIT_RESERVE_USD = 0.06;
+/** pace: the smallest allowance worth the submit call once an evaluation was accepted. */
+export const SUBMIT_MIN_TURN_TOKENS = 512;
 /** The largest output allowance the loops ask for (the streaming default for agentic work). */
 export const MAX_TURN_TOKENS = 64000;
 /** Characters per token assumed for text the model has not seen yet. Code runs about 3 to 4; 2 over-counts on purpose. */
@@ -84,16 +101,20 @@ export interface RuntimeEfficiency extends EfficiencyOptions {
    * the next attempt edited the same code on the parent while the last candidate was still replaying.
    */
   series?: boolean;
+  /** Target spread (worker `spread`): agents on one unit are pointed at different metric targets and file advisory intents. */
+  spread?: boolean;
 }
 
 /** Validates a runtime `efficiency` block; returns an error message or null. */
 export function efficiencyError(x: unknown): string | null {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return "efficiency must be an object";
   const e = x as Record<string, unknown>;
-  for (const k of Object.keys(e)) if (!["cap_mode", "min_turn_tokens", "log_usage", "series", "keep_alive_s"].includes(k)) return `efficiency.${k} is not a setting`;
+  for (const k of Object.keys(e)) if (!["cap_mode", "min_turn_tokens", "log_usage", "series", "keep_alive_s", "pace", "submit_reserve_usd", "spread"].includes(k)) return `efficiency.${k} is not a setting`;
   if (e.keep_alive_s !== undefined && !(typeof e.keep_alive_s === "number" && (e.keep_alive_s === 0 || (e.keep_alive_s >= 60 && e.keep_alive_s <= 290)))) return "efficiency.keep_alive_s is 0 (off) or 60 to 290 seconds";
   if (e.cap_mode !== undefined && e.cap_mode !== "projected" && e.cap_mode !== "bounded") return "efficiency.cap_mode is projected or bounded";
   if (e.min_turn_tokens !== undefined && !(Number.isInteger(e.min_turn_tokens) && (e.min_turn_tokens as number) >= 256 && (e.min_turn_tokens as number) <= MAX_TURN_TOKENS)) return `efficiency.min_turn_tokens is a whole number from 256 to ${MAX_TURN_TOKENS}`;
-  for (const k of ["log_usage", "series"]) if (e[k] !== undefined && typeof e[k] !== "boolean") return `efficiency.${k} is true or false`;
+  if (e.submit_reserve_usd !== undefined && !(typeof e.submit_reserve_usd === "number" && e.submit_reserve_usd >= 0 && e.submit_reserve_usd <= 1)) return "efficiency.submit_reserve_usd is 0 to 1 USD";
+  if (e.pace === true && e.cap_mode !== "bounded") return "efficiency.pace needs cap_mode bounded";
+  for (const k of ["log_usage", "series", "pace", "spread"]) if (e[k] !== undefined && typeof e[k] !== "boolean") return `efficiency.${k} is true or false`;
   return null;
 }

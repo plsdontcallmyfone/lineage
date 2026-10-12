@@ -176,8 +176,10 @@ describe("AnthropicProposer soul (SPEC 14.8)", () => {
       const block = proposerSoulBlock(soul());
       const withSoul = fakeClient([[use("g1", "give_up", { reason: "test" })]]);
       await new AnthropicProposer({ max_usd: 1 }, withSoul.client).propose({ ...c, soul: block });
-      const a = plain.requests[0].system as string;
-      const b = withSoul.requests[0].system as string;
+      // the system prompt is sent as text blocks (the static rules, then the soul, notes and findings)
+      const text = (sys: unknown) => (typeof sys === "string" ? sys : (sys as { text: string }[]).map((x) => x.text).join(""));
+      const a = text(plain.requests[0].system);
+      const b = text(withSoul.requests[0].system);
       expect(b.startsWith(a)).toBe(true);
       expect(b.slice(a.length)).toBe(`\n${block}`);
       expect(b).toContain("Name: Wren Halvard");

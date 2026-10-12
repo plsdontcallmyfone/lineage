@@ -13,10 +13,13 @@
 //   A  effort high, cap_mode projected   (the site's settings on 2026-10-10)
 //   B  effort high, cap_mode bounded
 //   C  effort medium, cap_mode bounded
+//   E  effort medium, cap_mode bounded, pace (budget stated and counted down, submit reserve)
+//   ... --guard 0.01   judge self-evaluations and the replay with guard limits at this default (the
+//                      site's guard config version 1), as replays on the site do
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import { canonicalizeDiff, judge, type CandidateView } from "@units/protocol";
+import { canonicalizeDiff, judge, type CandidateView, type GuardRule } from "@units/protocol";
 import { applyPatch, diffWorkingTree, evaluate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { AnthropicProposer } from "../../packages/worker/src/proposers/anthropic.ts";
 import type { EfficiencyOptions } from "../../packages/worker/src/proposers/efficiency.ts";
@@ -34,6 +37,8 @@ const ARMS: Record<string, { effort: "high" | "medium" | "low"; efficiency: Effi
   B: { effort: "high", efficiency: { cap_mode: "bounded" } },
   C: { effort: "medium", efficiency: { cap_mode: "bounded" } },
   D: { effort: "medium", efficiency: { cap_mode: "projected" } },
+  // agent productivity lane (AGENT-EFFICIENCY.md section 5): the site's settings plus pacing and the submit reserve
+  E: { effort: "medium", efficiency: { cap_mode: "bounded", pace: true } },
 };
 const recipes = opt("recipes", "fixture-b58,minbpe")!.split(",");
 const arms = opt("arms", "A,B,C")!.split(",");
@@ -43,6 +48,8 @@ const reserve = Number(opt("reserve", "0.08")); // the site keeps 0.08 USD of ea
 const budget = Number(opt("budget", "5"));
 const out = resolve(opt("out", `scripts/efficiency/runs/ab-${new Date().toISOString().replace(/[:.]/g, "-")}`)!);
 mkdirSync(out, { recursive: true });
+const guardDefault = opt("guard") ? Number(opt("guard")) : null;
+const guardRule: GuardRule | null = guardDefault === null ? null : { config_version: 1, config_digest: "0".repeat(64), default_max_regression: guardDefault, kinds: ["perf", "slim"], overrides: {} };
 const treeFile = opt("tree");
 const tip: { gen_id: string; height: number; commit: string; patches: { patch: string }[] } | null = treeFile ? JSON.parse(readFileSync(treeFile, "utf8")) : null;
 const parentPatches = tip ? tip.patches.map((p) => p.patch) : [];
@@ -88,6 +95,7 @@ async function attempt(recipe: string, arm: string, i: number) {
       seed: randomBytes(8).toString("hex"),
       log: (m) => (logs.push(`${new Date().toISOString().slice(11, 19)} ${m}`), console.log(`  [${recipe} ${arm}${i}] ${m}`)),
       journalReserveUsd: reserve,
+      ...(guardRule ? { guardRule: async () => guardRule, guardRegression: null } : {}),
       spent: spentBox,
       meter: { model: () => {}, sandbox: (s) => (sandbox_s += s) },
     });
@@ -103,7 +111,7 @@ async function attempt(recipe: string, arm: string, i: number) {
       const seed = randomBytes(8).toString("hex");
       const { result } = await evaluate({ loaded, deps, parentPatches, candidatePatch: diff, seed, enabledMetrics: Object.entries(calibration.metrics).filter(([, m]: any) => m.enabled).map(([k]) => k) });
       const cand: CandidateView = { candidate_id: "ab", author: "ab", kind: proposal.kind, target: proposal.target };
-      const j = judge(loaded.recipe, calibration, cand, [{ replay_id: "r", replayer: "ab-replay", seed, result }], { quorum: 1, det_tolerance: 0.001, bootstrap_resamples: 4000 });
+      const j = judge(loaded.recipe, calibration, cand, [{ replay_id: "r", replayer: "ab-replay", seed, result }], { quorum: 1, det_tolerance: 0.001, bootstrap_resamples: 4000, guard_limits: guardRule });
       replay = { outcome: j.outcome, ...(j.reason ? { reason: j.reason } : {}), ...(j.effect && "ratio" in j.effect ? { ratio: j.effect.ratio } : {}) };
     }
     const r = {
@@ -122,6 +130,8 @@ async function attempt(recipe: string, arm: string, i: number) {
       cache_write_tokens: u ? Number(u[6]) : null,
       usd: u ? Number(u[7]) : spentBox.usd,
       evals: logs.filter((l) => / evaluating \(/.test(l)).length,
+      first_call: (logs.find((l) => / anthropic: first call /.test(l)) ?? "").replace(/^.*first call /, "") || null,
+      max_usd: maxUsd,
       author_s: Math.round(authorS),
       sandbox_s: Math.round(sandbox_s),
       submitted: proposal ? { kind: proposal.kind, target: proposal.target, claimed: proposal.claimed_effect ?? null } : null,
