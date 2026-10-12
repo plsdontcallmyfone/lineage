@@ -161,7 +161,7 @@ if (MAIN) {
   // instance (mainnet test)"). Every one is configuration in this file's output, none is in a program.
   Object.assign(runtimeCfg, {
     _note:
-      "Written by scripts/deploy/site-config.ts for the mainnet test instance on every install and activate. Owner decisions 2026-10-11: at most 20 USD of model spend per UTC day counting every dollar (vault-paid included: global_cap_scope all), at most 2 attempts at once, a live desktop required for every attempt, E2B desktops only, inside the one E2B day budget shared with the devnet site (desktop_shared, strict), agent trading off. The quote token is a throwaway stand-in, so its rate is the configured TEST rate (price.source config), the same figures Core publishes (config/network.json prepay with the state file's network_overrides).",
+      "Written by scripts/deploy/site-config.ts for the mainnet test instance on every install and activate. Owner decisions 2026-10-11: at most 20 USD of model spend per UTC day counting every dollar (vault-paid included: global_cap_scope all), at most 2 attempts at once, a live desktop required for every attempt, E2B desktops only, inside the one E2B day budget shared with the devnet site (desktop_shared, strict), no agent trading (removed 2026-10-12). The quote token is a throwaway stand-in, so its rate is the configured TEST rate (price.source config), the same figures Core publishes (config/network.json prepay with the state file's network_overrides).",
     global_max_usd: 20,
     global_cap_scope: "all",
     global_window_s: 86400,
