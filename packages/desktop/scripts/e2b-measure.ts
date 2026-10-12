@@ -12,7 +12,7 @@ import { loadE2BKey } from "../src/e2b.ts";
 // the plain sandbox class (the desktop package's own e2b dependency; its Sandbox export is the desktop one)
 const { Sandbox: Base } = (await import(Bun.resolveSync("e2b", realpathSync(Bun.resolveSync("@e2b/desktop", import.meta.dir))))) as typeof import("@e2b/desktop");
 
-const apiKey = loadE2BKey();
+const apiKey = loadE2BKey() as string;
 if (!apiKey) throw new Error("no E2B key");
 const owner = process.env.MEASURE_OWNER ?? `measure-${randomBytes(4).toString("hex")}`;
 const meta = { units_desktop: "measure", owner };

@@ -6,3 +6,5 @@ export { LocalBackend } from "./local.ts";
 export { E2BBackend, E2B_RATES, e2bUsdPerS, loadE2BKey, playlistFiles } from "./e2b.ts";
 export { DesktopPool, homeUrl, parseGeom, type DesktopAttempt, type DesktopConfig, type DesktopProvider, type BeginOpts, type PendingRecording } from "./pool.ts";
 export { desktopHandler } from "./serve.ts";
+export { AgentDesktops, AGENT_DESKTOP_DEFAULTS, type AgentBackend, type AgentDesktopLimits, type AgentDesktopState, type AgentDesktopView, type AgentInfo } from "./agent-desktops.ts";
+export { sdkApi, sandboxGone, type E2BApi, type E2BInfo, type E2BSandbox } from "./e2b.ts";

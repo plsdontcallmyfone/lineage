@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { SessionEventInput } from "../../worker/src/session.ts";
 import type { BackendName, DesktopBackend, DesktopInstance } from "./backend.ts";
 import { Driver } from "./driver.ts";
+import { AgentDesktops, type AgentBackend, type AgentDesktopView, type AgentInfo } from "./agent-desktops.ts";
 import { E2BBackend } from "./e2b.ts";
 import { liveArgs, recordArgs, RECORDING_MAX_BYTES, type Rect } from "./layout.ts";
 import { LocalBackend } from "./local.ts";
@@ -48,6 +49,22 @@ export interface DesktopConfig {
    */
   max_age_s?: number;
   reap_every_s?: number;
+  /**
+   * "per_attempt" (default): a desktop per running attempt, placed as above. "per_agent" (owner decision
+   * 2026-10-12, agent-desktops.ts): every bound agent has its own E2B desktop for its whole life, paused
+   * while it is idle; desktop hosts and this server's slots are not used, `e2b_max` is the most desktops
+   * running at once and `desktop_usd_per_day` counts every second one runs.
+   */
+  mode?: "per_agent" | "per_attempt";
+  /** per_agent: this runtime's label on its sandboxes (only sandboxes with it are ever touched) */
+  owner?: string;
+  /** per_agent: see AgentDesktopLimits (agent-desktops.ts) for each, with its default */
+  idle_s?: number;
+  renew_before_s?: number;
+  keepalive_s?: number;
+  resume_gap_max_s?: number;
+  remove_after_s?: number;
+  start_parallel?: number;
 }
 
 /** Defaults of DesktopConfig.max_age_s and reap_every_s. */
@@ -82,6 +99,10 @@ export interface DesktopProvider {
   reserve?(agent: string): string | null;
   /** drops the agent's hold (the attempt did not start) */
   release?(agent: string): void;
+  /** per-agent desktops: the bound agents now (every runtime tick; never waits on the desktop service) */
+  syncAgents?(agents: AgentInfo[]): void;
+  /** per-agent desktops: the agent's desktop state for its pages, or null (per-attempt mode, or unknown) */
+  agentDesktop?(agent: string): AgentDesktopView | null;
 }
 
 /** How long a reserved slot waits for its attempt's begin. */
@@ -129,6 +150,8 @@ export class DesktopPool implements DesktopProvider {
   /** desktops of attempts running in this process, by instance id */
   private live = new Map<string, { session: () => string | null }>();
   private reapTimer: ReturnType<typeof setInterval> | null = null;
+  /** per-agent mode: every bound agent's own E2B desktop (null in per-attempt mode) */
+  readonly agents: AgentDesktops | null = null;
 
   constructor(
     readonly cfg: DesktopConfig,
@@ -141,6 +164,8 @@ export class DesktopPool implements DesktopProvider {
       hostRun?: ConstructorParameters<typeof RemoteBackend>[0]["run"];
       /** false: no background health checks (tests call checkHosts) */
       timers?: boolean;
+      /** per-agent mode: the E2B backend of the agents' own desktops (default: this pool's E2B backend) */
+      agentBackend?: AgentBackend;
     } = {},
   ) {
     this.log = o.log ?? (() => {});
@@ -149,6 +174,34 @@ export class DesktopPool implements DesktopProvider {
     this.local = o.local ?? new LocalBackend({ root: cfg.root, image: cfg.image, log: this.log });
     this.e2b = o.e2b ?? new E2BBackend({ root: cfg.root, ...(cfg.e2b ?? {}), log: this.log });
     this.hostRun = o.hostRun;
+    if (cfg.mode === "per_agent") {
+      const backend = o.agentBackend ?? (this.e2b instanceof E2BBackend ? this.e2b : null);
+      if (!backend) throw new Error("desktops: per_agent mode needs the E2B backend");
+      const pool = this;
+      this.agents = new AgentDesktops({
+        root: cfg.root,
+        owner: cfg.owner ?? "units",
+        // read at every use: an edited limit, and a shared budget's remainder, apply at once
+        limits: {
+          get e2b_max() { return pool.cfg.e2b_max; },
+          get desktop_usd_per_day() { return pool.cfg.desktop_usd_per_day; },
+          get idle_s() { return pool.cfg.idle_s; },
+          get session_max_s() { return pool.cfg.e2b?.session_max_s; },
+          get renew_before_s() { return pool.cfg.renew_before_s; },
+          get keepalive_s() { return pool.cfg.keepalive_s; },
+          get resume_gap_max_s() { return pool.cfg.resume_gap_max_s; },
+          get remove_after_s() { return pool.cfg.remove_after_s; },
+          get start_parallel() { return pool.cfg.start_parallel; },
+        },
+        allow: cfg.allow,
+        backend,
+        spentToday: () => this.spentToday(),
+        addSpend: (usd) => this.addSpend(usd),
+        log: this.log,
+        now: this.now,
+        timers: o.timers,
+      });
+    }
     // desktops must not outlive their attempt: one pass at start (whatever a killed runtime left), then periodically
     if (o.timers !== false) {
       void this.reap();
@@ -181,6 +234,15 @@ export class DesktopPool implements DesktopProvider {
     this.timer = null;
     if (this.reapTimer) clearInterval(this.reapTimer);
     this.reapTimer = null;
+    this.agents?.stop();
+  }
+
+  syncAgents(agents: AgentInfo[]): void {
+    this.agents?.sync(agents);
+  }
+
+  agentDesktop(agent: string): AgentDesktopView | null {
+    return this.agents?.view(agent) ?? null;
   }
 
   /**
@@ -273,6 +335,7 @@ export class DesktopPool implements DesktopProvider {
   }
 
   reserve(agent: string): string | null {
+    if (this.agents) return (this.lastWhy = this.agents.ready(agent));
     const t = this.now();
     const h = this.holds.get(agent);
     if (h && h.until > t) return null;
@@ -286,6 +349,7 @@ export class DesktopPool implements DesktopProvider {
   }
 
   release(agent: string): void {
+    this.agents?.release(agent);
     this.holds.delete(agent);
   }
 
@@ -310,7 +374,8 @@ export class DesktopPool implements DesktopProvider {
     }
   }
 
-  private addSpend(usd: number) {
+  addSpend(usd: number) {
+    if (!(usd > 0) || !Number.isFinite(usd)) return;
     const day = utcDay(this.now());
     const usdNow = this.spentToday() + usd;
     writeFileSync(this.spendFile() + ".tmp", JSON.stringify({ day, usd: usdNow, rates: "e2b.ts E2B_RATES" }));
@@ -325,11 +390,14 @@ export class DesktopPool implements DesktopProvider {
   }
 
   status() {
+    const ad = this.agents?.counts() ?? null;
     return {
+      mode: this.agents ? ("per_agent" as const) : ("per_attempt" as const),
+      agent_desktops: ad,
       required: this.required,
       hosts: [...this.hosts.values()].map((b) => ({ name: b.host.name, running: this.used.get(`host:${b.host.name}`) ?? 0, max: b.host.desktops_max, up: b.unavailable() === null, why: b.unavailable(), load1: b.health.h?.load1 ?? null })),
       local: { running: this.used.get("local") ?? 0, max: this.cfg.desktops_max },
-      e2b: { running: this.used.get("e2b") ?? 0, max: this.cfg.e2b_max, spent_today_usd: this.spentToday(), cap_usd: this.cfg.desktop_usd_per_day },
+      e2b: { running: ad ? ad.running + ad.starting : (this.used.get("e2b") ?? 0), max: this.cfg.e2b_max, spent_today_usd: this.spentToday(), cap_usd: this.cfg.desktop_usd_per_day },
       waiting_why: this.lastWhy,
     };
   }
@@ -344,6 +412,12 @@ export class DesktopPool implements DesktopProvider {
 
   async begin(o: BeginOpts): Promise<DesktopAttempt | null> {
     const opts = { tree: o.tree, homeUrl: homeUrl(o.repo, o.commit), allow: this.cfg.allow, label: o.label };
+    if (this.agents) {
+      // the agent's own desktop, resumed if it was paused; its running time is counted by agent-desktops.ts
+      const inst = await this.agents.open(o.agent, opts);
+      this.lastWhy = inst ? null : (this.agents.view(o.agent)?.why ?? "the agent's desktop did not start");
+      return inst ? this.attempt(inst, o, () => {}) : null;
+    }
     const held = this.holds.get(o.agent);
     this.holds.delete(o.agent);
     const slots = this.slots();
