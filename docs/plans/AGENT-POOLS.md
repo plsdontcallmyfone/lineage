@@ -1,7 +1,8 @@
 # Agent pools: agents on one repository share fees, buybacks, burns and holdings
 
-Status: built and proven on devnet, switched off (2026-10-12, pools and claims lane; results in
-section 10). Owner request 2026-10-11. Behind feature flags, default off everywhere; launched later
+Status: LIVE ON DEVNET since 2026-10-12 (owner: "put up the two pages"): chain bit, Core and profile flags on
+for devnet, the Pools page at /pools, linked from the Eco page (onchain/DEVNET.md "Pools and claims live on devnet").
+Off on mainnet. Built and proven on devnet by the pools and claims lane (results in section 10). Owner request 2026-10-11. Behind feature flags, default off everywhere; launched later
 with the product and the token. Devnet only.
 
 Owner decision 2026-10-12 (agentic trading removed): nothing here needs an agent's own key to swap.

@@ -926,3 +926,15 @@ nothing touched `solana config` or `~/.config/solana/id.json`.
 - Proof: `bun scripts/pools/devnet-proof.ts` PASS 67/67 (`scripts/pools/DEVNET-PROOF-LAST.json`: every check and every signature). The bits were on only during the runs and are 0 now; the public site was not redeployed and its Core and pages keep the features off. The site's existing agents have no route and no membership, so their cranks were unaffected even while the bits were on.
 - TEST agents the runs launched (self-hosted, asleep, to hide on the site): mints `WFbWZYEsLzh5Py5Nie8ZeT79XM5cSq2yeZ53S8Szxji`, `C51Wfj6oV4o6jGAMrSMxnYFtyUDdqASyYZGiZ7vvDr7x`, `CveAY18JZJLvdowpHJJ4WhtCSGnAjZiXCe3yRPn3ucqc`, `9wZScAUHojVCQzYc7JH4xLP9EFaK4NzWupVv1yY1Qnr1`, `1TRaMbUrhiZZymj8XDnESAeMTnLdqi5GBgrxDacTXpm`, `CoeAYA7CjuqtVP3jt8pZCsjVvctx6H3MGuPDtTgsQ25R`, `5kvLNHumizskwj3B51Z95k8uqBa3T7gr6R7L9JoGoxLz`, `BfinkTwSCoTnArM3gH36ZJ6AvYw3vKbwjTs1iFcqmydQ`, `As3gWqUBztqeRFzTstPpQLXCyAk3ArGTg56haaEKdm1n`, `9nyEBiAzvECrZDpWuQpNQoThU5iag378vce8K1MPpqvc`.
 - Deployer after everything: 52.054280207 SOL (3.044754840 spent by this lane: the extensions, fees, and SOL moved to the proof's keeper, launcher, trader and claimer keys).
+
+## Pools and claims live on devnet (2026-10-12, pools and claims go-live lane)
+
+Owner 2026-10-12: both features are on for devnet and their pages are up on the devnet site.
+
+- Program checked first, read only: `solana program dump -u https://api.devnet.solana.com Axo38W...` (967,040 bytes) equals `onchain/target/pools/units_launch.so` (958,368 bytes, sha256 `79609057...9ac2`) followed by zeros.
+- `set_features(3)` (pools and GitHub fees) by the launch admin, the devnet deployer, key passed explicitly: `bun scripts/pools/features.ts --set pools,github --send`, signature `4LaLsK49Rk5uHjCMHibjDMNBwTLaHSECUvCdrNndtEnBnDvHH5uofNp8wSfuTWeUwG9UpbXdiGKoJzbpUybYeytd`. `bun scripts/pools/features.ts` prints the state; `--set none --send` switches both off again.
+- `PoolConfig` and `ClaimConfig` unchanged: the TEST values of the plans (pool slice 20%, 40/40/20, route 10% to 30%, delays 600 s and 120 s, `auto_join` false).
+- The devnet site's Core holds the devnet keeper (`7YX6i3xY...pPuy`) and attestor (`HkXn2aFY...pQcG`) keys in `/etc/units-core`, named in `/etc/units/core-github.env` (`UNITS_POOL_KEEPER_KEY`, `UNITS_FEE_CLAIMS_ATTESTOR_KEY`, `UNITS_POOL_KEEPER_EVERY_S=600`). On its first pass the keeper sent the buybacks and milestone burns the proof pools still had due (6 transactions; what is left is under its minimum buy).
+- The fee crank: an agent with a route or a membership needs its trailing accounts while the bits are on; `scripts/devnet/pump-lib.ts` `pumpCrank` now reads and passes them. No service on the site cranks fees by itself.
+- The ten TEST pool-proof agents were never on the hidden list; they are listed, so the Pools page shows their five pools.
+- No GitHub OAuth app: the Claim page offers the public gist proof (Core reads the gist from api.github.com with its token). `devnet-proof.ts` was not run again: it needs the bits off at its start and switches them off at its end.

@@ -1,7 +1,9 @@
 # GitHub fee routing and the Claim page
 
-Status: built and proven on devnet, switched off (2026-10-12, pools and claims lane; results in
-section 10). Owner request 2026-10-11. Behind feature flags, default off everywhere; launched later
+Status: LIVE ON DEVNET since 2026-10-12 (owner: "put up the two pages"): chain bit, Core and profile flags on
+for devnet, /claim linked from the Eco page, proof by public gist (no OAuth app yet; the callback is
+`https://<site>/v1/fee-claims/oauth/callback`, which follows from UNITS_SITE_URL). Off on mainnet.
+Built and proven on devnet by the pools and claims lane (results in section 10). Owner request 2026-10-11. Behind feature flags, default off everywhere; launched later
 with the product and the token. Devnet only.
 Companion: `docs/plans/AGENT-POOLS.md` (the other slice of the same fee crank).
 
@@ -161,7 +163,7 @@ flag off: identical splits to today and `set_fee_route` refused.
 
 1. A GitHub OAuth app owned by the units GitHub organisation (Settings, Developer settings, OAuth
    Apps, New): Homepage URL the site, Authorization callback URL
-   `https://<site>/api/v1/fee-claims/oauth/callback`. Then on the server, mode 600:
+   `https://<site>/v1/fee-claims/oauth/callback` (the gate sends /v1 to Core). Then on the server, mode 600:
    `UNITS_GITHUB_OAUTH_CLIENT_ID` and `UNITS_GITHUB_OAUTH_CLIENT_SECRET` in Core's env file.
 2. The launch values of `change_delay_s`, `rebind_delay_s`, the bounds, and whether a route is
    mandatory at launch.

@@ -86,15 +86,21 @@ export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputE
   // the profile's flags first (config/profile.json `features`): off means no request is even made
   const want = NET.p.features ?? { agent_pools: false, github_fee_claims: false };
   if (!want.agent_pools && !want.github_fee_claims) return;
-  try {
-    const [lcA, ccA, core, corePools] = await Promise.all([rpc.getAccountInfo(launchPdas.config()), rpc.getAccountInfo(claimPdas.config()),
-      fetch("/api/fee-claims/providers").then((r) => r.ok).catch(() => false), fetch("/api/pools/config").then((r) => r.ok).catch(() => false)]);
-    const features = lcA ? decodeLaunchConfig(lcA.data).features : 0;
-    F.cfg = ccA ? decodeClaimConfig(ccA.data) : null;
-    F.github = want.github_fee_claims && !!(features & FEATURES.githubFees) && !!F.cfg && !F.cfg.paused && core;
-    F.pools = want.agent_pools && !!(features & FEATURES.pools) && corePools;
-  } catch {
-    return;
+  // a failed read (the RPC proxy or Core busy for a moment) must not hide the step for the whole visit: retried
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const [lcA, ccA, core, corePools] = await Promise.all([rpc.getAccountInfo(launchPdas.config()), rpc.getAccountInfo(claimPdas.config()),
+        fetch("/api/fee-claims/providers").then((r) => r.ok || r.status === 404 ? r.ok : Promise.reject(new Error(`HTTP ${r.status}`))),
+        fetch("/api/pools/config").then((r) => r.ok || r.status === 404 ? r.ok : Promise.reject(new Error(`HTTP ${r.status}`)))]);
+      const features = lcA ? decodeLaunchConfig(lcA.data).features : 0;
+      F.cfg = ccA ? decodeClaimConfig(ccA.data) : null;
+      F.github = want.github_fee_claims && !!(features & FEATURES.githubFees) && !!F.cfg && !F.cfg.paused && core;
+      F.pools = want.agent_pools && !!(features & FEATURES.pools) && corePools;
+      break;
+    } catch {
+      if (attempt >= 4 || !F.el.isConnected) return;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
   }
   if (!F.github && !F.pools) return;
   const min = F.cfg?.minBps ?? 1000, max = F.cfg?.maxBps ?? 3000;
