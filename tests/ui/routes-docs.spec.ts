@@ -22,11 +22,22 @@ test.describe("removed routes", () => {
 });
 
 test.describe("Docs (/docs)", () => {
-  test("a static site outside the app shell, nine pages", async ({ page }) => {
+  test("a static site outside the app shell; the nav lists every page the build made, each answers", async ({ page, request }) => {
     await page.goto("/docs");
     await page.locator(".dc-h1").waitFor();
     await expect(page.locator("#app")).toHaveCount(0);
-    await expect(page.locator(".dc-nav a")).toHaveCount(9);
+    // the build's own page list: its search index has entries for every page (u is the page, with or without an anchor)
+    const index = (await (await request.get("/docs/assets/search.json")).json()) as { u: string }[];
+    const pages = [...new Set(index.map((x) => x.u.split("#")[0]!.replace(/\/+$/, "")))].sort();
+    expect(pages.length, "docs pages (nine when the docs moved out of the app; more since)").toBeGreaterThanOrEqual(9);
+    const nav = (await page.locator(".dc-nav a").evaluateAll((els) => els.map((e) => new URL((e as HTMLAnchorElement).href).pathname.replace(/\/+$/, "")))).sort();
+    expect(new Set(nav).size, "no page twice in the nav").toBe(nav.length);
+    expect(nav).toEqual(pages);
+    for (const p of nav) {
+      const r = await request.get(p);
+      expect({ page: p, status: r.status() }).toEqual({ page: p, status: 200 });
+      expect((await r.text()).includes('class="dc-h1"'), `${p} is a docs page`).toBe(true);
+    }
     await cleanPage(page);
   });
 

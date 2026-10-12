@@ -100,8 +100,9 @@ test.describe("Agent profile (/agents/:id/profile)", () => {
     await expect(page.locator(`.pf-chips a[href="/tokens/${t.mint}"]`)).toHaveCount(1);
     const block = page.locator(".panel .bd-params");
     await expect(block).toHaveCount(1);
+    // the profile's token figures in the order of every .bd-params block (Explorer cards, My agents): price first
     const { labels, figs } = await readParams(block);
-    expect(labels).toEqual(["market cap", "price", "24h volume", "24h change", "holders"]);
+    expect(labels).toEqual(["price", "market cap", "24h volume", "24h change"]);
     expectFigures(`${t.symbol} profile`, figs, detail);
     await expect(page.locator("#main")).not.toContainText(/fees? (claimed|to compute|split)|crank/i);
     await cleanPage(page);

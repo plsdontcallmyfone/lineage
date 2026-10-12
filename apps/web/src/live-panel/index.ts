@@ -208,6 +208,9 @@ class Panel {
   private verified: { url: string; label: string } | null = null;
   private es: EventSource | null = null;
   private poll: ReturnType<typeof setInterval> | null = null;
+  /** distinct viewers of this session's desktop stream as the gate counts them (GET /v1/viewers); 0 shows nothing */
+  private watching = 0;
+  private watchAt = 0;
   private dead = false;
   private gen = 0;
   private device: DeviceHandle | null = null;
@@ -262,6 +265,7 @@ class Panel {
       if (!this.host.isConnected) return this.destroy();
       if (this.view === "idle" || this.view === "error") void this.pickFromList(true);
       else if (this.summary && (this.summary.state === "live" || this.summary.state === "sealed")) void this.refresh();
+      void this.readViewers();
     }, 10_000);
     try {
       if (this.opts.session) await this.load(this.opts.session);
@@ -324,6 +328,7 @@ class Panel {
     this.syncStream();
     this.renderList();
     this.paint();
+    void this.readViewers();
   }
 
   /** Re-reads the session: new events, the end of the session, a final verdict. */
@@ -553,6 +558,22 @@ class Panel {
     }
   }
 
+  /** "N watching" for a live desktop: Core samples the gate's counts once a minute, so one read per 30 s is enough. */
+  private async readViewers() {
+    const id = this.view === "live" && this.summary?.state === "live" && this.summary.desktop ? this.summary.session_id : null;
+    let n = 0;
+    if (id) {
+      if (Date.now() - this.watchAt < 30_000) return;
+      this.watchAt = Date.now();
+      const v = await this.io.get<{ sessions?: { session_id: string; viewers: number }[] }>("viewers").catch(() => null);
+      const c = v?.sessions?.find((x) => x.session_id === id)?.viewers;
+      if (typeof c === "number" && Number.isSafeInteger(c) && c > 0 && this.summary?.session_id === id) n = c;
+    }
+    if (n === this.watching) return;
+    this.watching = n;
+    this.paintDeck();
+  }
+
   private paintDeck() {
     const s = this.summary;
     const t = this.q(".lp-say .t");
@@ -562,6 +583,7 @@ class Panel {
     note.hidden = true;
     latest.hidden = true;
     tm.textContent = "";
+    tm.removeAttribute("data-watching");
     if (this.view === "idle") {
       const st = this.idle;
       this.setState(st && st.kind !== "next" ? "paused" : "idle", st && st.kind !== "next" ? "Paused" : "Idle");
@@ -583,7 +605,11 @@ class Panel {
     }
     this.setState("live", "Live");
     t.textContent = `Live: ${name} working on ${repoName(s.repo)}`;
-    tm.textContent = `started ${when(s.started_at)}`;
+    // shown only with at least one viewer counted
+    const w = s.desktop ? this.watching : 0;
+    tm.textContent = `started ${when(s.started_at)}${w >= 1 ? `, ${w} watching` : ""}`;
+    tm.toggleAttribute("data-watching", w >= 1);
+    if (w >= 1) tm.setAttribute("data-watching", String(w));
     if (s.desktop) {
       note.hidden = false;
       note.textContent = "The agent's real desktop. Its editor and run terminal are pixelated on the server until the verdict.";

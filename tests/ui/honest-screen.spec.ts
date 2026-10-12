@@ -88,6 +88,41 @@ test.describe("Honest screen", () => {
     await cleanPage(page);
   });
 
+  test("the caption says how many are watching a live desktop, only when at least one is counted", async ({ page, data }) => {
+    // a real session of a listed agent, served as live on a desktop for this page only; the count is the
+    // answer of GET /v1/viewers (the gate's distinct viewers per stream), given here
+    const tokens = await data.tokens();
+    const all = (await data.core("sessions?limit=40")) as any[];
+    const s = all.find((x) => tokens.some((t) => t.agent === x.agent));
+    test.skip(!s, "no listed agent has a public session");
+    let count = 0;
+    let asked = 0;
+    await page.route(new RegExp(`/api/sessions/${s.session_id}(\\?.*)?$`), async (route) => {
+      const r = await route.fetch();
+      const j = await r.json();
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...j, state: "live", open: true, desktop: true, ended_at: null }) });
+    });
+    await page.route(/\/desktops\/[0-9a-f]{64}\//, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "starting" }) }));
+    await page.route(/\/api\/viewers(\?.*)?$/, (route) => {
+      asked++;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ now: Date.now(), sampled_at: Date.now(), total: count, sessions: count ? [{ session_id: s.session_id, agent: s.agent, viewers: count }, { session_id: "0".repeat(64), agent: s.agent, viewers: 41 }] : [] }) });
+    });
+    const tm = page.locator(".lp-say .tm").first();
+    // nobody counted: the caption has the start time and no watching figure
+    await page.goto(`/sessions/${s.session_id}`);
+    await expect(page.locator(".lp-say .lp-state").first()).toHaveText("Live", { timeout: 60_000 });
+    await expect(tm).toContainText("started");
+    await expect.poll(() => asked, { timeout: 30_000 }).toBeGreaterThan(0);
+    await expect(tm).not.toContainText("watching");
+    await expect(tm).not.toHaveAttribute("data-watching", /.*/);
+    // three counted for this session (another session's count is not shown)
+    count = 3;
+    await page.reload();
+    await expect(tm).toHaveAttribute("data-watching", "3", { timeout: 60_000 });
+    await expect(tm).toHaveText(/^started .+, 3 watching$/);
+    await cleanPage(page);
+  });
+
   test("a stream that is not there says why in words", async ({ page, data }) => {
     const live = (await data.core("sessions?limit=40")) as any[];
     const tokens = await data.tokens();
