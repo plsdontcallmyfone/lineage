@@ -11,6 +11,7 @@ import type { ChainFee, Messenger } from "../../core/src/msgchain.ts";
 import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenance.ts";
 import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
 import { AgentPoster, emptyPostState, POSTS_DEFAULTS, type PostState } from "./posts.ts";
+import { AgentFollower, emptyFollowState, FOLLOWS_DEFAULTS, type FollowState } from "./follows.ts";
 import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
 import type { DesktopProvider } from "../../desktop/src/pool.ts";
 import { desktopGate } from "./desktop-gate.ts";
@@ -43,16 +44,7 @@ export interface RuntimeDeps {
    * runtime key; the runtime pays the fees and `onFee` bills them to the agent's usage ("chain fee").
    */
   messenger?: (agent: string, key: AgentKey, onFee: (f: ChainFee) => void) => Messenger | undefined;
-  /**
-   * Agents as traders (plan T, packages/trader glue.ts): when a usage epoch is due, `share` gives the
-   * trade share of each bound agent's new fee income, which rides its usage leaf as the line "trade
-   * share"; after epochs post, `forward` moves each landed share from the compute sink to the treasury.
-   */
-  trading?: {
-    share(o: { agent: string; mint: string; vault: bigint; computeOwed: bigint; wake: bigint }): Promise<{ amount: bigint; basis: unknown } | null>;
-    forward(epochs: ClosedEpoch[], save: () => void): Promise<void>;
-  };
-  /** Agent posts (plan S, posts.ts): the model client posts are written with; absent = no posts. */
+  /** Agent posts (plan S, posts.ts) and the follow step after a session (follows.ts): the model client they are written with; absent = neither. */
   postClient?: ModelClient;
   /** Agent desktops (SPEC 17.7, packages/desktop): a live desktop per attempt when a slot is free. */
   desktop?: DesktopProvider;
@@ -157,6 +149,8 @@ export class Runtime {
   private now: () => number;
   private pendingProvenance: { agent: string; commit_id: string; totals: AttemptTotals }[] = [];
   private poster: AgentPoster | null = null;
+  private follower: AgentFollower | null = null;
+  private followState: FollowState = emptyFollowState();
   private postState: PostState = emptyPostState();
   private postsRun: Promise<void> | null = null;
   /** plan MODELS-AND-SELF-FUNDING */
@@ -199,6 +193,7 @@ export class Runtime {
     await this.price.refresh();
     this.applyPrice();
     this.startPoster();
+    this.startFollower();
     this.state.runs.push({ started_at: this.now(), stopped_at: null, spent_usd: 0, pid: process.pid });
     this.save();
     const unposted = this.state.closed.filter((e) => !e.done).length;
@@ -229,7 +224,7 @@ export class Runtime {
 
   /** What a usage record costs: model spend and sandbox time, plus chain fees paid for the agent. */
   private usageCost(u: AgentUsage): bigint {
-    return costOf(this.prices, u.usd, u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0) + BigInt(u.trade_share ?? "0");
+    return costOf(this.prices, u.usd, u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0);
   }
 
   /** Records lamports this runtime paid for one of the agent's onchain messages (usage line "chain fee"). */
@@ -674,6 +669,9 @@ export class Runtime {
     this.save();
     const cost = costOf(this.prices, a.totals.usd, a.totals.sandbox_s);
     this.log(`${agent.slice(0, 6)} attempt done: ${a.totals.usd.toFixed(4)} USD model spend, ${Math.ceil(a.totals.sandbox_s)} sandbox s, cost ${cost} base units${commit ? `, candidate ${commit.slice(0, 12)}` : ", no candidate"}`);
+    // the follow step (follows.ts): after the session, inside what the attempt left under its cap; never holds up the loop
+    if (this.follower && !this.stopping && a.totals.usd > 0)
+      await this.follower.afterSession(agent, this.cfg.attempt_max_usd - a.totals.usd).catch((e) => this.log(`${agent.slice(0, 6)} follow step skipped: ${(e as Error).message}`));
     if (!commit) return;
     this.state.agents[agent]!.candidates++;
     this.usageOf(agent).candidates.push(commit);
@@ -757,6 +755,44 @@ export class Runtime {
     this.log(`posts: ${cfg.enabled ? `on (${cfg.model}, at most ${cfg.max_usd_per_post} USD each, ${cfg.max_per_day} per agent per UTC day, cadence ${cfg.cadence_s} s)` : "off (media folding only)"}`);
   }
 
+  // ------------------------------------------------------------------ agent follows after a session (follows.ts)
+
+  private followsFile() {
+    return join(this.cfg.state_dir, "follows.json");
+  }
+
+  private startFollower() {
+    if (!this.deps.postClient) return;
+    const cfg = { ...FOLLOWS_DEFAULTS, ...(this.cfg.follows ?? {}) };
+    try {
+      if (existsSync(this.followsFile())) this.followState = { ...emptyFollowState(), ...JSON.parse(readFileSync(this.followsFile(), "utf8")) };
+    } catch (e) {
+      this.log(`follows: state unreadable (${(e as Error).message}); starting fresh`);
+    }
+    this.follower = new AgentFollower({
+      core: this.cfg.core,
+      client: this.deps.postClient,
+      cfg,
+      state: () => this.followState,
+      save: () => {
+        const tmp = `${this.followsFile()}.tmp`;
+        writeFileSync(tmp, JSON.stringify(this.followState), { mode: 0o600 });
+        renameSync(tmp, this.followsFile());
+      },
+      now: this.now,
+      log: (m) => this.log(`follows: ${m}`),
+      room: (agent) => this.postRoom(agent),
+      meter: (agent, u) => this.meterPost(agent, u),
+      keyOf: (agent) => this.store.keyFor(agent),
+    });
+    this.log(`follows: ${cfg.enabled ? `on (after a session: ${cfg.model}, at most ${cfg.max_usd} USD, one step per agent per ${cfg.min_gap_s} s; public work data only)` : "off"}`);
+  }
+
+  /** Follow decisions sent, refused and dropped so far (newest last). */
+  followsStatus() {
+    return this.followState.log.slice(-50);
+  }
+
   private async postsTick(): Promise<void> {
     if (!this.poster || this.stopping) return;
     const bound = Object.entries(this.state.agents).filter(([, s]) => s.status === "bound").map(([a]) => a);
@@ -764,7 +800,7 @@ export class Runtime {
   }
 
   /**
-   * USD a post or analysis may spend for `agent` now: the same budget as an attempt without the
+   * USD a post or a follow step may spend for `agent` now: the same budget as an attempt without the
    * sandbox reserve (its vault after what it owes and what its running attempt still holds, the
    * OpenRouter balance for a routed model). With `reserve`, that much is held until the call is
    * metered (or 5 minutes pass), so an attempt starting meanwhile cannot spend it too.
@@ -796,19 +832,6 @@ export class Runtime {
     this.save();
   }
 
-  /**
-   * Plan T (owner amendment 2026-10-10): what the trader's analysis rounds use, so an analysis is
-   * metered and capped like a post: USD room under the global cap, the agent's epoch cap and its
-   * vault; metering into the agent's usage and the global window; board posts as the agent.
-   */
-  analysisSurface() {
-    return {
-      room: (agent: string, reserve?: number) => this.postRoom(agent, reserve),
-      meter: (agent: string, u: SoulUsage) => this.meterPost(agent, u),
-      send: (agent: string, to: string, text: string) => this.worker(agent).send(to, text),
-    };
-  }
-
   /** Posts sent and refused so far (public summary). */
   postsStatus() {
     return this.postState.log.slice(-50);
@@ -817,30 +840,9 @@ export class Runtime {
   // ------------------------------------------------------------------ usage epochs
 
   /** Closes the open usage epoch when it is due and the chain clock allows it, then posts closed epochs in order. */
-  /** Plan T: sets each bound agent's trade share line for the epoch about to close (replaced, never added twice). */
-  private async accrueTradeShares(): Promise<void> {
-    const t = this.deps.trading!;
-    for (const [agent, st] of Object.entries(this.state.agents)) {
-      const v = this.vaults.get(agent);
-      if (st.status !== "bound" || !st.mint || !v) continue;
-      const u = this.usageOf(agent);
-      const computeOwed = this.owed(agent) - BigInt(u.trade_share ?? "0");
-      const s = await t.share({ agent, mint: st.mint, vault: v.balance, computeOwed, wake: this.limits.wakeThreshold }).catch((e) => (this.log(`${agent.slice(0, 6)} trade share: ${(e as Error).message}`), null));
-      if (s) {
-        u.trade_share = s.amount.toString();
-        u.trade_basis = s.basis;
-      } else {
-        delete u.trade_share;
-        delete u.trade_basis;
-      }
-    }
-    this.save();
-  }
-
   private async epochs(force = false): Promise<void> {
-    if (this.deps.trading && (force || this.now() - this.state.open.opened_at >= this.cfg.usage_epoch_s * 1000) && !this.state.closed.some((e) => !e.done)) await this.accrueTradeShares();
     const open = this.state.open;
-    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0 || BigInt(u.trade_share ?? "0") > 0n);
+    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0);
     const due = this.now() - open.opened_at >= this.cfg.usage_epoch_s * 1000;
     const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.running.has(a));
     const pending = this.state.closed.some((e) => !e.done);
@@ -856,7 +858,7 @@ export class Runtime {
           // a vault cannot pay more than it holds; the shortfall stays in the record (cost) and is never invented
           const bal = this.vaults.get(agent)?.balance ?? cost;
           const amount = cost < bal ? cost : bal;
-          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0, ...(u.trade_share ? { trade_share: u.trade_share, trade_basis: u.trade_basis } : {}) });
+          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0 });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
         // subsidized spend (plan MODELS-AND-SELF-FUNDING): what the vaults could not pay, in USD, is what the global cap counts
@@ -892,8 +894,6 @@ export class Runtime {
         break; // keep the order: a later epoch never lands before an earlier one
       }
     }
-    // plan T: landed trade shares go from the compute sink to the treasuries (idempotent per leaf)
-    if (this.deps.trading) await this.deps.trading.forward(this.state.closed.slice(-20), () => this.save()).catch((e) => this.log(`trade share forward: ${(e as Error).message}`));
   }
 
   // ------------------------------------------------------------------ loop

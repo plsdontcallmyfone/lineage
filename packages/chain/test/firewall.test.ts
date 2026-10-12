@@ -1,16 +1,17 @@
 // The transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md section 3): the policy rule by rule, the
-// strict parser, the signing guard, the chain-backed firewall on recorded pump.fun accounts, and
-// property tests that fuzz instruction lists and mutate valid swaps.
+// strict parser, the signing guard, the chain-backed firewall, and property tests that fuzz
+// instruction lists. Agents do not trade (owner decision 2026-10-12): every swap is refused, in every
+// shape the earlier policy allowed and in every shape it did not.
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateAgentKey } from "@units/protocol";
 import {
-  accountDisc, AgentFirewall, ALT_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, ata, authorizeSigners, buildTransaction, compileMessage, compileMessageV0, computeBudget, evaluate,
-  FirewallRefusal, guardKey, installAuthorizer, ixDisc, launch, LAUNCH_PROGRAM_ID, launchPdas, msg, parseMessageStrict, pump, PUMP, pumpAmm, pumpPdas, registry, registryPdas,
+  AgentFirewall, ALT_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, ata, authorizeSigners, buildTransaction, compileMessage, compileMessageV0, computeBudget, evaluate,
+  FirewallRefusal, guardKey, installAuthorizer, ixDisc, launch, LAUNCH_PROGRAM_ID, msg, msgPdas, parseMessageStrict, pump, PUMP, pumpAmm, pumpPdas, registry, registryPdas,
   resetGuardForTest, Rpc, signBytes, system, SYSTEM_PROGRAM, toAddress, token, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, Writer,
-  type Address, type FirewallContext, type FirewallLimits, type Ix, type MintFacts,
+  type Address, type FirewallContext, type Ix,
 } from "../src/index.ts";
 import { r, w } from "../src/registry.ts";
 
@@ -26,25 +27,21 @@ const B = addr(6); // another agent's token, migrated to its pool
 const ATTACKER = addr(66);
 const RUNTIME = addr(7);
 const MEMO = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+const JUPITER = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const COMPUTE = "ComputeBudget111111111111111111111111111111";
 
-const LIMITS: FirewallLimits = { trading_enabled: true, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n, min_launch_age_s: 86_400, min_liquidity_quote: 500_000_000n, max_impact_bps: 50, max_trade_bps: 100, max_position_bps: 500, max_deployed_bps: 2500, network_max_exposure_bps: 500, reduce_only: false };
-// spot: 1 token base unit costs 2 quote base units on the curve, 4 in the pool
-const NOW = 1_800_000_000;
-const facts = (o: Partial<MintFacts> = {}): MintFacts => ({ registered: true, agent: addr(50), createdAt: BigInt(NOW - 2 * 86_400), supply: 1_000_000_000_000_000n, liquidity: 1_000_000_000_000n, curve: { quote: 2_000_000_000_000n, base: 1_000_000_000_000n }, pool: null, ...o });
 function ctx(o: Partial<FirewallContext> = {}): FirewallContext {
-  return {
-    key: KEY, agent: AGENT, ownMint: OWN, quoteMint: QUOTE, quoteTokenProgram: T22,
-    mints: new Map([[A, facts()], [B, facts({ agent: addr(51), curve: null, pool: { quote: 4_000_000_000_000n, base: 1_000_000_000_000n } })], [OWN, facts({ agent: AGENT })]]),
-    tables: new Map(), limits: LIMITS, daySpent: 0n, core: { ok: true, network_held: 0n }, cash: 10_000_000_000_000n, held: 0n, now: NOW, ...o,
-  };
+  return { key: KEY, agent: AGENT, tables: new Map(), ...o };
 }
 const base = (mint: Address, user = KEY) => ({ mint, quoteMint: QUOTE, quoteTokenProgram: T22, user });
 const pre = (mint: Address, user = KEY) => [token.createAtaIdempotent(user, user, QUOTE, T22), token.createAtaIdempotent(user, user, mint, T22), token.createAtaIdempotent(user, PUMP.buybackRecipients[0], QUOTE, T22)];
-// buy 10 quote on the curve at spot 2: 5,000,000 tokens expected; sell 1,000,000 tokens: 2,000,000 quote expected
+// the four swaps the removed trading engine built, exactly as the earlier policy allowed them
 const curveBuy = (mint = A, inQ = 10_000_000n, minOut = 4_800_000n) => pump.buyExactQuoteInV3({ ...base(mint), spendableQuoteIn: inQ, minTokensOut: minOut });
 const curveSell = (mint = A, amt = 1_000_000n, minOut = 1_900_000n) => pump.sellV3({ ...base(mint), amount: amt, minQuoteOut: minOut });
 const poolBuy = (mint = B, inQ = 8_000_000n, minOut = 1_900_000n) => pumpAmm.buyExactQuoteInV2({ ...base(mint), pool: pumpPdas.pool(mint, QUOTE), spendableQuoteIn: inQ, minBaseOut: minOut });
 const poolSell = (mint = B, amt = 1_000_000n, minOut = 3_800_000n) => pumpAmm.sellV2({ ...base(mint), pool: pumpPdas.pool(mint, QUOTE), baseIn: amt, minQuoteOut: minOut });
+const SWAPS = [curveBuy, curveSell, poolBuy, poolSell] as const;
+const post = (agent: Address = AGENT, payer: Address = RUNTIME, signer: Address = KEY) => msg.postBoard({ payer, signer, agent, args: { lineage: "ab".repeat(32), body: { inline: new TextEncoder().encode("hello") } } });
 const msgOf = (ixs: Ix[], payer = KEY) => compileMessage(payer, ixs, BH).bytes;
 const verdict = (ixs: Ix[], c: Partial<FirewallContext> = {}, payer = KEY) => evaluate(msgOf(ixs, payer), ctx(c));
 const rule = (ixs: Ix[], c: Partial<FirewallContext> = {}, payer = KEY) => {
@@ -56,156 +53,135 @@ const u64 = (n: bigint) => [...new Writer().u64(n).done()];
 
 afterEach(() => resetGuardForTest());
 
-describe("policy: what a treasury key may sign", () => {
-  test("the four swaps the engine builds, with its token account creations and compute budget", () => {
-    for (const [name, ixs] of [
-      ["curve buy", [computeBudget.limit(300_000), ...pre(A), curveBuy()]],
-      ["curve sell", [computeBudget.limit(300_000), ...pre(A), curveSell()]],
-      ["pool buy", [computeBudget.limit(300_000), computeBudget.price(1), ...pre(B), poolBuy()]],
-      ["pool sell", [poolSell()]],
-    ] as const) {
-      const v = verdict([...ixs]);
-      expect([name, v.ok ? "ALLOWED" : `${v.rule}: ${v.detail}`]).toEqual([name, "ALLOWED"]);
-    }
-    const v = verdict([curveBuy()]);
-    expect(v.ok && v.kind === "swap" && v.value).toBe(10_000_000n);
-    const s = verdict([curveSell()]);
-    expect(s.ok && s.value).toBe(2_000_000n); // 1,000,000 tokens at the curve's spot of 2
-  });
-
-  test("any of pump.fun's eight published buyback recipients is accepted, and nothing else in that slot", () => {
-    for (let i = 0; i < 8; i++) expect(rule([pump.buyExactQuoteInV3({ ...base(A), buyback: i, spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })])).toBe("ALLOWED");
-    const ix = curveBuy();
-    ix.keys[13] = w(ata(ATTACKER, QUOTE, T22));
-    expect(rule([ix])).toBe("swap_accounts");
-  });
-
-  test("messages and the bind: the key signs read-only and pays nothing", () => {
-    const post = msg.postBoard({ payer: RUNTIME, signer: KEY, agent: AGENT, args: { lineage: "ab".repeat(32), body: { inline: new TextEncoder().encode("hello") } } });
-    expect(rule([computeBudget.limit(60_000), post], {}, RUNTIME)).toBe("ALLOWED");
+describe("policy: what an agent key may sign", () => {
+  test("its own posts, its bind and its profile: the key signs read-only and pays nothing", () => {
+    expect(rule([computeBudget.limit(60_000), post()], {}, RUNTIME)).toBe("ALLOWED");
     expect(rule([msg.publishEncKey({ payer: RUNTIME, signer: KEY, agent: AGENT, encKey: addr(9) })], {}, RUNTIME)).toBe("ALLOWED");
     expect(rule([registry.rotateAgentKey({ owner: RUNTIME, agent: AGENT, newKey: KEY })], {}, RUNTIME)).toBe("ALLOWED");
     expect(rule([registry.setProfile({ signingKey: KEY, agent: AGENT, digest: "cd".repeat(32), seq: 2 })], {}, RUNTIME)).toBe("ALLOWED");
-    // trading off or unreadable limits do not stop a post or a bind
-    expect(rule([post], { limits: null }, RUNTIME)).toBe("ALLOWED");
-    expect(rule([post], { limits: { ...LIMITS, trading_enabled: false } }, RUNTIME)).toBe("ALLOWED");
+    const v = verdict([post()], {}, RUNTIME);
+    expect(v.ok && v.kind).toBe("message");
   });
 });
 
-describe("policy: what it refuses", () => {
+describe("policy: every swap is refused", () => {
+  test("the four swaps the earlier policy allowed, alone, with token account creations, with a compute budget", () => {
+    for (const make of SWAPS) {
+      const mint = make === curveBuy || make === curveSell ? A : B;
+      expect([make.name, rule([make()])]).toEqual([make.name, "swap_not_allowed"]);
+      expect([make.name, rule([computeBudget.limit(300_000), ...pre(mint), make()])]).toEqual([make.name, "swap_not_allowed"]);
+      expect([make.name, rule([computeBudget.limit(300_000), computeBudget.price(1), make()])]).toEqual([make.name, "swap_not_allowed"]);
+    }
+  });
+
+  test("with any of pump.fun's eight buyback recipients", () => {
+    for (let i = 0; i < 8; i++) expect(rule([pump.buyExactQuoteInV3({ ...base(A), buyback: i, spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })])).toBe("swap_not_allowed");
+  });
+
+  test("whoever pays, whatever the size, whatever the token (another agent's, its own, an unregistered one, one quoted in SOL)", () => {
+    for (const make of SWAPS) expect(rule([make()], {}, RUNTIME)).toBe("swap_not_allowed");
+    expect(rule([curveBuy(A, 1n, 1n)])).toBe("swap_not_allowed");
+    expect(rule([curveSell(A, 1n, 1n)])).toBe("swap_not_allowed");
+    expect(rule([curveBuy(OWN)])).toBe("swap_not_allowed");
+    expect(rule([curveSell(OWN)])).toBe("swap_not_allowed");
+    expect(rule([curveBuy(addr(40))])).toBe("swap_not_allowed");
+    expect(rule([pump.buyExactQuoteInV3({ ...base(A), quoteMint: PUMP.wsol, spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })])).toBe("swap_not_allowed");
+  });
+
+  test("every other pump.fun and PumpSwap instruction, and Jupiter", () => {
+    const cases: [string, Ix][] = [
+      ["Pump buy_v3 (exact out)", pump.buyV3({ ...base(A), amount: 1n, maxQuoteIn: 10_000_000n })],
+      ["Pump create_v2", pump.createV2({ mint: addr(41), user: KEY, creator: ATTACKER, name: "x", symbol: "x", uri: "x", quote: { kind: "sol" } })],
+      ["Pump sweep_creator_fee", pump.sweepCreatorFee({ payer: KEY, mint: A, quoteMint: QUOTE, creator: ATTACKER, quoteTokenProgram: T22 })],
+      ["Pump collect_creator_fee_v2", pump.collectCreatorFeeV2({ creator: ATTACKER, quoteMint: QUOTE, quoteTokenProgram: T22 })],
+      ["PumpSwap buy_v2 (exact out)", pumpAmm.buyV2({ ...base(B), pool: pumpPdas.pool(B, QUOTE), baseOut: 1n, maxQuoteIn: 8_000_000n })],
+      ["PumpSwap multi_hop_swap", pumpAmm.multiHopSwap({ user: KEY, userIn: ata(KEY, QUOTE, T22), userOut: ata(KEY, A, T22), hops: [{ kind: "curve", mint: A, quoteMint: QUOTE }], amountIn: 1n, minOut: 1n, buybackQuoteMint: QUOTE })],
+      ["a Jupiter route", raw(JUPITER, [w(KEY, true), w(ata(KEY, QUOTE, T22)), w(ata(KEY, A, T22))], [1, 2, 3, 4, 5, 6, 7, 8])],
+      ["an unknown Pump instruction", raw(PUMP.program, [w(KEY, true)], [9, 9, 9, 9, 9, 9, 9, 9])],
+    ];
+    for (const [name, ix] of cases) expect([name, rule([ix])]).toEqual([name, "swap_not_allowed"]);
+  });
+
+  test("a swap next to something the key may sign is still refused, as is a swap for an unknown key", () => {
+    expect(rule([post(), curveBuy()], {}, RUNTIME)).toBe("swap_not_allowed");
+    expect(rule([registry.setProfile({ signingKey: KEY, agent: AGENT, digest: "cd".repeat(32), seq: 2 }), poolSell()], {}, RUNTIME)).toBe("swap_not_allowed");
+    expect(rule([curveBuy()], { agent: null })).toBe("swap_not_allowed");
+    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { key: ATTACKER })).toBe("swap_not_allowed");
+  });
+
+  test("a swap whose accounts come from a lookup table: refused once resolved, refused while unresolved", () => {
+    const table = { address: addr(120), addresses: [PUMP.global, PUMP.feeConfig, PUMP.eventAuthority, SYSTEM_PROGRAM, QUOTE] };
+    for (const make of SWAPS) {
+      const v0 = compileMessageV0(KEY, [make()], BH, [table]).bytes;
+      expect(evaluate(v0, ctx())).toMatchObject({ ok: false, rule: "lookup_table" });
+      expect(evaluate(v0, ctx({ tables: new Map([[table.address, table.addresses]]) }))).toMatchObject({ ok: false, rule: "swap_not_allowed" });
+    }
+  });
+
+  test("every single-account mutation and every discriminator flip of those swaps is refused too", () => {
+    const c = ctx();
+    let n = 0;
+    for (const make of SWAPS) {
+      const ref = make();
+      for (let i = 0; i < ref.keys.length; i++)
+        for (const sub of [ATTACKER, ata(ATTACKER, QUOTE, T22), addr(200 + i)]) {
+          const ix = make();
+          if (ix.keys[i]!.pubkey === sub) continue;
+          ix.keys[i] = { ...ix.keys[i]!, pubkey: sub };
+          expect([make.name, i, evaluate(compileMessage(KEY, [ix], BH).bytes, c).ok]).toEqual([make.name, i, false]);
+          n++;
+        }
+      for (let i = 0; i < 8; i++)
+        for (const bit of [1, 16, 128]) {
+          const ix = make();
+          ix.data = Uint8Array.from(ix.data);
+          ix.data[i]! ^= bit;
+          expect(evaluate(compileMessage(KEY, [ix], BH).bytes, c)).toMatchObject({ ok: false, rule: "swap_not_allowed" });
+        }
+    }
+    expect(n).toBeGreaterThan(190);
+  });
+});
+
+describe("policy: what else it refuses", () => {
   const cases: [string, () => Ix[], string, Address?][] = [
     ["a System transfer to another wallet", () => [system.transfer(KEY, ATTACKER, 1_000_000n)], "program_not_allowed"],
-    ["a System transfer next to a valid swap", () => [curveBuy(), system.transfer(KEY, ATTACKER, 1n)], "program_not_allowed"],
+    ["a System transfer next to a post", () => [post(), system.transfer(KEY, ATTACKER, 1n)], "program_not_allowed", RUNTIME],
     ["System create account", () => [system.createAccount(KEY, ATTACKER, 1n, 0, SYSTEM_PROGRAM)], "program_not_allowed"],
     ["System assign (hand the key's account to a program)", () => [raw(SYSTEM_PROGRAM, [w(KEY, true)], [1, 0, 0, 0, ...new Uint8Array(32)])], "program_not_allowed"],
     ["SPL transferChecked of $UNITS to another wallet", () => [token.transferChecked(ata(KEY, QUOTE, T22), QUOTE, ata(ATTACKER, QUOTE, T22), KEY, 5n, 6, T22)], "program_not_allowed"],
+    ["SPL transferChecked of its own launch holding", () => [token.transferChecked(ata(KEY, OWN, T22), OWN, ata(ATTACKER, OWN, T22), KEY, 5n, 6, T22)], "program_not_allowed"],
     ["SPL transfer (legacy Token program)", () => [raw(TOKEN_PROGRAM, [w(ata(KEY, QUOTE)), w(ata(ATTACKER, QUOTE)), r(KEY, true)], [3, ...u64(5n)])], "program_not_allowed"],
     ["SPL approve (delegate the treasury's tokens)", () => [raw(T22, [w(ata(KEY, QUOTE, T22)), r(ATTACKER), r(KEY, true)], [4, ...u64(1n << 60n)])], "program_not_allowed"],
     ["SPL revoke", () => [raw(T22, [w(ata(KEY, QUOTE, T22)), r(KEY, true)], [5])], "program_not_allowed"],
     ["SPL set authority (give the token account away)", () => [raw(T22, [w(ata(KEY, QUOTE, T22)), r(KEY, true)], [6, 2, 1, ...new Uint8Array(32)])], "program_not_allowed"],
     ["SPL close account (rent to another wallet)", () => [raw(T22, [w(ata(KEY, QUOTE, T22)), w(ATTACKER), r(KEY, true)], [9])], "program_not_allowed"],
     ["SPL burn", () => [raw(T22, [w(ata(KEY, A, T22)), w(A), r(KEY, true)], [8, ...u64(1n)])], "program_not_allowed"],
-    ["a memo", () => [curveBuy(), raw(MEMO, [], [...new TextEncoder().encode("send to " + ATTACKER)])], "program_not_allowed"],
+    ["a memo", () => [post(), raw(MEMO, [], [...new TextEncoder().encode("send to " + ATTACKER)])], "program_not_allowed", RUNTIME],
     ["an unknown program", () => [raw(addr(99), [w(KEY, true), w(ATTACKER)], [1, 2, 3])], "program_not_allowed"],
     ["units_launch withdraw_compute", () => [launch.withdrawCompute({ launcher: KEY, agent: AGENT, agentMint: OWN, launcherToken: ata(ATTACKER, QUOTE, T22), lineMint: QUOTE, amount: 1n, lineTokenProgram: T22 })], "program_not_allowed"],
     ["the lookup table program", () => [raw(ALT_PROGRAM, [w(addr(98)), r(KEY, true)], [1, 0, 0, 0])], "program_not_allowed"],
-    ["the swap's quote account replaced by another wallet's", () => [pump.buyExactQuoteInV3({ ...base(A), userQuote: ata(ATTACKER, QUOTE, T22), spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })], "swap_accounts"],
-    ["a sell whose proceeds go to another wallet's $UNITS account", () => [pump.sellV3({ ...base(A), userQuote: ata(ATTACKER, QUOTE, T22), amount: 1_000_000n, minQuoteOut: 1_900_000n })], "swap_accounts"],
-    ["a buy whose tokens go to another wallet's account", () => [pump.buyExactQuoteInV3({ ...base(A), userBase: ata(ATTACKER, A, T22), spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })], "swap_accounts"],
-    ["a pool sell to another wallet", () => [pumpAmm.sellV2({ ...base(B), pool: pumpPdas.pool(B, QUOTE), userQuote: ata(ATTACKER, QUOTE, T22), baseIn: 1_000_000n, minQuoteOut: 3_800_000n })], "swap_accounts"],
-    ["a pool that is not the canonical one", () => [pumpAmm.buyExactQuoteInV2({ ...base(B), pool: addr(97), spendableQuoteIn: 8_000_000n, minBaseOut: 1_900_000n })], "swap_accounts"],
-    ["an account appended to a valid swap", () => { const ix = curveBuy(); ix.keys.push(w(ATTACKER)); return [ix]; }, "swap_accounts"],
-    ["a mint that is not registered in units_launch", () => [curveBuy(addr(40))], "mint_not_registered"],
-    ["its own token", () => [curveBuy(OWN)], "own_token"],
-    ["a swap quoted in another token", () => [pump.buyExactQuoteInV3({ ...base(A), quoteMint: PUMP.wsol, spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })], "quote_mint"],
-    ["minimum out of zero", () => [curveBuy(A, 10_000_000n, 0n)], "zero_amount"],
-    ["a buy that demands too little (sandwich bait)", () => [curveBuy(A, 10_000_000n, 1n)], "min_out_too_low"],
-    ["a sell that demands too little", () => [curveSell(A, 1_000_000n, 1n)], "min_out_too_low"],
-    ["a buy above the per-transaction value limit", () => [curveBuy(A, 100_000_001n, 49_000_000n)], "max_tx_value"],
-    ["a sell above the per-transaction value limit", () => [curveSell(A, 60_000_000n, 119_000_000n)], "max_tx_value"],
-    ["two swaps in one transaction", () => [curveBuy(), poolBuy()], "one_swap"],
-    ["Pump buy_v3 (exact out)", () => [pump.buyV3({ ...base(A), amount: 1n, maxQuoteIn: 10_000_000n })], "instruction_not_allowed"],
-    ["Pump create_v2", () => [pump.createV2({ mint: addr(41), user: KEY, creator: ATTACKER, name: "x", symbol: "x", uri: "x", quote: { kind: "sol" } })], "swap_signers"],
-    ["Pump sweep_creator_fee", () => [pump.sweepCreatorFee({ payer: KEY, mint: A, quoteMint: QUOTE, creator: ATTACKER, quoteTokenProgram: T22 })], "instruction_not_allowed"],
-    ["PumpSwap buy_v2 (exact out)", () => [pumpAmm.buyV2({ ...base(B), pool: pumpPdas.pool(B, QUOTE), baseOut: 1n, maxQuoteIn: 8_000_000n })], "instruction_not_allowed"],
-    ["Pump collect_creator_fee_v2", () => [pump.collectCreatorFeeV2({ creator: ATTACKER, quoteMint: QUOTE, quoteTokenProgram: T22 })], "instruction_not_allowed"],
-    ["PumpSwap multi_hop_swap to another wallet's account", () => [pumpAmm.multiHopSwap({ user: KEY, userIn: ata(KEY, QUOTE, T22), userOut: ata(ATTACKER, A, T22), hops: [{ kind: "curve", mint: A, quoteMint: QUOTE }], amountIn: 1n, minOut: 1n, buybackQuoteMint: QUOTE })], "instruction_not_allowed"],
-    ["a token account created for another wallet", () => [token.createAtaIdempotent(KEY, ATTACKER, QUOTE, T22), curveBuy()], "ata_not_own"],
-    ["a token account for a mint the swap does not trade", () => [token.createAtaIdempotent(KEY, KEY, B, T22), curveBuy()], "ata_not_own"],
-    ["a buyback account the swap does not name", () => [token.createAtaIdempotent(KEY, PUMP.buybackRecipients[3], QUOTE, T22), curveBuy()], "ata_not_own"],
-    ["associated token RecoverNested", () => [raw(ASSOCIATED_TOKEN_PROGRAM, [w(addr(90)), r(A), w(ata(KEY, A, T22)), r(ata(KEY, QUOTE, T22)), r(QUOTE), w(KEY, true), r(T22)], [2]), curveBuy()], "instruction_not_allowed"],
-    ["token account creation alone (no swap)", () => [token.createAtaIdempotent(KEY, KEY, QUOTE, T22)], "one_swap"],
-    ["a priority fee above the cap", () => [computeBudget.limit(1_400_000), computeBudget.price(1_000_000), curveBuy()], "max_fee"],
-    ["a compute unit price with no limit (worst case assumed)", () => [computeBudget.price(1_000_000), curveBuy()], "max_fee"],
-    ["two compute unit limits", () => [computeBudget.limit(1), computeBudget.limit(2), curveBuy()], "compute_budget"],
-    ["a compute budget heap request", () => [raw("ComputeBudget111111111111111111111111111111", [], [1, 0, 0, 4, 0]), curveBuy()], "compute_budget"],
+    ["a token account creation (the key pays for nothing, not even its own account)", () => [token.createAtaIdempotent(KEY, KEY, QUOTE, T22)], "program_not_allowed"],
+    ["a token account created for another wallet", () => [token.createAtaIdempotent(KEY, ATTACKER, QUOTE, T22)], "program_not_allowed"],
+    ["associated token RecoverNested", () => [raw(ASSOCIATED_TOKEN_PROGRAM, [w(addr(90)), r(A), w(ata(KEY, A, T22)), r(ata(KEY, QUOTE, T22)), r(QUOTE), w(KEY, true), r(T22)], [2])], "program_not_allowed"],
+    ["two compute unit limits", () => [computeBudget.limit(1), computeBudget.limit(2), post()], "compute_budget", RUNTIME],
+    ["a compute unit limit above the maximum", () => [computeBudget.limit(1_400_001), post()], "compute_budget", RUNTIME],
+    ["a compute budget heap request", () => [raw(COMPUTE, [], [1, 0, 0, 4, 0]), post()], "compute_budget", RUNTIME],
     ["compute budget only", () => [computeBudget.limit(200_000)], "nothing_to_sign"],
-    ["a swap mixed with a board post", () => [curveBuy(), msg.postBoard({ payer: KEY, signer: KEY, agent: AGENT, args: { lineage: "ab".repeat(32), body: { inline: new Uint8Array(1) } } })], "mixed_kinds"],
+    ["a post mixed with a registry call", () => [post(), registry.setProfile({ signingKey: KEY, agent: AGENT, digest: "cd".repeat(32), seq: 2 })], "mixed_kinds", RUNTIME],
     ["units_registry register", () => [raw(registry.rotateAgentKey({ owner: RUNTIME, agent: AGENT, newKey: KEY }).programId, [r(registryPdas.config()), w(RUNTIME, true), r(KEY, true)], [...ixDisc("register")])], "instruction_not_allowed", RUNTIME],
     ["units_registry propose_owner", () => [registry.proposeOwner({ owner: KEY, agent: AGENT, newOwner: ATTACKER })], "instruction_not_allowed", RUNTIME],
     ["units_registry request_unbond", () => [registry.requestUnbond({ owner: KEY, agent: AGENT, amount: 1n })], "instruction_not_allowed", RUNTIME],
-    ["units_msg set_config", () => [raw(msg.postBoard({ payer: RUNTIME, signer: KEY, agent: AGENT, args: { lineage: "ab".repeat(32), body: { inline: new Uint8Array(1) } } }).programId, [w(addr(96)), r(KEY, true)], [...ixDisc("set_config")])], "instruction_not_allowed", RUNTIME],
+    ["units_msg set_config", () => [raw(post().programId, [w(addr(96)), r(KEY, true)], [...ixDisc("set_config")])], "instruction_not_allowed", RUNTIME],
   ];
   for (const [name, build, want, payer] of cases) test(name, () => expect(rule(build(), {}, payer ?? KEY)).toBe(want));
 
-  test("four token account creations", () => {
-    expect(rule([...pre(A), curveBuy()])).toBe("ALLOWED");
-    const four: Ix[] = [...pre(A), { ...token.createAtaIdempotent(KEY, KEY, QUOTE, T22), data: Uint8Array.of(0) }, curveBuy()];
-    expect(rule(four)).toBe("ata_creates");
-  });
-
-  test("the message header cannot lock more than the swap needs, and lists no unused account", () => {
-    const m = msgOf([curveBuy()]);
-    const p = parseMessageStrict(m);
-    // one fewer read-only unsigned key: the last read-only account becomes writable
-    const wider = Uint8Array.from(m);
-    wider[2] = p.numReadonlyUnsigned - 1;
-    expect(evaluate(wider, ctx())).toMatchObject({ ok: false, rule: "account_flags" });
-    // an extra static key nobody names
-    const extra = Uint8Array.from([...m.subarray(0, 2), p.numReadonlyUnsigned + 1, p.keys.length + 1, ...m.subarray(4, 4 + 32 * p.keys.length), ...Buffer.from(new Uint8Array(32).fill(9)), ...m.subarray(4 + 32 * p.keys.length)]);
-    expect(evaluate(extra, ctx())).toMatchObject({ ok: false, rule: "unused_account" });
-  });
-
-  test("a token account whose address is not the owner's associated account", () => {
-    const ix = token.createAtaIdempotent(KEY, KEY, QUOTE, T22);
-    ix.keys[1] = w(ata(ATTACKER, QUOTE, T22));
-    expect(rule([ix, curveBuy()])).toBe("ata_not_own");
-    const funder = token.createAtaIdempotent(ATTACKER, KEY, QUOTE, T22);
-    expect(rule([funder, curveBuy()])).toBe("swap_signers");
-  });
-
-  test("the daily value limit counts what the key already signed today", () => {
-    expect(rule([curveBuy()], { daySpent: 990_000_000n })).toBe("ALLOWED");
-    expect(rule([curveBuy()], { daySpent: 990_000_001n })).toBe("max_day_value");
-  });
-
-  test("trading off, unreadable limits, an unknown key: no swap", () => {
-    expect(rule([curveBuy()], { limits: { ...LIMITS, trading_enabled: false } })).toBe("trading_off");
-    expect(rule([curveBuy()], { limits: null })).toBe("no_limits");
-    expect(rule([curveBuy()], { agent: null })).toBe("unknown_agent");
-  });
-
-  test("no reference price on chain: a curve swap of a migrated coin, a pool swap of a coin still on its curve", () => {
-    expect(rule([curveBuy(B)])).toBe("no_reference_price");
-    expect(rule([poolBuy(A)])).toBe("no_reference_price");
-  });
-
-  test("a token of the same agent under another mint", () => {
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ agent: AGENT })]]) })).toBe("own_token");
-  });
-
-  test("a swap needs the key as the only signer and the fee payer", () => {
-    expect(rule([curveBuy()], {}, RUNTIME)).toBe("swap_signers");
-    const two = curveBuy();
-    two.keys.push(r(ATTACKER, true));
-    expect(rule([two])).toBe("swap_signers");
-    // a swap built for another wallet that the key is asked to pay for
-    expect(rule([pump.buyExactQuoteInV3({ ...base(A, ATTACKER), spendableQuoteIn: 10_000_000n, minTokensOut: 4_800_000n })])).toBe("swap_signers");
-    expect(verdict([curveBuy()], { key: ATTACKER }).ok).toBe(false);
+  test("an unknown key, a key that does not sign", () => {
+    expect(rule([post()], { agent: null }, RUNTIME)).toBe("unknown_agent");
+    expect(rule([post()], { key: ATTACKER }, RUNTIME)).toBe("not_a_signer");
   });
 
   test("messages and registry calls: never as fee payer, never writable, only for its own agent", () => {
-    const post = (agent: Address, payer: Address) => msg.postBoard({ payer, signer: KEY, agent, args: { lineage: "ab".repeat(32), body: { inline: new Uint8Array(3) } } });
     expect(rule([post(AGENT, KEY)])).toBe("key_pays");
     expect(rule([post(addr(77), RUNTIME)], {}, RUNTIME)).toBe("message_accounts");
     expect(rule([registry.rotateAgentKey({ owner: RUNTIME, agent: addr(77), newKey: KEY })], {}, RUNTIME)).toBe("registry_accounts");
@@ -220,66 +196,11 @@ describe("policy: what it refuses", () => {
   });
 });
 
-describe("risk layer re-checked at the signature (docs/plans/AGENT-WALLET-SAFETY.md, Risk management)", () => {
-  test("the kill switch: the config flag alone, or Core's answer alone, stops every buy; a sell is still signed", () => {
-    expect(rule([curveBuy()], { limits: { ...LIMITS, reduce_only: true } })).toBe("reduce_only");
-    expect(rule([curveBuy()], { core: { ok: false, rule: "reduce_only", detail: "reduce only: no buys" } })).toBe("reduce_only");
-    expect(rule([curveSell()], { limits: { ...LIMITS, reduce_only: true }, core: { ok: false, rule: "reduce_only", detail: "x" } })).toBe("ALLOWED");
-  });
-
-  test("Core's rules: whatever refuses the buy there refuses the signature; Core unreachable: no buy, a sell still goes", () => {
-    for (const r of ["ineligible_generations", "ineligible_hidden", "ineligible_age", "herd_limit", "wash_guard", "max_trades_per_day", "integrity_halted", "integrity_same_party"])
-      expect(rule([curveBuy()], { core: { ok: false, rule: r, detail: "from Core" } })).toBe(r);
-    expect(rule([curveBuy()], { core: null })).toBe("core_unavailable");
-    expect(rule([poolBuy()], { core: null })).toBe("core_unavailable");
-    expect(rule([curveSell()], { core: null })).toBe("ALLOWED");
-    expect(rule([poolSell()], { core: null })).toBe("ALLOWED");
-  });
-
-  test("launch age and liquidity are read from chain, not taken from Core", () => {
-    const young = new Map([[A, facts({ createdAt: BigInt(NOW - 86_399) })]]);
-    expect(rule([curveBuy()], { mints: young })).toBe("ineligible_age");
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ createdAt: BigInt(NOW - 86_400) })]]) })).toBe("ALLOWED");
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ createdAt: null })]]) })).toBe("ineligible_age");
-    expect(rule([curveSell()], { mints: young })).toBe("ALLOWED");
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ liquidity: 499_999_999n })]]) })).toBe("ineligible_liquidity");
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ liquidity: 500_000_000n })]]) })).toBe("ALLOWED");
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ liquidity: null })]]) })).toBe("ineligible_liquidity");
-  });
-
-  test("price impact: 0.5% of the reserve the trade goes into, both directions", () => {
-    // a reserve of 2,000 quote: 10 in is 49.75 bps of (2,000 + 10); 10.1 in is past 50
-    const thin = (q: bigint, b: bigint) => new Map([[A, facts({ curve: { quote: q, base: b } })]]);
-    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { mints: thin(2_000_000_000n, 1_000_000_000n) })).toBe("ALLOWED");
-    expect(rule([curveBuy(A, 10_100_000n, 4_800_000n)], { mints: thin(2_000_000_000n, 1_000_000_000n) })).toBe("max_impact");
-    // a sell of 1,000,000 tokens into a base reserve of 199,000,000 is exactly 50 bps of (reserve + size)
-    expect(rule([curveSell(A, 1_000_000n, 1_900_000n)], { mints: thin(398_000_000n, 199_000_000n) })).toBe("ALLOWED");
-    expect(rule([curveSell(A, 1_000_000n, 1_900_000n)], { mints: thin(397_999_998n, 198_999_999n) })).toBe("max_impact");
-  });
-
-  test("per trade 1% and per position 5%, against what the key holds on chain", () => {
-    // cash 750: equity can be at most 1,000 while 25% may be deployed, so one trade may be 10
-    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 750_000_000n })).toBe("ALLOWED");
-    expect(rule([curveBuy(A, 10_000_001n, 4_800_000n)], { cash: 750_000_000n })).toBe("max_trade");
-    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 749_999_999n })).toBe("max_trade");
-    // it already holds 20,000,000 tokens (worth 40): 10 more makes exactly 50, the 5% cap
-    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 750_000_000n, held: 20_000_000n })).toBe("ALLOWED");
-    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 750_000_000n, held: 20_000_001n })).toBe("max_position");
-    expect(rule([curveBuy()], { cash: null })).toBe("balances_unreadable");
-    expect(rule([curveSell()], { cash: null, held: null })).toBe("ALLOWED");
-  });
-
-  test("network exposure: all hosted agents together at most 5% of the supply, with this buy", () => {
-    // supply 1e15: 5% is 5e13 tokens; this buy adds 5,000,000
-    const held = (n: bigint) => ({ core: { ok: true as const, network_held: n } });
-    expect(rule([curveBuy()], held(50_000_000_000_000n - 5_000_000n))).toBe("ALLOWED");
-    expect(rule([curveBuy()], held(50_000_000_000_000n - 4_999_999n))).toBe("network_exposure");
-    expect(rule([curveBuy()], { mints: new Map([[A, facts({ supply: null })]]) })).toBe("network_exposure");
-  });
-});
-
 describe("strict parser and lookup tables", () => {
-  const good = () => msgOf([curveBuy()]);
+  const good = () => msgOf([post()], RUNTIME);
+  test("the unmodified message is allowed", () => {
+    expect(evaluate(good(), ctx()).ok).toBe(true);
+  });
   test("trailing bytes, truncation, an unknown version", () => {
     expect(evaluate(Uint8Array.from([...good(), 0]), ctx()).ok).toBe(false);
     expect(evaluate(good().subarray(0, good().length - 1), ctx()).ok).toBe(false);
@@ -307,18 +228,14 @@ describe("strict parser and lookup tables", () => {
     expect(evaluate(tail, ctx())).toMatchObject({ ok: false, rule: "malformed" });
   });
   test("version 0: unresolved tables are refused; resolved ones are checked like static accounts", () => {
-    const table = { address: addr(120), addresses: [PUMP.global, PUMP.feeConfig, PUMP.eventAuthority, SYSTEM_PROGRAM, QUOTE] };
-    const v0 = compileMessageV0(KEY, [curveBuy()], BH, [table]).bytes;
+    const table = { address: addr(120), addresses: [registryPdas.agent(AGENT), msgPdas.state(AGENT)] };
+    const v0 = compileMessageV0(RUNTIME, [post()], BH, [table]).bytes;
+    expect(parseMessageStrict(v0, null).lookups.length).toBe(1);
     expect(evaluate(v0, ctx())).toMatchObject({ ok: false, rule: "lookup_table" });
     expect(evaluate(v0, ctx({ tables: new Map([[table.address, table.addresses]]) })).ok).toBe(true);
-    // the same indexes resolved by a table that says something else: the swap's accounts no longer match
-    const lying = new Map([[table.address, [PUMP.global, PUMP.feeConfig, PUMP.eventAuthority, SYSTEM_PROGRAM, addr(121)]]]);
-    expect(evaluate(v0, ctx({ tables: lying })).ok).toBe(false);
-    // a table that carries the destination: the message says "the key's account" by index, the table says the attacker's
-    const dest = { address: addr(122), addresses: [ata(KEY, QUOTE, T22)] };
-    const v0b = compileMessageV0(KEY, [curveSell()], BH, [dest]).bytes;
-    expect(evaluate(v0b, ctx({ tables: new Map([[dest.address, dest.addresses]]) })).ok).toBe(true);
-    expect(evaluate(v0b, ctx({ tables: new Map([[dest.address, [ata(ATTACKER, QUOTE, T22)]]]) }))).toMatchObject({ ok: false, rule: "swap_accounts" });
+    // the same indexes resolved by a table that says something else: the post is no longer this agent's
+    const lying = new Map([[table.address, [registryPdas.agent(addr(77)), msgPdas.state(addr(77))]]]);
+    expect(evaluate(v0, ctx({ tables: lying }))).toMatchObject({ ok: false, rule: "message_accounts" });
   });
 });
 
@@ -357,59 +274,15 @@ describe("the signing guard", () => {
 });
 
 // ------------------------------------------------------------------------------------------------
-// the chain-backed firewall on account bytes mainnet's pump.fun programs wrote (the fork fixture)
+// the chain-backed firewall
 
-const fx = JSON.parse(readFileSync(new URL("./fixtures/pump-fork.json", import.meta.url), "utf8"));
-const { line, a1, a2 } = fx.mints as { line: string; a1: string; a2: string };
-const b64 = (s: string) => Uint8Array.from(Buffer.from(s, "base64"));
-function launchConfigBytes(): Uint8Array {
-  const wr = new Writer().bytes(accountDisc("LaunchConfig"));
-  for (const a of [addr(1), addr(2), LAUNCH_PROGRAM_ID, line, T22, addr(3), PUMP.program]) wr.address(a);
-  wr.u16(7000).u16(3000).u64(1n).u64(2n).u64(0n).u128(0n).bool(false).u8(255).u8(255);
-  for (let i = 0; i < 5; i++) wr.u64(0n);
-  return wr.done();
-}
-function agentLaunchBytes(mint: string, agent: Address, venue: string = PUMP.program): Uint8Array {
-  const wr = new Writer().bytes(accountDisc("AgentLaunch")).address(agent).address(mint).address(addr(5)).bytes(new Uint8Array(32)).string("https://github.com/a/b")
-    .u8(2).bool(true).address(venue).address(pumpPdas.bondingCurve(mint)).address(addr(6)).address(addr(7)).address(addr(6)).bool(false).bool(true).i64(0n);
-  for (let i = 0; i < 5; i++) wr.u64(0n);
-  return wr.u8(255).u8(255).done();
-}
-function tokenAccountBytes(mint: Address, owner: Address, amount: bigint): Uint8Array {
-  const d = new Uint8Array(165);
-  d.set(new Writer().address(mint).address(owner).u64(amount).done(), 0);
-  return d;
-}
-function mintBytes(supply: bigint): Uint8Array {
-  const d = new Uint8Array(82);
-  new DataView(d.buffer).setBigUint64(36, supply, true);
-  d[44] = 6;
-  return d;
-}
-/** The chain-backed tests keep the chain-read limits wide open unless a test is about them. */
-const WIDE = { min_out_bps: 0, min_liquidity_quote: 0n, max_impact_bps: 10_000, max_trade_bps: 10_000, max_position_bps: 10_000 };
-const coreOk = async () => ({ ok: true as const, network_held: 0n });
-function chainWorld(o: { tableFrozen?: boolean; funded?: Address[] } = {}) {
+function chainWorld(o: { tableFrozen?: boolean } = {}) {
   const m = new Map<string, { data: Uint8Array; owner: string }>();
-  m.set(launchPdas.config(), { data: launchConfigBytes(), owner: LAUNCH_PROGRAM_ID });
-  m.set(launchPdas.agentLaunch(a1), { data: agentLaunchBytes(a1, addr(60)), owner: LAUNCH_PROGRAM_ID });
-  m.set(launchPdas.agentLaunch(a2), { data: agentLaunchBytes(a2, addr(61)), owner: LAUNCH_PROGRAM_ID });
-  // a record with the right bytes under the wrong owner, and one the Meteora venue wrote
-  m.set(launchPdas.agentLaunch(addr(70)), { data: agentLaunchBytes(addr(70), addr(62)), owner: SYSTEM_PROGRAM });
-  m.set(launchPdas.agentLaunch(addr(71)), { data: agentLaunchBytes(addr(71), addr(63), addr(64)), owner: LAUNCH_PROGRAM_ID });
-  m.set(pumpPdas.bondingCurve(a1), { data: b64(fx.accounts.a1_curve), owner: PUMP.program });
-  m.set(pumpPdas.bondingCurve(a2), { data: b64(fx.accounts.a2_curve), owner: PUMP.program });
-  const pool = pumpPdas.pool(a2, line);
-  m.set(pool, { data: b64(fx.accounts.a2_pool), owner: PUMP.amm });
-  m.set(ata(pool, a2, T22), { data: tokenAccountBytes(a2, pool, 1_000_000_000_000n), owner: T22 });
-  m.set(ata(pool, line, T22), { data: tokenAccountBytes(line, pool, 500_000_000_000n), owner: T22 });
-  for (const mint of [a1, a2]) m.set(mint, { data: mintBytes(1_000_000_000_000_000n), owner: T22 });
-  for (const k of o.funded ?? []) m.set(ata(k, line, T22), { data: tokenAccountBytes(line, k, 10_000_000_000_000n), owner: T22 });
-  const tbl = new Uint8Array(56 + 32);
+  const tbl = new Uint8Array(56 + 64);
   new DataView(tbl.buffer).setUint32(0, 1, true);
   new DataView(tbl.buffer).setBigUint64(4, (1n << 64n) - 1n, true);
   if (o.tableFrozen === false) tbl[21] = 1;
-  tbl.set(new Writer().address(PUMP.global).done(), 56);
+  tbl.set(new Writer().address(registryPdas.agent(AGENT)).address(msgPdas.state(AGENT)).done(), 56);
   m.set(addr(130), { data: tbl, owner: ALT_PROGRAM });
   const calls: string[] = [];
   const rawAcc = (a: string) => {
@@ -425,107 +298,83 @@ function chainWorld(o: { tableFrozen?: boolean; funded?: Address[] } = {}) {
   return { rpc, calls };
 }
 
-describe("AgentFirewall: context from chain, ledger, log", () => {
+describe("AgentFirewall: identity from the runtime, tables from chain, the decision log", () => {
   const key = generateAgentKey();
-  const lb = (mint: string) => ({ mint, quoteMint: line, quoteTokenProgram: T22, user: key.id });
-  function make(o: { limits?: FirewallLimits | null; now?: () => number; tableFrozen?: boolean; coreCheck?: () => Promise<any> } = {}) {
+  const payer = generateAgentKey();
+  const lb = (mint: string) => ({ mint, quoteMint: QUOTE, quoteTokenProgram: T22, user: key.id });
+  function make(o: { tableFrozen?: boolean } = {}) {
     const dir = mkdtempSync(join(tmpdir(), "fw-"));
-    const { rpc } = chainWorld({ ...o, funded: [key.id] });
-    const fw = new AgentFirewall({ rpc, dir, now: o.now, identity: (k) => (k === key.id ? { agent: AGENT, ownMint: addr(72) } : null), limits: async () => (o.limits === undefined ? { ...LIMITS, ...WIDE } : o.limits), coreCheck: o.coreCheck ?? coreOk });
-    return { fw, dir, rpc };
+    const { rpc, calls } = chainWorld(o);
+    const fw = new AgentFirewall({ rpc, dir, identity: (k) => (k === key.id ? { agent: AGENT } : null) });
+    return { fw, dir, rpc, calls };
   }
-  const m = (ixs: Ix[]) => compileMessage(key.id, ixs, BH).bytes;
+  const m = (ixs: Ix[], by = key.id) => compileMessage(by, ixs, BH).bytes;
+  const ownPost = () => post(AGENT, payer.id, key.id);
+  const swaps = (): [string, Ix][] => [
+    ["curve buy", pump.buyExactQuoteInV3({ ...lb(A), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })],
+    ["curve sell", pump.sellV3({ ...lb(A), amount: 1_000n, minQuoteOut: 1n })],
+    ["pool buy", pumpAmm.buyExactQuoteInV2({ ...lb(B), pool: pumpPdas.pool(B, QUOTE), spendableQuoteIn: 2_000_000n, minBaseOut: 1n })],
+    ["pool sell", pumpAmm.sellV2({ ...lb(B), pool: pumpPdas.pool(B, QUOTE), baseIn: 1_000n, minQuoteOut: 1n })],
+  ];
 
-  test("a registered coin on its curve and a migrated one in its pool are allowed; the ledger and the log record them", async () => {
-    const { fw, dir } = make();
-    const buy = await fw.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })]));
-    expect(buy.kind === "swap" && buy.value).toBe(2_000_000n);
-    const sell = await fw.authorize(key.id, m([pumpAmm.sellV2({ ...lb(a2), pool: pumpPdas.pool(a2, line), baseIn: 1_000n, minQuoteOut: 1n })]));
-    expect(sell.kind).toBe("swap");
-    expect(fw.spentToday(key.id)).toBe(2_000_000n + sell.value);
+  test("every swap is refused and logged, without a single chain read; a post is allowed and logged", async () => {
+    const { fw, dir, calls } = make();
+    for (const [name, ix] of swaps()) await expect(fw.authorize(key.id, m([ix])).then(() => name)).rejects.toMatchObject({ rule: "swap_not_allowed" });
+    expect(calls).toEqual([]);
+    const ok = await fw.authorize(key.id, m([ownPost()], payer.id));
+    expect(ok.kind).toBe("message");
     const rows = readFileSync(join(dir, "firewall.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(rows.map((x) => [x.ok, x.kind, x.key, x.agent])).toEqual([[true, "swap", key.id, AGENT], [true, "swap", key.id, AGENT]]);
+    expect(rows.map((x) => [x.ok, x.kind, x.rule, x.key, x.agent, x.value])).toEqual([
+      ...swaps().map(() => [false, null, "swap_not_allowed", key.id, AGENT, "0"]),
+      [true, "message", null, key.id, AGENT, "0"],
+    ]);
+    expect(rows.every((x) => /^[0-9a-f]{64}$/.test(x.message_sha256))).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(Buffer.from(key.secret).toString("hex").slice(0, 16));
-    // a second firewall on the same directory starts from the persisted ledger
-    const again = new AgentFirewall({ rpc: chainWorld().rpc, dir, identity: () => ({ agent: AGENT, ownMint: null }), limits: async () => LIMITS });
-    expect(again.spentToday(key.id)).toBe(fw.spentToday(key.id));
+    expect(fw.counts).toEqual({ swap_not_allowed: 4, allowed: 1 });
   });
 
-  test("refused from chain facts: no launch record, a record under the wrong owner, a Meteora-era record, a transfer", async () => {
-    const { fw, dir } = make();
-    const buy = (mint: string) => m([pump.buyExactQuoteInV3({ ...lb(mint), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })]);
-    for (const [mint, want] of [[addr(73), "mint_not_registered"], [addr(70), "mint_not_registered"], [addr(71), "mint_not_registered"]] as const)
-      await expect(fw.authorize(key.id, buy(mint))).rejects.toMatchObject({ rule: want });
+  test("a transfer, a key the runtime does not know", async () => {
+    const { fw } = make();
     await expect(fw.authorize(key.id, m([system.transfer(key.id, ATTACKER, 1n)]))).rejects.toMatchObject({ rule: "program_not_allowed" });
-    await expect(fw.authorize(addr(74), compileMessage(addr(74), [pump.buyExactQuoteInV3({ ...lb(a1), user: addr(74), spendableQuoteIn: 1n, minTokensOut: 1n })], BH).bytes)).rejects.toMatchObject({ rule: "unknown_agent" });
-    expect(fw.spentToday(key.id)).toBe(0n);
-    const rows = readFileSync(join(dir, "firewall.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(rows.every((x) => x.ok === false && typeof x.rule === "string" && /^[0-9a-f]{64}$/.test(x.message_sha256))).toBe(true);
-    expect(fw.counts.mint_not_registered).toBe(3);
+    await expect(fw.authorize(addr(74), compileMessage(payer.id, [post(AGENT, payer.id, addr(74))], BH).bytes)).rejects.toMatchObject({ rule: "unknown_agent" });
   });
 
-  test("the day ledger: the limit holds across calls and resets on the next UTC day", async () => {
-    let now = Date.parse("2026-10-11T12:00:00Z");
-    const { fw } = make({ limits: { ...LIMITS, ...WIDE, max_tx_quote: 6_000_000n, max_day_quote: 10_000_000n }, now: () => now });
-    const buy = () => fw.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 6_000_000n, minTokensOut: 1n })]));
-    await buy();
-    await expect(buy()).rejects.toMatchObject({ rule: "max_day_value" });
-    now += 86_400_000;
-    await buy();
-    expect(fw.spentToday(key.id)).toBe(6_000_000n);
-  });
-
-  test("limits that cannot be read, trading off, a chain that cannot be read: nothing signed", async () => {
-    const buy = [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })];
-    await expect(make({ limits: null }).fw.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "no_limits" });
-    await expect(make({ limits: { ...LIMITS, trading_enabled: false } }).fw.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "trading_off" });
+  test("a chain that cannot be read: a message with a lookup table is not signed; a swap is refused all the same", async () => {
     const dir = mkdtempSync(join(tmpdir(), "fw-"));
-    const down = new AgentFirewall({ rpc: new Rpc(async () => { throw new Error("rpc down"); }), dir, identity: () => ({ agent: AGENT, ownMint: null }), limits: async () => LIMITS });
-    await expect(down.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "context_unavailable" });
-    const throwing = new AgentFirewall({ rpc: chainWorld().rpc, dir, identity: () => ({ agent: AGENT, ownMint: null }), limits: async () => { throw new Error("core down"); }, coreCheck: coreOk });
-    await expect(throwing.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "no_limits" });
+    const down = new AgentFirewall({ rpc: new Rpc(async () => { throw new Error("rpc down"); }), dir, identity: () => ({ agent: AGENT }) });
+    const v0 = compileMessageV0(payer.id, [ownPost()], BH, [{ address: addr(130), addresses: [registryPdas.agent(AGENT), msgPdas.state(AGENT)] }]).bytes;
+    await expect(down.authorize(key.id, v0)).rejects.toMatchObject({ rule: "context_unavailable" });
+    for (const [, ix] of swaps()) await expect(down.authorize(key.id, m([ix]))).rejects.toMatchObject({ rule: "swap_not_allowed" });
   });
 
-  test("lookup tables are read from chain: a frozen one resolves, one with an authority is refused", async () => {
-    const v0 = compileMessageV0(key.id, [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })], BH, [{ address: addr(130), addresses: [PUMP.global] }]).bytes;
-    expect((await make().fw.authorize(key.id, v0)).kind).toBe("swap");
+  test("lookup tables are read from chain: a frozen one resolves, one with an authority is refused, a missing one is refused", async () => {
+    const tableOf = (address: Address) => ({ address, addresses: [registryPdas.agent(AGENT), msgPdas.state(AGENT)] });
+    const v0 = compileMessageV0(payer.id, [ownPost()], BH, [tableOf(addr(130))]).bytes;
+    expect((await make().fw.authorize(key.id, v0)).kind).toBe("message");
     await expect(make({ tableFrozen: false }).fw.authorize(key.id, v0)).rejects.toMatchObject({ rule: "lookup_table" });
-    const unknown = compileMessageV0(key.id, [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })], BH, [{ address: addr(131), addresses: [PUMP.global] }]).bytes;
+    const unknown = compileMessageV0(payer.id, [ownPost()], BH, [tableOf(addr(131))]).bytes;
     await expect(make().fw.authorize(key.id, unknown)).rejects.toMatchObject({ rule: "lookup_table" });
+    // a swap through a frozen table is read, resolved and refused
+    const swapV0 = compileMessageV0(key.id, [swaps()[0]![1]], BH, [{ address: addr(130), addresses: [registryPdas.agent(AGENT), msgPdas.state(AGENT)] }]).bytes;
+    await expect(make().fw.authorize(key.id, swapV0)).rejects.toMatchObject({ rule: "swap_not_allowed" });
   });
 
-  test("the chain-read limits on real accounts: launch age, liquidity, balances and supply come from the cluster; Core is asked for the rest", async () => {
-    const buy = [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })];
-    const asked: string[] = [];
-    const { fw } = make({ coreCheck: async (...a: string[]) => (asked.push(a.join(":")), { ok: true, network_held: 0n }) });
-    const c = await fw.context(key.id, m(buy));
-    expect(asked).toEqual([`${AGENT}:${a1}:buy`]);
-    expect(c.cash).toBe(10_000_000_000_000n);
-    expect(c.held).toBe(0n);
-    expect(c.mints.get(a1)).toMatchObject({ registered: true, supply: 1_000_000_000_000_000n, createdAt: 0n });
-    expect(c.mints.get(a1)!.liquidity).toBeGreaterThan(0n);
-    // Core says no: refused with Core's rule
-    await expect(make({ coreCheck: async () => ({ ok: false, rule: "ineligible_generations", detail: "0 accepted" }) }).fw.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "ineligible_generations" });
-    // Core down: no buy; the sell of the migrated coin is still signed
-    const down = make({ coreCheck: async () => { throw new Error("core down"); } }).fw;
-    await expect(down.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "core_unavailable" });
-    expect((await down.authorize(key.id, m([pumpAmm.sellV2({ ...lb(a2), pool: pumpPdas.pool(a2, line), baseIn: 1_000n, minQuoteOut: 1n })]))).kind).toBe("swap");
-    // the real per-trade cap against the key's real balance: 1% of at most 10,000,000 / 0.75
-    const tight = make({ limits: { ...LIMITS, ...WIDE, max_trade_bps: 100, max_tx_quote: 1n << 60n, max_day_quote: 1n << 60n } }).fw;
-    await expect(tight.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 133_333_333_334n, minTokensOut: 1n })]))).rejects.toMatchObject({ rule: "max_trade" });
-    expect((await tight.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 133_333_333_333n, minTokensOut: 1n })]))).kind).toBe("swap");
-  });
-
-  test("installed: the guarded key signs the allowed swap and cannot sign the transfer", async () => {
+  test("installed: the guarded key signs its post and cannot sign a swap or a transfer", async () => {
     const { fw } = make();
     fw.install();
     guardKey(key.id);
-    const ok = compileMessage(key.id, [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })], BH);
-    await authorizeSigners(ok.bytes, [key.id]);
+    const ok = compileMessage(payer.id, [ownPost()], BH);
+    await authorizeSigners(ok.bytes, [payer.id, key.id]);
     expect(signBytes(key, ok.bytes).length).toBe(64);
-    const bad = compileMessage(key.id, [system.transfer(key.id, ATTACKER, 5n)], BH);
-    await expect(authorizeSigners(bad.bytes, [key.id])).rejects.toThrow(/program_not_allowed/);
-    expect(() => signBytes(key, bad.bytes)).toThrow(/not_authorized/);
+    for (const [name, ix] of swaps()) {
+      const bad = compileMessage(key.id, [ix], BH);
+      await expect(authorizeSigners(bad.bytes, [key.id]).then(() => name)).rejects.toThrow(/swap_not_allowed/);
+      expect(() => signBytes(key, bad.bytes)).toThrow(/not_authorized/);
+      expect(() => buildTransaction(key, [ix], BH)).toThrow(/not_authorized/);
+    }
+    const transfer = compileMessage(key.id, [system.transfer(key.id, ATTACKER, 5n)], BH);
+    await expect(authorizeSigners(transfer.bytes, [key.id])).rejects.toThrow(/program_not_allowed/);
+    expect(() => signBytes(key, transfer.bytes)).toThrow(/not_authorized/);
   });
 });
 
@@ -543,35 +392,35 @@ function rng(seed: number) {
   };
 }
 
+const MSG_PROGRAM = post().programId;
+const REGISTRY_PROGRAM = registry.proposeOwner({ owner: KEY, agent: AGENT, newOwner: KEY }).programId;
+
 /**
  * An independent statement of what an allowed message may be, written without the policy's code
- * paths: every program is on the short list; in a swap every writable account is one of the accounts
- * the venue owns for that mint or an account the key owns; in the other kinds the key is read-only
- * and not the payer.
+ * paths: every program is compute budget, units_msg or units_registry (so no swap, no token and no
+ * System instruction), and the key is a read-only signer that is not the fee payer.
  */
 function oracle(bytes: Uint8Array, c: FirewallContext): string | null {
   const m = parseMessageStrict(bytes, c.tables);
-  const progs = new Set(m.instructions.map((i) => i.programId));
-  const okProgs = new Set(["ComputeBudget111111111111111111111111111111", ASSOCIATED_TOKEN_PROGRAM, PUMP.program, PUMP.amm, msg.postBoard({ payer: RUNTIME, signer: KEY, agent: AGENT, args: { lineage: "ab".repeat(32), body: { inline: new Uint8Array(1) } } }).programId, registry.proposeOwner({ owner: KEY, agent: AGENT, newOwner: KEY }).programId]);
-  for (const p of progs) if (!okProgs.has(p)) return `program ${p}`;
-  const swapIx = m.instructions.find((i) => i.programId === PUMP.program || i.programId === PUMP.amm);
-  if (!swapIx) return m.keys[0] === c.key ? "the key pays for a non-swap" : m.writable[m.keys.indexOf(c.key)] ? "the key is writable in a non-swap" : null;
-  if (m.numSigners !== 1 || m.keys[0] !== c.key) return "swap signers";
-  const mint = swapIx.accounts[swapIx.programId === PUMP.program ? 1 : 3]!.pubkey;
-  if (!c.mints.get(mint)?.registered || mint === c.ownMint) return `mint ${mint}`;
-  const curve = pumpPdas.bondingCurve(mint), pool = pumpPdas.pool(mint, c.quoteMint);
-  const mine = new Set([c.key, ata(c.key, c.quoteMint, T22), ata(c.key, mint, T22), pumpPdas.userVolume(c.key), pumpPdas.ammUserVolume(c.key)]);
-  const venue = new Set([curve, ata(curve, mint, T22), ata(curve, c.quoteMint, T22), pool, ata(pool, mint, T22), ata(pool, c.quoteMint, T22), ...PUMP.buybackRecipients.map((b) => ata(b, c.quoteMint, T22))]);
-  for (let i = 0; i < m.keys.length; i++) if (m.writable[i] && !mine.has(m.keys[i]!) && !venue.has(m.keys[i]!)) return `writable account ${m.keys[i]} is neither the key's nor the venue's`;
+  const okProgs = new Set([COMPUTE, MSG_PROGRAM, REGISTRY_PROGRAM]);
+  for (const i of m.instructions) if (!okProgs.has(i.programId)) return `program ${i.programId}`;
+  const at = m.keys.indexOf(c.key);
+  if (at < 0 || at >= m.numSigners) return "the key does not sign";
+  if (at === 0) return "the key pays";
+  if (m.writable[at]) return "the key is writable";
   return null;
 }
 
 describe("property: fuzzed instruction lists", () => {
-  const programs = [SYSTEM_PROGRAM, TOKEN_PROGRAM, T22, MEMO, ALT_PROGRAM, addr(99), LAUNCH_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM, PUMP.program, PUMP.amm, "ComputeBudget111111111111111111111111111111"];
+  const programs = [SYSTEM_PROGRAM, TOKEN_PROGRAM, T22, MEMO, ALT_PROGRAM, addr(99), LAUNCH_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM, PUMP.program, PUMP.amm, JUPITER, COMPUTE, MSG_PROGRAM, REGISTRY_PROGRAM];
   const pick = <T,>(rnd: () => number, xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
   const accounts = [KEY, ATTACKER, RUNTIME, QUOTE, A, B, OWN, ata(KEY, QUOTE, T22), ata(ATTACKER, QUOTE, T22), ata(KEY, A, T22), ata(ATTACKER, A, T22), pumpPdas.bondingCurve(A), pumpPdas.pool(B, QUOTE), SYSTEM_PROGRAM, T22, addr(88), addr(89)];
   const builders: ((rnd: () => number) => Ix)[] = [
     () => curveBuy(), () => curveSell(), () => poolBuy(), () => poolSell(),
+    (rnd) => post(pick(rnd, [AGENT, AGENT, addr(77)])),
+    () => msg.publishEncKey({ payer: RUNTIME, signer: KEY, agent: AGENT, encKey: addr(9) }),
+    (rnd) => registry.rotateAgentKey({ owner: RUNTIME, agent: pick(rnd, [AGENT, AGENT, addr(77)]), newKey: KEY }),
+    () => registry.setProfile({ signingKey: KEY, agent: AGENT, digest: "cd".repeat(32), seq: 2 }),
     (rnd) => token.createAtaIdempotent(pick(rnd, [KEY, ATTACKER]), pick(rnd, [KEY, ATTACKER, PUMP.buybackRecipients[0]]), pick(rnd, [QUOTE, A, B]), T22),
     (rnd) => system.transfer(KEY, pick(rnd, accounts), BigInt(Math.floor(rnd() * 1e9))),
     (rnd) => token.transferChecked(ata(KEY, QUOTE, T22), QUOTE, ata(pick(rnd, [KEY, ATTACKER]), QUOTE, T22), KEY, 1n, 6, T22),
@@ -586,72 +435,40 @@ describe("property: fuzzed instruction lists", () => {
       return { programId: pick(rnd, programs), keys, data: Uint8Array.from({ length: Math.floor(rnd() * 40) }, () => Math.floor(rnd() * 256)) };
     },
   ];
+  const swapPrograms = new Set<string>([PUMP.program, PUMP.amm, JUPITER]);
 
-  test("4,000 random instruction lists: whatever is allowed satisfies the independent statement; nothing throws", () => {
+  test("4,000 random instruction lists: whatever is allowed satisfies the independent statement and carries no swap; nothing throws", () => {
     // (timeouts below: a cold run derives every program address once)
-    const rnd = rng(20261011);
-    let allowed = 0, refused = 0;
+    const rnd = rng(20261012);
+    let allowed = 0, refused = 0, withSwap = 0;
     const c = ctx();
     for (let i = 0; i < 4000; i++) {
       const n = 1 + Math.floor(rnd() * 4);
       const ixs = Array.from({ length: n }, () => pick(rnd, builders)(rnd));
-      // a program id that is also an account elsewhere, or the payer as a program, cannot compile into a valid message
-      if (ixs.some((ix) => ix.programId === KEY)) continue;
-      const bytes = compileMessage(KEY, ixs, BH).bytes;
+      const payer = rnd() < 0.5 ? KEY : RUNTIME;
+      // a program id that is also the payer cannot compile into a valid message
+      if (ixs.some((ix) => ix.programId === payer)) continue;
+      const bytes = compileMessage(payer, ixs, BH).bytes;
       const v = evaluate(bytes, c);
+      const swap = ixs.some((ix) => swapPrograms.has(ix.programId));
+      if (swap) {
+        withSwap++;
+        expect([i, v.ok ? "ALLOWED" : v.rule]).toEqual([i, "swap_not_allowed"]);
+      }
       if (v.ok) {
         allowed++;
         expect([i, oracle(bytes, c)]).toEqual([i, null]);
       } else refused++;
     }
-    expect(allowed).toBeGreaterThan(50);
+    expect(allowed).toBeGreaterThan(20);
+    expect(withSwap).toBeGreaterThan(1000);
     expect(refused).toBeGreaterThan(2000);
   }, 60_000);
-
-  test("every single-account mutation of a valid swap is refused", () => {
-    const rnd = rng(7);
-    const c = ctx();
-    let n = 0;
-    for (const make of [curveBuy, curveSell, poolBuy, poolSell]) {
-      const ref = make();
-      for (let i = 0; i < ref.keys.length; i++) {
-        for (const sub of [ATTACKER, ata(ATTACKER, QUOTE, T22), addr(200 + Math.floor(rnd() * 40))]) {
-          const ix = make();
-          if (ix.keys[i]!.pubkey === sub) continue;
-          ix.keys[i] = { ...ix.keys[i]!, pubkey: sub };
-          const v = evaluate(compileMessage(KEY, [ix], BH).bytes, c);
-          expect([make.name, i, v.ok]).toEqual([make.name, i, false]);
-          n++;
-        }
-      }
-      // dropped and reordered accounts
-      const drop = make();
-      drop.keys.pop();
-      expect(evaluate(compileMessage(KEY, [drop], BH).bytes, c).ok).toBe(false);
-      const swap = make();
-      const [x, y] = swap.programId === PUMP.program ? [9, 10] : [5, 6]; // the user's base and quote accounts
-      [swap.keys[x], swap.keys[y]] = [swap.keys[y]!, swap.keys[x]!];
-      expect(evaluate(compileMessage(KEY, [swap], BH).bytes, c).ok).toBe(false);
-    }
-    expect(n).toBeGreaterThan(190);
-  });
-
-  test("every discriminator byte flip of a valid swap is refused", () => {
-    const c = ctx();
-    for (const make of [curveBuy, curveSell, poolBuy, poolSell])
-      for (let i = 0; i < 8; i++)
-        for (const bit of [1, 16, 128]) {
-          const ix = make();
-          ix.data = Uint8Array.from(ix.data);
-          ix.data[i]! ^= bit;
-          expect(evaluate(compileMessage(KEY, [ix], BH).bytes, c).ok).toBe(false);
-        }
-  });
 
   test("6,000 random byte flips of valid messages: refused, or still within the independent statement; the parser never throws out", () => {
     const rnd = rng(99);
     const c = ctx();
-    const seeds = [msgOf([computeBudget.limit(300_000), ...pre(A), curveBuy()]), msgOf([poolSell()]), msgOf([curveSell()]), msgOf([msg.postBoard({ payer: RUNTIME, signer: KEY, agent: AGENT, args: { lineage: "ab".repeat(32), body: { inline: new Uint8Array(8) } } })], RUNTIME)];
+    const seeds = [msgOf([computeBudget.limit(300_000), ...pre(A), curveBuy()]), msgOf([poolSell()]), msgOf([curveSell()]), msgOf([post()], RUNTIME), msgOf([computeBudget.limit(60_000), registry.setProfile({ signingKey: KEY, agent: AGENT, digest: "cd".repeat(32), seq: 2 })], RUNTIME)];
     let still = 0;
     for (let i = 0; i < 6_000; i++) {
       const b = Uint8Array.from(pick(rnd, seeds));
@@ -662,7 +479,7 @@ describe("property: fuzzed instruction lists", () => {
       still++;
       expect([i, oracle(b, c)]).toEqual([i, null]);
     }
-    // flips inside the blockhash, an amount or a message body leave a valid transaction: those stay allowed
+    // flips inside the blockhash or a message body leave a valid post: those stay allowed
     expect(still).toBeGreaterThan(0);
   }, 60_000);
 

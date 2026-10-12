@@ -120,9 +120,7 @@ const runtimeCfg: Record<string, any> = {
   // owner decision 2026-10-10: 3 at once (5 saturated the 4 vCPU box, 96 to 100% CPU); raise with desktop/sandbox hosts
   max_concurrent_ceiling: 3,
   attempt_gap_s: 30,
-  // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
-  // owner 2026-10-10: agent trading off for now ("that shouldn't be enabled just yet"); set true to resume
-  trading: { enabled: false, poll_s: 60, market: `http://127.0.0.1:${L.ports.indexer}` },
+  // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: L.ports.bind,
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
@@ -159,7 +157,6 @@ if (MAIN) {
     global_window_s: 86400,
     max_concurrent: 1,
     max_concurrent_ceiling: 2,
-    trading: { enabled: false, poll_s: 60, market: `http://127.0.0.1:${L.ports.indexer}` },
     attempt_max_usd: net.prepay.attempt_max_usd,
     compute_price_line_per_usd: net.prepay.compute_price_line_per_usd,
     compute_price_line_per_sandbox_s: net.prepay.compute_price_line_per_sandbox_s,

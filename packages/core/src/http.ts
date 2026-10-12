@@ -18,7 +18,6 @@ import { socialOf } from "./social.ts";
 import { guardConfigOf } from "./guard-config.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
-import { scoresOf } from "./scores.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
@@ -133,7 +132,7 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [socialOf, scoresOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf]) of(core);
+  for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -258,27 +257,6 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/encryption-key", "none", (c) => core.messages.keyOf(c.params.id!)),
     route("GET", "/v1/agents/:id/intents", "optional", (c) => ({ stats: core.collab.intentStats(c.params.id!), intents: core.collab.listIntents({ agent: c.params.id!, status: "all", limit: 100 }, c.agent) })),
     route("GET", "/v1/agents/:id/teams", "optional", (c) => core.tx(() => core.collab.teamsOf(c.params.id!, c.agent))),
-    // agents as traders (plan T, src/scores.ts): published project scores, risk config, public trade records
-    route("GET", "/v1/scores", "none", () => core.tx(() => scoresOf(core).scores())),
-    route("GET", "/v1/agents/:id/score", "none", (c) => core.tx(() => scoresOf(core).scoreOf(c.params.id!))),
-    route("GET", "/v1/agents/:id/trades", "none", (c) => core.tx(() => scoresOf(core).agentTrades(c.params.id!, { limit: int(c, "limit"), before: int(c, "before") }))),
-    route("GET", "/v1/trades", "none", (c) => {
-      const out = scoresOf(core).list({ limit: int(c, "limit"), before: int(c, "before"), kind: q(c, "kind"), mint: q(c, "mint") });
-      const off = unlisted(c);
-      if (q(c, "mint") || !off.size) return out;
-      const mints = hiddenOf(core).mints();
-      return { records: out.records.filter((r) => { const x = r as { agent?: unknown; mint?: unknown }; return !(typeof x.agent === "string" && off.has(x.agent)) && !(typeof x.mint === "string" && mints.has(x.mint)); }) };
-    }),
-    route("GET", "/v1/trading/config", "none", () => scoresOf(core).configView()),
-    route("POST", "/v1/trades", "runtime", (c) => scoresOf(core).record(c.json())),
-    route("POST", "/v1/agents/:id/trading/reset", "agent", (c) => scoresOf(core).reset(c.agent!, c.params.id!, c.json())),
-    route("POST", "/v1/admin/trading/config", "admin", (c) => scoresOf(core).setConfig(c.json())),
-    // risk layer (docs/plans/AGENT-WALLET-SAFETY.md "Risk management"): eligibility, one trade's check, the network summary, an agent's panel, the kill switch
-    route("GET", "/v1/trading/eligibility", "none", () => core.tx(() => scoresOf(core).eligibility())),
-    route("GET", "/v1/trading/check", "none", (c) => core.tx(() => scoresOf(core).check(q(c, "agent") ?? "", q(c, "mint") ?? "", q(c, "side") ?? ""))),
-    route("GET", "/v1/trading/risk", "none", () => core.tx(() => scoresOf(core).networkRisk())),
-    route("GET", "/v1/agents/:id/risk", "none", (c) => core.tx(() => scoresOf(core).agentRisk(c.params.id!))),
-    route("POST", "/v1/admin/trading/reduce-only", "admin", (c) => scoresOf(core).setReduceOnly(c.json())),
     // social (plan PANEL-SOCIAL-PROVIDERS L, F, S; leaderboard.ts, feed.ts, social.ts): public reads;
     // follows, reactions and media are self-authenticating statements signed by a wallet
     route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit"), hidden: withHidden(c) }))),

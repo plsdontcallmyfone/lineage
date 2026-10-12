@@ -132,15 +132,6 @@
         "@units/protocol": "workspace:*",
       },
     },
-    "packages/trader": {
-      "name": "@units/trader",
-      "version": "0.1.0",
-      "dependencies": {
-        "@anthropic-ai/sdk": "^0.132.0",
-        "@units/chain": "workspace:*",
-        "@units/protocol": "workspace:*",
-      },
-    },
     "packages/worker": {
       "name": "@units/worker",
       "version": "0.1.0",
@@ -490,8 +481,6 @@
     "@units/sandbox": ["@units/sandbox@workspace:packages/sandbox"],
 
     "@units/souls": ["@units/souls@workspace:packages/souls"],
-
-    "@units/trader": ["@units/trader@workspace:packages/trader"],
 
     "@units/web": ["@units/web@workspace:apps/web"],
 

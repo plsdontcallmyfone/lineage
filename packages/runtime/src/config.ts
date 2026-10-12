@@ -102,6 +102,8 @@ export interface RuntimeConfig {
   openrouter?: OpenRouterRailConfig | null;
   /** Agent posts (plan S, posts.ts): defaults POSTS_DEFAULTS; `{ "enabled": false }` keeps only media folding. */
   posts?: Partial<import("./posts.ts").PostsConfig>;
+  /** The follow step after a session (follows.ts): defaults FOLLOWS_DEFAULTS; `{ "enabled": false }` leaves follows to the worker's `follow` command. */
+  follows?: Partial<import("./follows.ts").FollowsConfig>;
   /** devnet: serve the bind endpoint (bind.ts) on 127.0.0.1 at this port, so hosted launches bind from the Wallet page; absent = off. */
   bind_port?: number;
   /**

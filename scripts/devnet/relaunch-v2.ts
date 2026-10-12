@@ -17,9 +17,7 @@
 //   bun scripts/devnet/relaunch-v2.ts plan            keys, quotes and needs; sends nothing
 //   bun scripts/devnet/relaunch-v2.ts launch [--only SYM,...]
 //   bun scripts/devnet/relaunch-v2.ts after  [--only SYM,...]   soul, bind, holding move
-//   bun scripts/devnet/relaunch-v2.ts allocate [--only SYM,...] the launcher's trading allocation (1,000 tUNITS,
-//                                     memo lineage-trade-alloc:<agent>) into the runtime's escrow; Wick Radix is
-//                                     excluded from trading (the owner: it never talks about tokens)
+//   (the `allocate` phase, a launcher's trading allocation, was removed 2026-10-12: agents do not trade)
 //
 // Keys are passed explicitly (never `solana config`); only public keys and signatures are printed.
 // State and every transaction: scripts/devnet/RELAUNCH-V2.json (signatures, fees, costs).
@@ -54,7 +52,6 @@ import { signSoul, soulDigest, type SoulDoc } from "../../packages/souls/src/doc
 import { unsignedWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 import { deployer, key, LAMPORTS, loadState, log, reader, ROOT, rpc, sol } from "./lib.ts";
 import { curveCreatorFee, launchTable, pumpCrank, pumpLaunchTx, sendTx } from "./pump-lib.ts";
-import { ALLOCATION_MEMO, memoIx } from "../../packages/trader/src/funding.ts";
 
 const SITE = "https://157-245-71-188.sslip.io";
 const T22 = TOKEN_2022_PROGRAM;
@@ -301,24 +298,6 @@ async function afterOne(s: Spec) {
   save();
 }
 
-const ALLOCATION = 1_000n * ONE;
-async function allocateOne(s: Spec) {
-  const { row, owner } = await resolve(s);
-  const { body: cfg } = await site<{ allocation_escrow: string; excluded_agents: Record<string, string> }>("/v1/trading/config");
-  if (cfg.excluded_agents[row.agent]) return log(`${s.sym}: excluded from trading (${cfg.excluded_agents[row.agent]})`);
-  if (row.txs.some((t) => t.what.startsWith("trading allocation"))) return log(`${s.sym}: allocation sent already`);
-  const have = (await reader.tokenBalance(ata(owner.id, LINE, T22))) ?? 0n;
-  if (have < ALLOCATION)
-    await tx(row, `send ${ALLOCATION - have} tUNITS base units to launcher ${owner.id} from the devnet treasury (trading allocation)`, dep, [
-      token.createAtaIdempotent(dep.id, owner.id, LINE, T22),
-      token.transferChecked(ata(treasury.id, LINE, T22), LINE, ata(owner.id, LINE, T22), treasury.id, ALLOCATION - have, 6, T22),
-    ], [treasury]);
-  await tx(row, `trading allocation ${ALLOCATION} tUNITS base units from launcher ${owner.id} to the runtime escrow ${cfg.allocation_escrow} (memo ${ALLOCATION_MEMO}${row.agent})`, owner, [
-    token.transferChecked(ata(owner.id, LINE, T22), LINE, cfg.allocation_escrow, owner.id, ALLOCATION, 6, T22),
-    memoIx(`${ALLOCATION_MEMO}${row.agent}`),
-  ]);
-}
-
 /** The fee crank (permissionless; the deployer pays): creator fees waiting on the curve into the compute vault, exact split checked. */
 async function crankOne(s: Spec) {
   const { row } = await resolve(s);
@@ -341,7 +320,6 @@ async function crankOne(s: Spec) {
 try {
   if (phase === "plan") await plan();
   else if (phase === "crank") for (const s of AGENTS.filter((x) => !only || only.has(x.sym))) await crankOne(s);
-  else if (phase === "allocate") for (const s of AGENTS.filter((x) => !only || only.has(x.sym))) await allocateOne(s);
   else if (phase === "launch")
     for (const s of AGENTS.filter((x) => !only || only.has(x.sym)))
       await launchOne(s).catch((e) => {
