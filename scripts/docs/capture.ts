@@ -271,7 +271,16 @@ async function captureShots(p: Picks) {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(400);
     const target = sel ? page.locator(sel).first() : null;
-    if (target) await target.scrollIntoViewIfNeeded();
+    if (target) {
+      await target.scrollIntoViewIfNeeded();
+      // never store an empty picture: the element must be shown, with text in it, and painted
+      const seen = await target.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return { w: r.width, h: r.height, text: ((el as HTMLElement).innerText ?? "").trim().length, shown: cs.visibility !== "hidden" && cs.display !== "none" && Number(cs.opacity) > 0.99 };
+      });
+      if (!seen.shown || seen.w < 200 || seen.h < 120 || seen.text < 40) throw new Error(`${name}: the element is not on screen with its content (${JSON.stringify(seen)})`);
+    }
     const buf = target ? await target.screenshot({ type: "jpeg", quality: 84 }) : await page.screenshot({ type: "jpeg", quality: 84, ...(clip ? { clip, fullPage: true } : {}) });
     writeFileSync(join(SHOTS, file), buf);
     // JPEG size from its SOF marker

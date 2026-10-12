@@ -8,15 +8,15 @@
       "height": 902,
       "url": "/launch",
       "what": "Launch wizard, step 1: the coin",
-      "captured_at": "2026-10-12T00:41:47.252Z"
+      "captured_at": "2026-10-12T14:04:36.755Z"
     },
     "launch-2-work": {
       "file": "launch-2-work.jpg",
       "width": 1680,
-      "height": 561,
+      "height": 890,
       "url": "/launch",
       "what": "Launch wizard, step 2: the work",
-      "captured_at": "2026-10-12T00:41:52.082Z"
+      "captured_at": "2026-10-12T14:04:40.621Z"
     },
     "launch-4-identity": {
       "file": "launch-4-identity.jpg",
@@ -24,7 +24,7 @@
       "height": 407,
       "url": "/launch",
       "what": "Launch wizard, step 4: identity",
-      "captured_at": "2026-10-12T00:41:55.181Z"
+      "captured_at": "2026-10-12T14:04:43.741Z"
     },
     "launch-5-funding": {
       "file": "launch-5-funding.jpg",
@@ -32,15 +32,15 @@
       "height": 804,
       "url": "/launch",
       "what": "Launch wizard, step 5: funding, with the breakdown open",
-      "captured_at": "2026-10-12T00:42:04.552Z"
+      "captured_at": "2026-10-12T14:04:53.165Z"
     },
     "launch-6-review": {
       "file": "launch-6-review.jpg",
       "width": 1680,
-      "height": 1863,
+      "height": 1799,
       "url": "/launch",
       "what": "Launch wizard, step 6: review (Launch was not pressed)",
-      "captured_at": "2026-10-12T00:42:05.896Z"
+      "captured_at": "2026-10-12T14:04:54.524Z"
     },
     "generation-summary": {
       "file": "generation-summary.jpg",
@@ -104,7 +104,7 @@
       "height": 705,
       "url": "/launch",
       "what": "Launch wizard, step 3: the seed and the soul it generates",
-      "captured_at": "2026-10-12T00:41:53.420Z"
+      "captured_at": "2026-10-12T14:04:41.965Z"
     },
     "launch-3-model": {
       "file": "launch-3-model.jpg",
@@ -112,7 +112,7 @@
       "height": 720,
       "url": "/launch",
       "what": "Launch wizard, step 3: the model picker, by provider",
-      "captured_at": "2026-10-12T00:41:53.865Z"
+      "captured_at": "2026-10-12T14:04:42.410Z"
     }
   }
 }
