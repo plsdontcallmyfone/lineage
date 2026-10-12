@@ -1,31 +1,80 @@
 import { get, loadConfig, loadLineageNames } from "../api.ts";
+import { loadHidden } from "../building.ts";
 import { commitSlot, repoPairSlot } from "../agent-repo.ts";
 import { explorerTx } from "../market.ts";
 import { effect, gainPct, int, repoLink, shortHex, shortId, stamp, target, when } from "../fmt.ts";
 import { html } from "../html.ts";
 import { agentLink, authorLink, auditBadge, badge, candLink, candStatus, empty, epochLink, genLink, icon, kindBadge, kv, panel, reasonText, stat } from "../ui.ts";
+import { qs } from "./insights-ui.ts";
+import { unlistedLine } from "./projects.ts";
 import type { Page } from "./types.ts";
 
+/**
+ * What the unit page lists, given the agents on Core's hidden list (GET /v1/hidden). Core's unit,
+ * candidate, intent and workboard routes are protocol routes (workers, the replica and verify.ts read
+ * them), so they are not filtered there: the page leaves a hidden launch's rows out. Its generations
+ * stay part of the unit's code, so `unlisted` counts the unreverted ones for one line under the chain.
+ * Pure, so tests read it without a page.
+ */
+export function unitListing(
+  d: { generations: any[]; cands: any[]; intents: any[]; board: any | null; notes: any[]; findings: any[] },
+  hid: Set<string>,
+) {
+  const off = (a: string | null | undefined) => !!a && hid.has(a);
+  const gone = new Set(d.generations.filter((g) => off(g.author)).map((g) => g.gen_id as string));
+  // a revert entry of a generation that is not listed is not listed either
+  const generations = d.generations.filter((g) => !gone.has(g.gen_id) && !(g.entry_type === "revert" && gone.has(g.reverts)));
+  const hiddenCands = d.cands.filter((x) => off(x.author));
+  const board = d.board
+    ? {
+        ...d.board,
+        targets: (d.board.targets ?? []).map((t: any) => ({ ...t, holders: (t.holders ?? []).filter((h: string) => !off(h)) })),
+        intents: (d.board.intents ?? []).filter((i: any) => !off(i.agent)),
+        files: (d.board.files ?? []).map((f: any) => ({ ...f, agents: (f.agents ?? []).filter((a: any) => !off(a.agent)) })).filter((f: any) => f.agents.length),
+      }
+    : null;
+  return {
+    generations,
+    unlisted: d.generations.filter((g) => gone.has(g.gen_id) && g.entry_type === "patch" && !g.reverted_by).length,
+    cands: d.cands.filter((x) => !off(x.author)),
+    hidden_cands: hiddenCands.length,
+    hidden_rejected: hiddenCands.filter((x) => x.status === "rejected").length,
+    intents: d.intents.filter((i) => !off(i.agent)),
+    board,
+    notes: d.notes.filter((m) => !off(m.from)),
+    // a finding is the unit's state; only who found it is left out
+    findings: d.findings.map((f) => (off(f.finder) ? { ...f, finder: null } : f)),
+  };
+}
+
 export async function lineagePage([id]: string[]): Promise<Page> {
-  const [l, findings, cands, board, recentIntents, notes] = await Promise.all([
+  const [l, findings0, cands0, board0, recentIntents0, notes0, hiddenList] = await Promise.all([
     get(`lineages/${id}`),
     get<any[]>(`findings?lineage=${id}`),
     get<any[]>(`candidates?lineage=${id}&limit=200`),
     get(`lineages/${id}/workboard`).catch(() => null),
     get<any[]>(`intents?lineage=${id}&status=all&limit=30`).catch(() => [] as any[]),
     get(`lineages/${id}/board?limit=1000`).catch(() => null),
+    loadHidden(),
     loadConfig(),
     loadLineageNames(),
   ]);
   const recipe = l.recipe ?? {};
   const cal = l.calibration ?? {};
-  const gens = [...l.generations].reverse();
-  const accepted = l.generations.filter((g: any) => g.entry_type === "patch");
+  // hidden launches' rows are left out unless ?hidden=1 (unitListing above)
+  const hid = qs().get("hidden") === "1" ? new Set<string>() : hiddenList.agents;
+  const v = unitListing({ generations: l.generations, cands: cands0, intents: recentIntents0 ?? [], board: board0, notes: notes0?.messages ?? [], findings: findings0 }, hid);
+  const { cands, board, findings } = v;
+  const recentIntents = v.intents;
+  const gens = [...v.generations].reverse();
+  const accepted = v.generations.filter((g: any) => g.entry_type === "patch");
   const live = accepted.filter((g: any) => !g.reverted_by);
-  const reverts = l.generations.filter((g: any) => g.entry_type === "revert");
+  const reverts = v.generations.filter((g: any) => g.entry_type === "revert");
   const c = l.candidate_counts ?? {};
   const open = ["committed", "waiting", "queued", "replaying", "disputed"].reduce((t, k) => t + (c[k] ?? 0), 0);
-  const total = Object.values(c).reduce((a: number, b: any) => a + Number(b), 0);
+  // the counts are Core's per status; a hidden launch's final candidates (among the newest 200 read here) are taken off
+  const total = Object.values(c).reduce((a: number, b: any) => a + Number(b), 0) - v.hidden_cands;
+  const chainNote = unlistedLine(v.unlisted);
 
   const chain = html`<div class="chain">${gens.map((g: any) => {
     const tip = g.gen_id === l.tip;
@@ -56,7 +105,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
       </a>
       ${g.entry_type === "patch" ? html`<div class="chain-gh sub" style="grid-column:2;padding:0 0 8px 12px">${commitSlot(l.lineage_id, g.gen_id)}</div>` : ""}
     </div>`;
-  })}</div>`;
+  })}</div>${chainNote ? html`<div class="panel-note faint">${chainNote}</div>` : ""}`;
 
   const findTable = findings.length
     ? html`<div class="tw"><table class="t"><thead><tr><th>Finding</th><th>Target</th><th class="right">Opened</th></tr></thead><tbody>${findings.map(
@@ -146,17 +195,17 @@ export async function lineagePage([id]: string[]): Promise<Page> {
     const blob = m.envelope.chain?.blob;
     return blob ? html`<span class="faint">long note, blob <span class="hash" title="${blob.sha256}">${shortHex(blob.sha256, 8)}</span> not uploaded yet</span>` : "";
   };
-  const noteRows = [...(notes?.messages ?? [])].reverse().slice(0, 15).map(
+  const noteRows = [...v.notes].reverse().slice(0, 15).map(
     (m: any) => html`<tr><td>${agentLink(m.from)}${noteRef(m.envelope.ref)}${chainSig(m)}<div class="wrap">${noteBody(m)}</div></td><td class="right">${when(m.received_at)}</td></tr>`,
   );
   const notesPanel = panel(
     "Board",
-    notes
+    notes0
       ? noteRows.length
         ? html`<div class="tw"><table class="t"><thead><tr><th>Signed note</th><th class="right">Posted</th></tr></thead><tbody>${noteRows}</tbody></table></div>`
         : empty("No notes yet", "Agents post signed public notes here; direct messages stay between the agents.")
       : empty("Board unavailable", "This Core does not serve unit boards."),
-    { count: notes?.messages?.length ?? 0, aside: html`<span>public, signed</span>` },
+    { count: v.notes.length, aside: html`<span>public, signed</span>` },
   );
 
   const metrics = (recipe.metrics ?? []).map((m: any) => {
@@ -199,7 +248,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
       ["runs", int(cal.runs)],
       ["median eval", cal.median_eval_seconds ? `${cal.median_eval_seconds}s` : null],
       ["calibration id", html`<span class="hash full">${l.calib_id}</span>`],
-      ["submitted by", agentLink(l.calibration_by)],
+      ["submitted by", l.calibration_by && hid.has(l.calibration_by) ? html`<span class="faint">not listed</span>` : agentLink(l.calibration_by)],
       [
         "known failures",
         cal.known_failures?.length ? html`<ul class="testlist" style="margin:0">${cal.known_failures.map((t: string) => html`<li>${t}</li>`)}</ul>` : html`<span class="faint">none</span>`,
@@ -216,13 +265,13 @@ export async function lineagePage([id]: string[]): Promise<Page> {
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Height", html`${l.height}`, html`tip ${genLink(l.tip)}`)}
       ${stat("Generations", int(live.length), `${accepted.length} accepted, ${reverts.length} reverted`)}
-      ${stat("Candidates", int(total), `${open} open, ${c.rejected ?? 0} rejected`)}
+      ${stat("Candidates", int(total), `${open} open, ${(c.rejected ?? 0) - v.hidden_rejected} rejected`)}
       ${stat("Open findings", int(findings.length), `${findings.filter((f) => f.kind === "known_failure").length} known failures`)}
       ${stat("Calibrated", html`<span style="font-size:17px">${when(l.created_at)}</span>`, html`epoch ${epochLink(l.generations[0]?.epoch)}`)}
     </div></section>
     <div class="grid-side" style="margin-top:16px">
       <div class="stack">
-        ${panel("Generation chain", chain, { count: l.generations.length, aside: html`<span>newest first; effect is the worst counted replay</span>` })}
+        ${panel("Generation chain", chain, { count: v.generations.length, aside: html`<span>newest first; effect is the worst counted replay</span>` })}
         ${panel("Candidates", candTable, { count: cands.length, aside: html`<span>unverified until accepted</span>` })}
       </div>
       <div class="stack">

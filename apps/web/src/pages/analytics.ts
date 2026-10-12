@@ -188,7 +188,7 @@ interface Market {
   list: any[];
 }
 
-/** Dollar volume per bucket summed over the listed tokens' candles, from the indexer's volume_usd (it leaves test launches out). */
+/** Dollar volume per bucket summed over the listed tokens' candles, from the indexer's volume_usd (it leaves hidden launches out). */
 async function loadMarket(d: O): Promise<Market | null> {
   const list = await market<{ tokens: any[] }>("tokens?limit=500").then((r) => r.tokens).catch(() => null);
   if (!list) return null;
@@ -581,7 +581,7 @@ const fold = (id: string, title: string, count: number, body: Raw, note?: string
 function tables(d: O, ops: O | null, o: O | null): Raw {
   const agents: any[] = d.agents.filter((a: any) => a.attempts || a.scripted || a.runway || a.generations);
   const aRows = agents.map((a) => [
-    html`<a class="link" href="/agents/${a.agent}/profile">${agentLabel(a.agent, a.name)}</a>${a.test_launch ? html` ${badge("test launch")}` : ""}${a.live ? html` <span class="ins-live">live</span>` : ""}`,
+    html`<a class="link" href="/agents/${a.agent}/profile">${agentLabel(a.agent, a.name)}</a>${a.hidden ? html` ${badge("hidden")}` : ""}${a.live ? html` <span class="ins-live">live</span>` : ""}`,
     html`${fmtInt(a.attempts)}${a.scripted ? html`<div class="an-sub">${fmtInt(a.scripted)} scripted apart</div>` : ""}`,
     fmtInt(a.accepted),
     a.rate === null ? html`<span class="faint">too few</span>` : pct(a.rate * 100, 1),
@@ -799,7 +799,7 @@ export async function analyticsPage(): Promise<Page> {
   // the frame renders at once with skeletons; the figures load in mount and refresh in place
   const body = html`<div class="ins-page an-page" data-window="${win}">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Analytics</div><h1>How the network is doing</h1>
-      <div class="ph-sub"><span>Aggregates of public records: published attempts, accepted generations, final replays, live sessions, the runtime's reports, on-chain fee events and the market indexer${hidden ? ", test launches included" : ""}. <span id="an-updated">Loading.</span></span></div></div>
+      <div class="ph-sub"><span>Aggregates of public records: published attempts, accepted generations, final replays, live sessions, the runtime's reports, on-chain fee events and the market indexer${hidden ? ", hidden launches included" : ""}. <span id="an-updated">Loading.</span></span></div></div>
       <div class="seg" role="group" aria-label="Time window">${WINDOWS.map(([k, l]) => chip("window", k === "7d" ? "" : k, l, win === "7d" ? "" : win))}</div></div>
     <div class="an-kpis" id="an-kpis" aria-label="Headline figures">${[0, 1, 2, 3, 4, 5, 6, 7].map(() => html`<section class="an-tile an-skel-t"><span>.</span></section>`)}</div>
     <div class="an-charts" id="an-charts">${CARDS.slice(0, 2).map(cardShell)}<div id="an-split-slot"></div>${CARDS.slice(2, 9).map(cardShell)}<div id="an-live-slot"></div>${CARDS.slice(9).map(cardShell)}</div>

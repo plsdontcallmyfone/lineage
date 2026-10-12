@@ -29,10 +29,15 @@ import { viewersOf } from "./viewers.ts";
 //  - candidate counts per lineage, which GET /v1/lineages/:id already serves (candidate_counts).
 // About an open candidate nothing is served but that count.
 //
-// Hidden launches (hidden.ts) are left out of agent rows, model rows, spend and the explorer unless the
-// query asks for them (hidden=1). units state (a project's metric values, its generation timeline)
-// is the lineage's, whoever authored it; a hidden author's generation is kept there with its author
-// withheld (author_hidden) unless hidden=1.
+// Hidden launches (hidden.ts) are left out of every count and list unless the query asks for them
+// (hidden=1): agent rows, model rows, spend, the explorer, a project's accepted and reverted counts,
+// its authors, its last improvement and its timeline. A unit's chain is real state all the same (the
+// next agent builds on the tip whoever wrote it), so a unit with generations by hidden authors says so
+// with two counts (listed_generations, unlisted_generations) and each of its metrics carries `start`:
+// the value measured at the code listed agents build on. best, latest, points and improvement_pct are
+// then of listed generations only and measured against `start`, never against the calibration, so a
+// hidden generation's gain is credited to nobody. A unit with no hidden generation has no `start` and
+// every figure is the plain one.
 
 /** A model row reports an acceptance rate from this many attempts, and per accepted figures from this many accepted. */
 export const MIN_ATTEMPTS_FOR_RATE = 5;
@@ -183,8 +188,14 @@ export class Analytics {
     return out;
   }
 
-  private testLaunches(): Set<string> {
+  /** Every agent on the hidden list (hidden.ts), whatever the query asked. */
+  private hiddenAgents(): Set<string> {
     return new Set(hiddenOf(this.core).agents().keys());
+  }
+
+  /** The hidden agents a default answer leaves out; none with hidden=1. */
+  private unlisted(include: boolean): Set<string> {
+    return include ? new Set<string>() : this.hiddenAgents();
   }
 
   nameOf(agent: string): string | null {
@@ -298,10 +309,18 @@ export class Analytics {
 
   // ------------------------------------------------------------------------------------------ projects
 
-  /** Per metric of a lineage: baseline, measured value at each unreverted generation, best, latest. */
-  private series(l: LineageInfo, gens: GenRow[]) {
+  /**
+   * Per metric of a lineage: baseline, measured value at each unreverted generation of a listed agent,
+   * best, latest. `hid` is the set of authors left out (hidden launches, empty with hidden=1). When the
+   * chain holds generations by them, each metric carries `start`: the value measured at the latest kept
+   * generation under the first listed one (at the tip when no listed generation exists yet), which is
+   * the code listed agents build on, and the improvement figures are measured against it.
+   */
+  private series(l: LineageInfo, gens: GenRow[], hid: Set<string> = new Set()) {
     const meas = this.measured();
-    const kept = gens.filter((g) => !g.reverted_by && g.candidate_id).sort((a, b) => a.height - b.height);
+    const chain = gens.filter((g) => !g.reverted_by && g.candidate_id).sort((a, b) => a.height - b.height);
+    const kept = chain.filter((g) => !hid.has(g.author!));
+    const under = chain.length > kept.length ? (kept.length ? chain.filter((g) => g.height < kept[0]!.height) : chain) : null;
     return l.metrics.map((m) => {
       const points = kept
         .map((g) => {
@@ -315,17 +334,29 @@ export class Analytics {
       let best: (typeof points)[number] | null = null;
       for (const p of points) if (!best || better(p.value, best.value)) best = p;
       const latest = points[points.length - 1] ?? null;
+      // what listed agents start from: the newest measurement under their first generation; with a hidden
+      // generation there and nothing measured for this metric, the parent side of their first generation;
+      // with hidden generations only above it, the calibration (height 0)
+      let start: { value: number | null; height: number } | null = null;
+      if (under) {
+        const at = [...under].reverse().find((g) => typeof meas.get(g.candidate_id!)?.[m.name]?.cand === "number");
+        if (at) start = { value: meas.get(at.candidate_id!)![m.name]!.cand, height: at.height };
+        else if (under.length) start = { value: points[0]?.parent ?? null, height: under[under.length - 1]!.height };
+        else start = { value: baseline, height: 0 };
+      }
+      const ref = start ? start.value : baseline;
       const change = (v: number | null | undefined) =>
-        baseline !== null && baseline !== 0 && v !== null && v !== undefined ? r4(((m.direction === "higher" ? v - baseline : baseline - v) / Math.abs(baseline)) * 100) : null;
+        ref !== null && ref !== 0 && v !== null && v !== undefined ? r4(((m.direction === "higher" ? v - ref : ref - v) / Math.abs(ref)) * 100) : null;
       return {
         name: m.name,
         kind: m.kind,
         direction: m.direction,
         baseline,
         baseline_source: baseline === null ? null : "calibration",
+        ...(start ? { start } : {}),
         best: best ? { value: best.value, height: best.height, gen_id: best.gen_id, at: best.at } : null,
         latest: latest ? { value: latest.value, height: latest.height, gen_id: latest.gen_id, at: latest.at } : null,
-        improvement_pct: best && baseline !== null && better(best.value, baseline) ? change(best.value) : best ? 0 : null,
+        improvement_pct: best && ref !== null && better(best.value, ref) ? change(best.value) : best && (ref !== null || !start) ? 0 : null,
         latest_change_pct: change(latest?.value),
         points,
       };
@@ -335,7 +366,8 @@ export class Analytics {
   private projectRows(include: boolean, all: boolean) {
     const ls = this.lineages().filter((l) => all || (l.status === "active" && /^https?:\/\//.test(l.repo)));
     const gens = this.gens();
-    const tests = this.testLaunches();
+    const tests = this.hiddenAgents();
+    const hid = this.unlisted(include);
     const off = this.hiddenSet(include);
     const open = this.openCounts();
     const live = this.liveSessions(include);
@@ -344,7 +376,9 @@ export class Analytics {
     const out = [...byRepo.values()].map((lins) => {
       const first = lins[0]!;
       const ids = new Set(lins.map((l) => l.lineage_id));
-      const gs = gens.filter((g) => ids.has(g.lineage_id));
+      const every = gens.filter((g) => ids.has(g.lineage_id));
+      // counts and lists are of listed agents; the units' chains (below) are of everyone
+      const gs = every.filter((g) => !hid.has(g.author!));
       const kept = gs.filter((g) => !g.reverted_by);
       const sessions = live.filter((s) => ids.has(s.lineage_id));
       const agents = [...new Map(sessions.filter((s) => s.agent).map((s) => [s.agent as string, s])).values()].map((s) => ({
@@ -357,16 +391,20 @@ export class Analytics {
         github: /^https:\/\/github\.com\//i.test(first.repo),
         classes: [...new Set(lins.map((l) => l.class).filter((c): c is string => !!c))].sort(),
         lineages: lins.map((l) => {
-          const lg = gs.filter((g) => g.lineage_id === l.lineage_id);
+          const lg = every.filter((g) => g.lineage_id === l.lineage_id);
+          const chain = lg.filter((g) => !g.reverted_by);
+          const listed = chain.filter((g) => !hid.has(g.author!)).length;
           return {
             lineage_id: l.lineage_id, recipe_name: l.recipe_name, class: l.class, status: l.status, height: l.height, created_at: l.created_at,
             open_candidates: open.get(l.lineage_id) ?? 0,
-            accepted: lg.filter((g) => !g.reverted_by).length,
-            metrics: this.series(l, lg).map(({ points, ...m }) => ({ ...m, measured_generations: points.length })),
+            accepted: listed,
+            listed_generations: listed,
+            unlisted_generations: chain.length - listed,
+            metrics: this.series(l, lg, hid).map(({ points, ...m }) => ({ ...m, measured_generations: points.length })),
           };
         }),
         accepted: kept.length,
-        accepted_by_test_launches: kept.filter((g) => tests.has(g.author!)).length,
+        ...(include ? { accepted_hidden: kept.filter((g) => tests.has(g.author!)).length } : {}),
         reverted: gs.length - kept.length,
         authors: [...new Set(kept.map((g) => g.author!).filter((a) => !off.has(a)))].length,
         last_improvement_at: kept.length ? Math.max(...kept.map((g) => g.accepted_at)) : null,
@@ -401,6 +439,8 @@ export class Analytics {
     return this.memo(`project:${lins[0]!.repo_id}:${include ? 1 : 0}`, () => {
       const row = this.projectRows(include, true).find((p) => p.repo_id === lins[0]!.repo_id)!;
       const off = this.hiddenSet(include);
+      const hid = this.unlisted(include);
+      const tests = this.hiddenAgents();
       const gens = this.gens();
       const gh = genGithubOf(this.core);
       const models = this.models();
@@ -417,18 +457,19 @@ export class Analytics {
           const summary = row.lineages.find((x) => x.lineage_id === l.lineage_id)!;
           return {
             ...summary,
-            metrics: this.series(l, lg),
+            metrics: this.series(l, lg, hid),
+            // a hidden author's generations are not listed (the unit's unlisted_generations counts them)
             timeline: [...lg]
+              .filter((g) => !off.has(g.author!))
               .sort((a, b) => b.height - a.height)
               .map((g) => {
                 const eff = parse<any>(g.effect);
                 const x = gainOf(eff);
-                const hid = off.has(g.author!);
                 const m = models.get(g.gen_id);
                 return {
                   gen_id: g.gen_id, height: g.height, kind: g.kind, target: parse(g.target), metric: eff?.metric ?? null, effect: eff, gain_pct: r4(x.pct), fixed: x.fixed,
-                  author: hid ? null : g.author, author_name: hid ? null : this.nameOf(g.author!), author_hidden: hid,
-                  model: hid ? null : (m?.model ?? null), provider: hid ? null : (m?.provider ?? null),
+                  author: g.author, author_name: this.nameOf(g.author!), ...(include && tests.has(g.author!) ? { hidden: true } : {}),
+                  model: m?.model ?? null, provider: m?.provider ?? null,
                   accepted_at: g.accepted_at, reverted_by: g.reverted_by, audit_status: g.audit_status, github: gh.view(g.gen_id),
                 };
               }),
@@ -493,7 +534,7 @@ export class Analytics {
     const key = (r: (typeof rows)[number]) => (sort === "effect" ? r.x.pct + r.x.fixed * 1e-6 : r.g.accepted_at);
     rows.sort((a, b) => (dir === "desc" ? key(b) - key(a) : key(a) - key(b)) || b.g.accepted_at - a.g.accepted_at || (a.g.gen_id < b.g.gen_id ? -1 : 1));
     const gh = genGithubOf(this.core);
-    const tests = this.testLaunches();
+    const tests = this.hiddenAgents();
     const slice = rows.slice((page - 1) * limit, page * limit).map((r) => ({
       gen_id: r.g.gen_id,
       lineage_id: r.g.lineage_id,
@@ -510,7 +551,7 @@ export class Analytics {
       fixed: r.x.fixed,
       author: r.g.author,
       author_name: this.nameOf(r.g.author!),
-      test_launch: tests.has(r.g.author!),
+      ...(include && tests.has(r.g.author!) ? { hidden: true } : {}),
       model: r.model,
       provider: r.provider,
       accepted_at: r.g.accepted_at,
@@ -652,7 +693,7 @@ export class Analytics {
       const now = this.core.now();
       const since = span === null ? 0 : now - span;
       const off = this.hiddenSet(include);
-      const tests = this.testLaunches();
+      const tests = this.hiddenAgents();
 
       // network
       const live = this.core.live.live() as any;
@@ -707,17 +748,17 @@ export class Analytics {
           fixes: acc.reduce((s, e) => s + e.fixed, 0),
         };
       });
-      const agentRows = this.group(eps, (e) => e.agent, (a) => ({ agent: a, name: this.nameOf(a), test_launch: tests.has(a) }));
+      const agentRows = this.group(eps, (e) => e.agent, (a) => ({ agent: a, name: this.nameOf(a), ...(tests.has(a) ? { hidden: true } : {}) }));
       const providerRows = this.group(eps, (e) => this.modelKey(e).provider ?? "not reported");
 
       // activity: accepted generations per UTC day (all time) and per hour (last 48 h)
       const gens = this.gens().filter((x) => !off.has(x.author!));
-      const daily = new Map<string, { day: string; n: number; test: number }>();
+      const daily = new Map<string, { day: string; n: number; hidden?: number }>();
       for (const x of gens) {
         const d = dayOf(x.accepted_at);
-        const r = daily.get(d) ?? daily.set(d, { day: d, n: 0, test: 0 }).get(d)!;
+        const r = daily.get(d) ?? daily.set(d, { day: d, n: 0 }).get(d)!;
         r.n++;
-        if (tests.has(x.author!)) r.test++;
+        if (tests.has(x.author!)) r.hidden = (r.hidden ?? 0) + 1;
       }
       const hourly: { at: number; n: number }[] = [];
       const h0 = Math.floor(now / HOUR) * HOUR - 47 * HOUR;
@@ -734,22 +775,29 @@ export class Analytics {
 
       // verification: replays of final candidates only
       const reps = this.db
-        .query<{ role: string | null; status: string; revealed_at: number | null; kind: string }, [number]>(
-          `SELECT r.role, r.status, r.revealed_at, r.kind FROM replays r JOIN candidates c ON c.candidate_id = r.candidate_id
+        .query<{ role: string | null; status: string; revealed_at: number | null; kind: string; author: string }, [number]>(
+          `SELECT r.role, r.status, r.revealed_at, r.kind, c.author FROM replays r JOIN candidates c ON c.candidate_id = r.candidate_id
            WHERE c.status IN ('accepted', 'rejected', 'expired') AND r.kind IN ('replay', 'reference') AND COALESCE(c.finalized_at, c.committed_at) >= ?`,
         )
-        .all(since);
+        .all(since)
+        .filter((r) => !off.has(r.author));
       const role = (r: string) => reps.filter((x) => x.role === r).length;
       const counted = role("counted");
       const minority = role("minority");
-      const finals = this.db
-        .query<{ status: string; n: number }, [number]>("SELECT status, COUNT(*) AS n FROM candidates WHERE status IN ('accepted', 'rejected', 'expired') AND is_canary = 0 AND COALESCE(finalized_at, committed_at) >= ? GROUP BY status")
-        .all(since);
+      const finalBy = new Map<string, number>();
+      for (const r of this.db
+        .query<{ status: string; author: string }, [number]>("SELECT status, author FROM candidates WHERE status IN ('accepted', 'rejected', 'expired') AND is_canary = 0 AND COALESCE(finalized_at, committed_at) >= ?")
+        .all(since))
+        if (!off.has(r.author)) finalBy.set(r.status, (finalBy.get(r.status) ?? 0) + 1);
+      const finals = [...finalBy.entries()].map(([status, n]) => ({ status, n })).sort((a, c) => a.status.localeCompare(c.status));
       const repDaily = new Map<string, number>();
       for (const x of reps) if (x.revealed_at) repDaily.set(dayOf(x.revealed_at), (repDaily.get(dayOf(x.revealed_at)) ?? 0) + 1);
-      const audits = this.db
-        .query<{ audit_status: string; n: number }, [number]>("SELECT audit_status, COUNT(*) AS n FROM generations WHERE entry_type = 'patch' AND audit_status IS NOT NULL AND accepted_at >= ? GROUP BY audit_status")
-        .all(since);
+      const auditBy = new Map<string, number>();
+      for (const r of this.db
+        .query<{ audit_status: string; author: string | null }, [number]>("SELECT audit_status, author FROM generations WHERE entry_type = 'patch' AND audit_status IS NOT NULL AND accepted_at >= ?")
+        .all(since))
+        if (!r.author || !off.has(r.author)) auditBy.set(r.audit_status, (auditBy.get(r.audit_status) ?? 0) + 1);
+      const audits = [...auditBy.entries()].map(([audit_status, n]) => ({ audit_status, n })).sort((a, c) => a.audit_status.localeCompare(c.audit_status));
 
       return {
         now,
@@ -1100,16 +1148,20 @@ export class Analytics {
     const include = !!q.hidden;
     return this.memo(`results:${win}:${include ? 1 : 0}`, () => {
       const off = this.hiddenSet(include);
+      const hid = this.unlisted(include);
       const gens = this.gens();
       const ls = this.lineages();
-      // per lineage and metric: improvement over the calibration baseline after each generation (all
-      // authors: the lineage's state), and the records (each new best)
+      // per lineage and metric: improvement after each generation of a listed agent, over the calibration
+      // baseline, or over `start` (the code listed agents build on) where the unit holds generations by
+      // hidden launches; and the records (each new best)
       const metrics: any[] = [];
       for (const l of ls) {
         const lg = gens.filter((g) => g.lineage_id === l.lineage_id);
         if (!lg.length) continue;
-        for (const m of this.series(l, lg)) {
-          if (!m.points.length || m.baseline === null || m.baseline === 0) continue;
+        for (const full of this.series(l, lg, hid)) {
+          const ref = full.start ? full.start.value : full.baseline;
+          if (!full.points.length || ref === null || ref === 0) continue;
+          const m = { ...full, baseline: ref };
           let best: number | null = null;
           const better = (a: number, c: number) => (m.direction === "higher" ? a > c : a < c);
           const pts = [...m.points]
@@ -1120,7 +1172,7 @@ export class Analytics {
               const imp = r4(((m.direction === "higher" ? best! - m.baseline! : m.baseline! - best!) / Math.abs(m.baseline!)) * 100);
               return { at: p.at, height: p.height, gen_id: p.gen_id, value: p.value, best: best!, improvement_pct: imp, record: rec };
             });
-          metrics.push({ lineage_id: l.lineage_id, project: repoKey(l.repo, l.repo_id), recipe_name: l.recipe_name, metric: m.name, direction: m.direction, baseline: m.baseline, improvement_pct: pts[pts.length - 1]!.improvement_pct, records: pts.filter((p) => p.record).length, records_in_window: pts.filter((p) => p.record && p.at >= since).length, points: pts });
+          metrics.push({ lineage_id: l.lineage_id, project: repoKey(l.repo, l.repo_id), recipe_name: l.recipe_name, metric: m.name, direction: m.direction, baseline: full.baseline, ...(full.start ? { start: full.start } : {}), improvement_pct: pts[pts.length - 1]!.improvement_pct, records: pts.filter((p) => p.record).length, records_in_window: pts.filter((p) => p.record && p.at >= since).length, points: pts });
         }
       }
       metrics.sort((a, c) => c.improvement_pct - a.improvement_pct);
@@ -1136,13 +1188,13 @@ export class Analytics {
       const perProject = new Map<string, ReturnType<typeof row>>();
       for (const r of byGain(listed.filter((g) => !g.reverted_by))) if (r.project && !perProject.has(r.project)) perProject.set(r.project, r);
       // reverted and challenged generations
-      const reverted = gens.filter((g) => g.reverted_by).map((g) => ({ ...row(g), author: off.has(g.author!) ? null : g.author, author_name: off.has(g.author!) ? null : this.nameOf(g.author!) }));
+      const reverted = listed.filter((g) => g.reverted_by).map(row);
       const chal = this.db
         .query<{ challenge_id: string; kind: string; subject: string; status: string; opened_at: number; resolved_at: number | null; resolution: string | null }, []>("SELECT challenge_id, kind, subject, status, opened_at, resolved_at, resolution FROM challenges ORDER BY opened_at DESC")
         .all();
       const genOfCand = new Map(gens.filter((g) => g.candidate_id).map((g) => [g.candidate_id!, g]));
       const challenged = chal
-        .filter((c) => c.kind === "verdict")
+        .filter((c) => c.kind === "verdict" && !(genOfCand.get(c.subject) && off.has(genOfCand.get(c.subject)!.author!)))
         .map((c) => {
           const g = genOfCand.get(c.subject);
           return { challenge_id: c.challenge_id, status: c.status, opened_at: c.opened_at, resolved_at: c.resolved_at, resolution: parse(c.resolution), generation: g ? { gen_id: g.gen_id, height: g.height, project: this.repoKeyOf(g.lineage_id), reverted_by: g.reverted_by } : null };
@@ -1438,7 +1490,7 @@ export class Analytics {
     const include = !!q.hidden;
     return this.memo(`launches:${win}:${include ? 1 : 0}`, () => {
       const off = this.hiddenSet(include);
-      const tests = this.testLaunches();
+      const tests = this.hiddenAgents();
       const agents = this.db
         .query<{ agent_id: string; registered_at: number; mint: string | null; identity_mode: string | null; hosted: number }, []>("SELECT agent_id, registered_at, mint, identity_mode, hosted FROM agents WHERE kind = 'launched' AND shadow = 0")
         .all()
@@ -1518,7 +1570,7 @@ export class Analytics {
           const per = new Map<number, number>();
           for (const d of days) per.set(d, (per.get(d) ?? 0) + 1);
           return {
-            agent: a.agent_id, name: this.nameOf(a.agent_id), mint: a.mint, registered_at: a.registered_at, identity_mode: a.identity_mode, hosted: !!a.hosted, test_launch: tests.has(a.agent_id), ...modelOf(a.agent_id),
+            agent: a.agent_id, name: this.nameOf(a.agent_id), mint: a.mint, registered_at: a.registered_at, identity_mode: a.identity_mode, hosted: !!a.hosted, ...(tests.has(a.agent_id) ? { hidden: true } : {}), ...modelOf(a.agent_id),
             deposit: p?.deposit ?? null, initial_buy: p?.initial_buy ?? null, supply: p?.supply ?? null, launched_at: p?.launched_at ? p.launched_at * 1000 : null,
             vault: bal.has(a.agent_id) ? bal.get(a.agent_id)!.toString() : null, vault_usd: typeof s?.vault_usd === "number" ? s.vault_usd : null,
             vault_series: endOfBucket.get(a.agent_id)?.map((v) => (v === null ? null : v.toString())) ?? null,
@@ -1553,7 +1605,7 @@ export class Analytics {
     const include = !!q.hidden;
     return this.memo(`dashboard:${win}:${include ? 1 : 0}`, () => {
       const off = this.hiddenSet(include);
-      const tests = this.testLaunches();
+      const tests = this.hiddenAgents();
       const all = this.loadEpisodes().filter((e) => !off.has(e.agent));
       const gensAll = this.gens().filter((g) => !off.has(g.author!));
       let first: number | null = null;
@@ -1660,7 +1712,7 @@ export class Analytics {
           const rp = reports.get(agent)?.spend as Record<string, any> | undefined;
           const mins = minutes.get(agent) ?? arr(() => 0);
           return {
-            agent, name: this.nameOf(agent), test_launch: tests.has(agent), live: liveAgents.has(agent),
+            agent, name: this.nameOf(agent), ...(tests.has(agent) ? { hidden: true } : {}), live: liveAgents.has(agent),
             attempts: mm.length, scripted: mine.length - mm.length, accepted: accN(mm), rate: mm.length >= MIN_ATTEMPTS_FOR_RATE ? r4(accN(mm) / mm.length) : null,
             usd: c.usd, usd_per_accepted: c.usd_per_accepted, gain_pct: c.gain_pct,
             generations: events.filter((e) => e.agent === agent).length,

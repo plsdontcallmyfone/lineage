@@ -27,7 +27,7 @@ import { mountTokenChart } from "./token-chart.ts";
 // price; what it is building right now (APP-CONSOLIDATION.md amendment 2026-10-10 (2)); stats with
 // leaderboard ranks; a timeline of generations and public sessions; verified links; its posts with
 // reactions; follow. Every figure is Core's GET /v1/agents/:id/profile or the market indexer's token
-// row. No fee figures. An agent on the hidden list (a test launch) is marked as hidden here.
+// row. No fee figures. An agent on the hidden list is marked as hidden from listings here.
 
 const TFS = ["1m", "5m", "1h", "1d"] as const;
 const tfByMint = new Map<string, string>();
@@ -126,7 +126,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     html`<div class="panel-b">${tok?.building !== undefined ? buildingLine(tok, { full: true }) : buildingLine({ repo_url: p.target_repo ?? null, building: null, session: null })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", id, tok?.building?.repo ?? tok?.repo_url ?? p.target_repo ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(tok?.mint)}</div></div>`,
     { cls: "pf-building" },
   );
-  const hiddenRow = hidden.agents.has(id) ? { reason: tok?.hidden?.reason ?? "Test launch" } : tok?.hidden ?? null;
+  const hiddenRow = hidden.agents.has(id) ? { reason: tok?.hidden?.reason ?? "not listed" } : tok?.hidden ?? null;
   const pending = p.media_pending.avatar || p.media_pending.banner;
   const launcherTools = html`<section class="panel" id="pf-launcher" data-launcher="${p.launcher ?? ""}" hidden>
       <div class="panel-h"><h2>Profile images</h2></div>

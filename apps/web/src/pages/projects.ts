@@ -8,6 +8,9 @@ import type { Page } from "./types.ts";
 // Projects (/projects, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md): every repository being
 // improved, from Core GET /v1/analytics/projects. Per project: its metrics as baseline (calibration)
 // versus best measured value with the measured improvement, accepted generations, the last improvement,
+// (all of listed agents: a hidden launch's work is in no count; a unit whose chain holds generations by
+// hidden launches shows the number of listed generations and measures from `start`, the code listed
+// agents build on),
 // agents working on it now (live sessions) and open candidates (a count only: nothing about an open
 // candidate is public until it is final). A self-contained component: projectCard() is a pure function
 // of one project row.
@@ -20,16 +23,20 @@ export interface ProjectMetric {
   latest: { value: number; height: number; gen_id: string; at: number } | null;
   improvement_pct: number | null;
   measured_generations?: number;
+  /** only where the unit's chain holds generations by hidden launches: the value measured at the code listed agents build on */
+  start?: { value: number | null; height: number };
 }
+export interface UnitCounts { height: number; status: string; listed_generations?: number; unlisted_generations?: number }
 export interface ProjectRow {
   key: string;
   repo: string;
   repo_id: string;
   github: boolean;
   classes: string[];
-  lineages: { lineage_id: string; recipe_name: string | null; class: string | null; status: string; height: number; open_candidates: number; accepted: number; metrics: ProjectMetric[] }[];
+  lineages: { lineage_id: string; recipe_name: string | null; class: string | null; status: string; height: number; open_candidates: number; accepted: number; listed_generations?: number; unlisted_generations?: number; metrics: ProjectMetric[] }[];
   accepted: number;
-  accepted_by_test_launches: number;
+  /** with ?hidden=1 only: how many of `accepted` are by launches on the hidden list */
+  accepted_hidden?: number;
   reverted: number;
   authors: number;
   last_improvement_at: number | null;
@@ -40,11 +47,29 @@ export interface ProjectRow {
 
 export const projectHref = (p: { key: string }) => `/projects/${p.key}`;
 
-/** One metric as "name: baseline to best (improvement)". */
+export const START_TITLE = "measured at the code listed agents build on";
+
+/**
+ * A unit's generation count as text: "gen N" (its height), or, where its chain holds generations by
+ * hidden launches, the number of listed generations ("3 generations"; nothing at 0).
+ */
+export function unitGens(l: UnitCounts): string {
+  const st = l.status !== "active" ? l.status : "";
+  if (!l.unlisted_generations) return `gen ${l.height}${st ? `, ${st}` : ""}`;
+  const n = l.listed_generations ?? 0;
+  return [n ? `${n} generation${n === 1 ? "" : "s"}` : "", st].filter(Boolean).join(", ");
+}
+
+/** The one muted line of a unit whose chain holds generations that are not listed; "" otherwise. */
+export function unlistedLine(n: number | null | undefined): string {
+  return n ? `${n} generation${n === 1 ? "" : "s"} by unlisted launches ${n === 1 ? "is" : "are"} part of this unit's code.` : "";
+}
+
+/** One metric as "name: baseline to best (improvement)"; from `start` instead of the baseline where the unit has one. */
 export function metricLine(m: ProjectMetric): Raw {
   const imp = m.improvement_pct;
   return html`<li class="pj-m"><span class="pj-mn">${m.name}</span>
-    <span class="pj-mv num" title="${m.direction} is better; baseline from the unit's calibration, best from the counted replays of an accepted generation">${metricVal(m.baseline)}${m.best ? html` <span class="faint">to</span> ${metricVal(m.best.value)}` : ""}</span>
+    <span class="pj-mv num" title="${m.start ? START_TITLE : `${m.direction} is better; baseline from the unit's calibration, best from the counted replays of an accepted generation`}">${metricVal(m.start ? m.start.value : m.baseline)}${m.best ? html` <span class="faint">to</span> ${metricVal(m.best.value)}` : ""}</span>
     <span class="pj-mi num ${imp && imp > 0 ? "good-t" : ""}">${imp === null ? html`<span class="faint" title="No accepted generation has measured this metric yet">no change yet</span>` : imp > 0 ? pct(imp) : html`<span class="faint" title="No accepted generation measured this metric better than its baseline">not improved</span>`}</span></li>`;
 }
 
@@ -57,13 +82,13 @@ export function projectCard(p: ProjectRow, hidden: boolean): Raw {
       ${live.length ? html`<span class="ins-live" title="${live.length} live session${live.length === 1 ? "" : "s"}">working now</span>` : ""}
     </header>
     <div class="pj-figs">
-      <div><span>Accepted</span><b class="num">${p.accepted}</b>${p.accepted_by_test_launches && !hidden ? html`<small title="by test launches, which other lists leave out">${p.accepted_by_test_launches} by test launches</small>` : ""}</div>
+      <div><span>Accepted</span><b class="num">${p.accepted}</b>${hidden && p.accepted_hidden ? html`<small title="by launches on the hidden list, which the default view leaves out">${p.accepted_hidden} hidden</small>` : ""}</div>
       <div><span>Last improvement</span><b>${p.last_improvement_at ? when(p.last_improvement_at) : html`<span class="faint">none yet</span>`}</b></div>
       <div><span>Open candidates</span><b class="num" title="A count only: an open candidate's author and content stay sealed until it is final">${p.open_candidates}</b></div>
     </div>
     ${p.lineages.map(
       (l) => html`<div class="pj-lin">
-        <div class="pj-lin-h"><a class="link" href="/units/${l.lineage_id}">${l.recipe_name ?? "unit"}</a><span class="sub">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span></div>
+        <div class="pj-lin-h"><a class="link" href="/units/${l.lineage_id}">${l.recipe_name ?? "unit"}</a><span class="sub">${unitGens(l)}</span></div>
         ${l.metrics.length ? html`<ul class="pj-ms">${l.metrics.map(metricLine)}</ul>` : html`<div class="sub">No metrics declared.</div>`}
       </div>`,
     )}

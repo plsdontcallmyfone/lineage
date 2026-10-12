@@ -1,4 +1,5 @@
 import { get, loadConfig, loadLineageNames } from "../api.ts";
+import { loadHidden } from "../building.ts";
 import { int, shortHex, stamp, token, units, when } from "../fmt.ts";
 import { html } from "../html.ts";
 import { agentLink, badge, candLink, empty, icon, kv, panel, reasonText, stat } from "../ui.ts";
@@ -19,9 +20,13 @@ async function epochPages(count: number): Promise<{ list: any[]; more: boolean }
 }
 
 export async function epochsPage([n]: string[]): Promise<Page> {
-  const [{ list, more }] = await Promise.all([epochPages(pages), loadConfig(), loadLineageNames()]);
+  // rows that name an agent on Core's hidden list are not listed (the epoch's records and roots are Core's, unchanged)
+  const [{ list, more }, hiddenList] = await Promise.all([epochPages(pages), loadHidden(), loadConfig(), loadLineageNames()]);
+  const listed = (a: string | null | undefined) => !a || !hiddenList.agents.has(a);
   const sel = n !== undefined ? Number(n) : (list.find((e) => e.status === "closed")?.n ?? list[0]?.n ?? 0);
   const ep = await get(`epochs/${sel}`);
+  if (Array.isArray(ep.payouts)) ep.payouts = ep.payouts.filter((p: any) => listed(p.agent));
+  if (Array.isArray(ep.usage)) ep.usage = ep.usage.filter((u: any) => listed(u.agent_id));
   const closed = ep.status === "closed";
   const canaryViews = new Map<string, any>();
   if (closed && ep.canaries?.length)
@@ -29,6 +34,7 @@ export async function epochsPage([n]: string[]): Promise<Page> {
 
   const byAgent = new Map<string, { units: number; kinds: string[]; rebate: bigint; count: number }>();
   for (const u of ep.units) {
+    if (!listed(u.agent)) continue;
     const x = byAgent.get(u.agent) ?? { units: 0, kinds: [], rebate: 0n, count: 0 };
     x.units += u.units;
     x.kinds.push(`${u.kind} ${units(u.units)} (${u.count})`);

@@ -171,9 +171,15 @@ export function buildRoutes(core: Core): Route[] {
       if (!off.size) return s;
       const n = core.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agents").all().filter((a) => off.has(a.agent_id)).length;
       // what agents of a retired deployment authored stays in the database and out of the public counts (deployments.ts)
-      const r = deploymentsOf(core).retiredCounts();
-      return { ...s, agents: s.agents - n, hidden_agents: n,
-        ...(r.agents ? { generations: s.generations - r.generations, candidates: s.candidates - r.candidates, retired: r } : {}) };
+      const dep = deploymentsOf(core);
+      const r = dep.retiredCounts();
+      // a hidden launch's accepted generations and final candidates are left out too (an open candidate's
+      // author is sealed, SPEC 10.7, so it is counted until it is final); a retired author is counted once, above
+      const by = (sql: string) => core.db.query<{ author: string; n: number }, []>(sql).all().reduce((t, x) => (off.has(x.author) && !dep.retiredOf(x.author) ? t + x.n : t), 0);
+      const hg = by("SELECT author, COUNT(*) AS n FROM generations WHERE entry_type = 'patch' AND author IS NOT NULL GROUP BY author");
+      const hc = by("SELECT author, COUNT(*) AS n FROM candidates WHERE status IN ('accepted', 'rejected', 'expired') GROUP BY author");
+      return { ...s, agents: s.agents - n, hidden_agents: n, generations: s.generations - (r.agents ? r.generations : 0) - hg, candidates: s.candidates - (r.agents ? r.candidates : 0) - hc,
+        ...(r.agents ? { retired: r } : {}) };
     }),
     route("GET", "/v1/chain", "none", () => (core.chainMode ? (core.chainView?.() ?? { mode: "devnet", read_at: null }) : { mode: "sim" })),
     route("GET", "/v1/lineages", "none", () => core.listLineages()),

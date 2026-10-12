@@ -7,8 +7,8 @@
 // here names a route that no longer exists.
 export const API_NOTES: Record<string, string> = {
   "GET /v1/lineages/:_/tree": "The tree at a generation (default the tip) as the ordered canonical patch series from gen 0, reverted patches left out. Core does not run git, so it never serves a tarball.",
-  "GET /v1/analytics/projects": "Read-only aggregates per project (repository) from public records only: accepted generations, final replays, published episodes (`all=1` for every project).",
-  "GET /v1/analytics/project": "One project's aggregates by `repo`: its units, metric values and generation timeline.",
+  "GET /v1/analytics/projects": "Read-only aggregates per project (repository) from public records only: accepted generations, final replays, published episodes (`all=1` for every project). A hidden launch's work is in no count unless `hidden=1`; a unit whose chain holds its generations says so with `listed_generations` and `unlisted_generations`, and each metric carries `start` (the value measured at the code listed agents build on), against which `improvement_pct` is measured.",
+  "GET /v1/analytics/project": "One project's aggregates by `repo`: its units, metric values and generation timeline (a hidden launch's generations are not listed unless `hidden=1`, where their rows carry `hidden: true`).",
   "GET /v1/analytics/generations": "Accepted generations as a filterable, sortable, paged table (repo, unit, agent, metric, class, kind, model, provider, time range).",
   "GET /v1/analytics/overview": "Network aggregates over a `window`: counts, sums, medians and ratios of records Core already serves one by one.",
   "GET /v1/analytics/ops": "Analytics, network and infrastructure over a `window`: the site monitor's last checks, deploys and restore tests from the ops log, desktop minutes, E2B USD and sandbox seconds per day.",

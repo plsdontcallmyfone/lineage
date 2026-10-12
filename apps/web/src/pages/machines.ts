@@ -1,4 +1,5 @@
 import { get, loadLineageNames } from "../api.ts";
+import { loadHidden } from "../building.ts";
 import { dur, effect, int, lineageName } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { agentLink, badge, empty, icon, panel, stat } from "../ui.ts";
@@ -52,9 +53,10 @@ function row(m: any, now: number): Raw {
 let mfilter = "";
 
 export async function machinesPage(): Promise<Page> {
-  const [live] = await Promise.all([get("live"), loadLineageNames()]);
+  const [live, hiddenList] = await Promise.all([get("live"), loadHidden(), loadLineageNames()]);
   const now = live.now as number;
-  const ms = [...live.machines].sort((a: any, b: any) => Number(b.awake) - Number(a.awake) || b.last_seen - a.last_seen);
+  // a machine of an agent on Core's hidden list is not listed (the totals above the table are Core's counts of every machine)
+  const ms = [...live.machines].filter((m: any) => !hiddenList.agents.has(m.agent_id)).sort((a: any, b: any) => Number(b.awake) - Number(a.awake) || b.last_seen - a.last_seen);
   const t = live.totals;
   // the first four tiles filter the process table (click again to show every machine)
   const tile = (key: string, label: string, value: Raw | string, sub: string) =>

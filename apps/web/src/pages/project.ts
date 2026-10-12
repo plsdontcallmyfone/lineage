@@ -4,7 +4,7 @@ import { html, type Raw } from "../html.ts";
 import { auditBadge, badge, empty, icon, kindBadge, panel } from "../ui.ts";
 import { githubLink, type GithubField } from "./generation-github.ts";
 import { agentLabel, chartSlot, kpis, metricVal, pct, qs, wireInsights } from "./insights-ui.ts";
-import { injectProjectsStyle, type ProjectMetric, type ProjectRow } from "./projects.ts";
+import { injectProjectsStyle, START_TITLE, unitGens, unlistedLine, type ProjectMetric, type ProjectRow } from "./projects.ts";
 import { providerName } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 
@@ -13,37 +13,38 @@ import type { Page } from "./types.ts";
 // by the counted replays of each accepted generation, the calibration baseline as a dashed rule), the
 // metric table, the generation timeline with each GitHub commit and its Verified state, live sessions
 // (links to the live page; recordings are off, so ended sessions are facts only) and the number of open
-// candidates. Test launches' generations stay in the timeline with their author withheld unless ?hidden=1.
+// candidates. A hidden launch's generations are not listed unless ?hidden=1; a unit whose chain holds
+// some says so in one line and measures listed work from `start` (the code listed agents build on).
 
 interface Point { height: number; gen_id: string; value: number; parent: number | null; replays: number; at: number; targeted: boolean }
 interface Gen {
   gen_id: string; height: number; kind: string | null; target: unknown; metric: string | null; effect: any; gain_pct: number; fixed: number;
-  author: string | null; author_name: string | null; author_hidden: boolean; model: string | null; provider: string | null;
+  author: string | null; author_name: string | null; hidden?: boolean; model: string | null; provider: string | null;
   accepted_at: number; reverted_by: string | null; audit_status: string | null; github: GithubField;
 }
 interface Session { session_id: string; state: string; agent: string | null; name: string | null; started_at: number; last_at: number; ended_at: number | null; desktop: boolean; events: number; height: number | null }
-interface LineageRow { lineage_id: string; recipe_name: string | null; class: string | null; status: string; height: number; open_candidates: number; accepted: number; metrics: (ProjectMetric & { points: Point[]; latest_change_pct: number | null })[]; timeline: Gen[]; sessions: Session[] }
+interface LineageRow { lineage_id: string; recipe_name: string | null; class: string | null; status: string; height: number; open_candidates: number; accepted: number; listed_generations?: number; unlisted_generations?: number; metrics: (ProjectMetric & { points: Point[]; latest_change_pct: number | null })[]; timeline: Gen[]; sessions: Session[] }
 type Project = Omit<ProjectRow, "lineages"> & { lineages: LineageRow[] };
 
 function metricCharts(l: LineageRow): Raw {
   const ms = l.metrics.filter((m) => m.points.length || m.baseline !== null);
   if (!ms.length) return empty("No measured values yet", "Values appear with the unit's first accepted generation.");
   return html`<div class="ins-grid">${ms.map(
-    (m) => html`<div class="ins-mini" data-metric="${m.name}"><h3>${m.name}<span>${m.direction} is better${m.improvement_pct ? `, ${pct(m.improvement_pct)} from baseline` : ""}</span></h3>
+    (m) => html`<div class="ins-mini" data-metric="${m.name}"><h3>${m.name}<span>${m.direction} is better${m.improvement_pct ? `, ${pct(m.improvement_pct)} from ${m.start ? "the start" : "baseline"}` : ""}</span></h3>
       ${chartSlot({
-        type: "line", label: m.name, xLabel: "generation", baseline: m.baseline,
+        type: "line", label: m.name, xLabel: "generation", baseline: m.start ? m.start.value : m.baseline,
         points: m.points.map((p) => ({ x: p.height, y: p.value, hit: p.targeted, tip: `gen ${p.height}: ${p.value.toLocaleString("en-US")}${p.parent !== null ? `\nparent measured ${p.parent.toLocaleString("en-US")}` : ""}\nmedian of ${p.replays} counted replay${p.replays === 1 ? "" : "s"}${p.targeted ? "\nthis generation targeted this metric" : ""}\n${stamp(p.at)}` })),
       }, 150)}</div>`,
   )}</div>
-  <div class="ins-legend"><span><i class="dash"></i>baseline (calibration)</span><span><i></i>measured after each accepted generation (filled: the generation targeted this metric)</span></div>`;
+  <div class="ins-legend"><span><i class="dash"></i>${ms.some((m) => m.start) ? `start (${START_TITLE})` : "baseline (calibration)"}</span><span><i></i>measured after each accepted generation (filled: the generation targeted this metric)</span></div>`;
 }
 
 function metricTable(l: LineageRow): Raw {
   return html`<div class="tw"><table class="t">
-    <thead><tr><th>Metric</th><th class="right">Baseline</th><th class="right">Best</th><th class="right">Improvement</th><th class="right hide-sm">Latest</th><th class="right hide-sm">Measured</th></tr></thead>
+    <thead><tr><th>Metric</th><th class="right">${l.metrics.some((m) => m.start) ? "Start" : "Baseline"}</th><th class="right">Best</th><th class="right">Improvement</th><th class="right hide-sm">Latest</th><th class="right hide-sm">Measured</th></tr></thead>
     <tbody>${l.metrics.map(
       (m) => html`<tr><td>${m.name}<div class="sub">${m.direction} is better</div></td>
-        <td class="right num">${metricVal(m.baseline)}</td>
+        <td class="right num"${m.start ? html` title="${START_TITLE}"` : ""}>${metricVal(m.start ? m.start.value : m.baseline)}</td>
         <td class="right num">${m.best ? html`${metricVal(m.best.value)}<div class="sub"><a class="link" href="/generations/${m.best.gen_id}">gen ${m.best.height}</a></div>` : html`<span class="faint">none yet</span>`}</td>
         <td class="right num ${m.improvement_pct && m.improvement_pct > 0 ? "good-t" : ""}">${m.improvement_pct === null ? html`<span class="faint">no change yet</span>` : pct(m.improvement_pct)}</td>
         <td class="right num hide-sm">${m.latest ? html`${metricVal(m.latest.value)}<div class="sub">gen ${m.latest.height}</div>` : html`<span class="faint">none yet</span>`}</td>
@@ -51,21 +52,24 @@ function metricTable(l: LineageRow): Raw {
     )}</tbody></table></div>`;
 }
 
-function timeline(l: LineageRow, hidden: boolean): Raw {
-  if (!l.timeline.length) return empty("No accepted generation yet");
+function timeline(l: LineageRow): Raw {
+  // a row without an author is not listed (a Core older than the hidden rule still sends such rows)
+  const rows = l.timeline.filter((g) => g.author);
+  const note = unlistedLine(l.unlisted_generations);
+  if (!rows.length) return html`${empty("No accepted generation yet")}${note ? html`<div class="panel-note">${note}</div>` : ""}`;
   return html`<div class="tw"><table class="t">
     <thead><tr><th>Gen</th><th>Change</th><th class="hide-sm">Author</th><th>GitHub</th><th class="right hide-sm">Accepted</th></tr></thead>
-    <tbody>${l.timeline.map(
+    <tbody>${rows.map(
       (g) => html`<tr class="${g.reverted_by ? "reverted" : ""}" data-gen="${g.gen_id}">
         <td><a class="link" href="/generations/${g.gen_id}">${g.height}</a></td>
         <td>${kindBadge(g.kind, g.target)} ${effect(g.effect, { compact: true })}${g.reverted_by ? html` ${badge("reverted", "bad", icon.revert)}` : ""}${g.audit_status ? html` ${auditBadge(g.audit_status)}` : ""}
-          <div class="sub show-sm">${g.author_hidden ? "test launch" : agentLabel(g.author, g.author_name)}</div></td>
-        <td class="hide-sm">${g.author_hidden ? html`<span class="faint" title="A test launch: listed with ?hidden=1">test launch</span>` : html`<a class="link" href="/agents/${g.author}/profile">${agentLabel(g.author, g.author_name)}</a>`}
-          <div class="sub">${g.model ? `${g.model}${g.provider ? `, ${providerName(g.provider)}` : ""}` : g.author_hidden ? "" : "model not attested"}</div></td>
+          <div class="sub show-sm">${agentLabel(g.author, g.author_name)}</div></td>
+        <td class="hide-sm"><a class="link" href="/agents/${g.author}/profile">${agentLabel(g.author, g.author_name)}</a>${g.hidden ? html` ${badge("hidden")}` : ""}
+          <div class="sub">${g.model ? `${g.model}${g.provider ? `, ${providerName(g.provider)}` : ""}` : "model not attested"}</div></td>
         <td>${githubLink(g.github)}</td>
         <td class="right hide-sm">${when(g.accepted_at)}</td></tr>`,
     )}</tbody></table></div>
-    ${hidden ? "" : l.timeline.some((g) => g.author_hidden) ? html`<div class="panel-note">Generations by test launches keep their place in the lineage; <a class="link" href="?hidden=1" data-q>show their authors</a>.</div>` : ""}`;
+    ${note ? html`<div class="panel-note">${note}</div>` : ""}`;
 }
 
 function sessions(l: LineageRow): Raw {
@@ -121,14 +125,14 @@ export async function projectPage(params: string[]): Promise<Page> {
     ])}</section>
     ${shown.sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || b.timeline.length - a.timeline.length).map(
       (l) => html`<section class="pjd-lin" data-lineage="${l.lineage_id}">
-        <div class="pjd-lin-h"><h2>${l.recipe_name ?? "unit"}</h2><span class="sub">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}, ${l.open_candidates} open candidate${l.open_candidates === 1 ? "" : "s"}</span>
+        <div class="pjd-lin-h"><h2>${l.recipe_name ?? "unit"}</h2><span class="sub">${[unitGens(l), `${l.open_candidates} open candidate`].filter(Boolean).join(", ")}${l.open_candidates === 1 ? "" : "s"}</span>
           <a class="link" href="/units/${l.lineage_id}">Unit page</a></div>
         <div class="grid-2" style="margin-top:12px">
           ${panel("Metrics over generations", metricCharts(l), { count: l.metrics.length })}
           ${panel("Sessions", sessions(l), { count: l.sessions.filter((s) => s.state === "live").length ? `${l.sessions.filter((s) => s.state === "live").length} live` : undefined })}
         </div>
         <div style="margin-top:20px">${panel("Baseline and best", metricTable(l))}</div>
-        <div style="margin-top:20px">${panel("Generation timeline", timeline(l, hidden), { count: l.timeline.length })}</div>
+        <div style="margin-top:20px">${panel("Generation timeline", timeline(l), { count: l.timeline.filter((g) => g.author).length })}</div>
       </section>`,
     )}
     ${quiet ? html`<p class="ins-note">${quiet} retired unit${quiet === 1 ? "" : "s"} of this repository without an accepted generation ${quiet === 1 ? "is" : "are"} left out (see the <a class="link" href="/projects?all=1" data-q>full list</a>).</p>` : ""}

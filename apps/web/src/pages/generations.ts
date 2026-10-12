@@ -12,11 +12,11 @@ import { docsUrl } from "../docs-url.ts";
 // accepted generation across projects from Core GET /v1/analytics/generations, filterable by project,
 // agent, metric, class, model, provider and date, sorted by time or effect size, 50 per page. Each row
 // links to its generation page and its GitHub commit with the "Verified on GitHub" state, and to how to
-// verify it. Test launches show only with ?hidden=1. genRow() is a pure function of one row.
+// verify it. A hidden launch's generations show only with ?hidden=1, marked "hidden". genRow() is a pure function of one row.
 
 export interface GenRow {
   gen_id: string; lineage_id: string; recipe_name: string | null; repo: string; repo_key: string; class: string | null; height: number; kind: string | null; target: unknown;
-  metric: string | null; effect: any; gain_pct: number; fixed: number; author: string; author_name: string | null; test_launch: boolean; model: string | null; provider: string | null;
+  metric: string | null; effect: any; gain_pct: number; fixed: number; author: string; author_name: string | null; hidden?: boolean; model: string | null; provider: string | null;
   accepted_at: number; epoch: number; reverted_by: string | null; audit_status: string | null; github: GithubField;
 }
 
@@ -28,7 +28,7 @@ export function genRow(r: GenRow): Raw {
       <div class="sub"><a class="link" href="/projects/${r.repo_key}">${/^https:\/\/github\.com\//.test(r.repo) ? repoLabel(r.repo) : r.repo}</a>${r.class ? ` · ${r.class}` : ""}</div>
       <div class="sub show-sm">${agentLabel(r.author, r.author_name)} · ${when(r.accepted_at)}</div></td>
     <td>${kindBadge(r.kind, r.target)}<div style="margin-top:4px">${effect(r.effect, { compact: true })}</div>${r.reverted_by ? badge("reverted", "bad", icon.revert) : ""}${r.audit_status ? auditBadge(r.audit_status) : ""}</td>
-    <td class="hide-sm"><a class="link" href="/agents/${r.author}/profile">${agentLabel(r.author, r.author_name)}</a>${r.test_launch ? html` ${badge("test launch")}` : ""}
+    <td class="hide-sm"><a class="link" href="/agents/${r.author}/profile">${agentLabel(r.author, r.author_name)}</a>${r.hidden ? html` ${badge("hidden")}` : ""}
       <div class="sub">${r.model ? `${r.model}${r.provider ? `, ${providerName(r.provider)}` : ""}` : "model not attested"}</div></td>
     <td>${githubLink(r.github)}<div class="sub"><a class="link" href="/generations/${r.gen_id}#github" title="The generation page's GitHub panel: the trailers, diff and parent to check">How to verify</a></div></td>
     <td class="right hide-sm">${when(r.accepted_at)}<div class="sub">epoch ${r.epoch}</div></td>
@@ -50,7 +50,7 @@ export async function generationsPage(): Promise<Page> {
         <thead><tr><th>Generation</th><th>Effect</th><th class="hide-sm">Agent and model</th><th>GitHub</th><th class="right hide-sm">Accepted</th></tr></thead>
         <tbody>${r.rows.map(genRow)}</tbody></table></div>`
     : empty(filtered ? "No accepted generation matches" : "No accepted generation yet", filtered ? html`<a class="link" href="/generations" data-q>Clear the filters</a>` : undefined);
-  const pager = html`<div class="ins-pager"><span>${r.total} accepted generation${r.total === 1 ? "" : "s"}${r.hidden_included ? ", test launches included" : ""} · page ${r.page} of ${r.pages}</span>
+  const pager = html`<div class="ins-pager"><span>${r.total} accepted generation${r.total === 1 ? "" : "s"}${r.hidden_included ? ", hidden launches included" : ""} · page ${r.page} of ${r.pages}</span>
     <span class="ins-chips"><a class="link" data-q href="${hrefWith("page", String(r.page - 1), [])}" aria-disabled="${r.page <= 1 ? "true" : "false"}">Previous</a>
     <a class="link" data-q href="${hrefWith("page", String(r.page + 1), [])}" aria-disabled="${r.page >= r.pages ? "true" : "false"}">Next</a></span></div>`;
   const body = html`<div class="ins-page gx-page">
@@ -59,7 +59,7 @@ export async function generationsPage(): Promise<Page> {
     <section class="panel">
       <div class="ins-bar">
         <div class="seg" role="group" aria-label="Sort">${chip("sort", "", "Newest", sort === "time" ? "" : sort)}${chip("sort", "effect", "Largest effect", sort)}</div>
-        ${p.get("hidden") === "1" ? html`<a class="link ins-clear" href="${hrefWith("hidden", "")}" data-q>Hide test launches</a>` : ""}
+        ${p.get("hidden") === "1" ? html`<a class="link ins-clear" href="${hrefWith("hidden", "")}" data-q>Leave hidden launches out</a>` : ""}
       </div>
       <div class="ins-bar ins-filters">
         ${selectBox("repo", "Project", (f.projects ?? []).map((x: any) => [x.key, x.key]), p.get("repo") ?? "")}

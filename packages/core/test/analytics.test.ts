@@ -69,7 +69,7 @@ describe("analytics aggregates", () => {
     const ps = v["/v1/analytics/projects?all=1"].projects;
     expect(ps).toHaveLength(1);
     const p = ps[0];
-    expect(p).toMatchObject({ key: "example/fx", repo: "https://github.com/example/fx", github: true, accepted: 1, accepted_by_test_launches: 0, authors: 1, last_improvement_at: gen.accepted_at, open_candidates: 0 });
+    expect(p).toMatchObject({ key: "example/fx", repo: "https://github.com/example/fx", github: true, accepted: 1, authors: 1, last_improvement_at: gen.accepted_at, open_candidates: 0 });
     const ir = p.lineages[0].metrics.find((m: any) => m.name === "ir");
     expect(ir).toMatchObject({ baseline: CALIB.metrics.ir!.base_value, best: { value: 900, height: 1, gen_id: c.gen_id }, improvement_pct: 10, measured_generations: 1 });
     // a metric the calibration disabled has no baseline
@@ -79,7 +79,11 @@ describe("analytics aggregates", () => {
 
     const pj = v["/v1/analytics/project?repo=example/fx"];
     expect(pj.lineages[0].timeline).toHaveLength(1);
-    expect(pj.lineages[0].timeline[0]).toMatchObject({ gen_id: c.gen_id, height: 1, author: a.id, author_hidden: false, metric: "ir", gain_pct: 10 });
+    expect(pj.lineages[0].timeline[0]).toMatchObject({ gen_id: c.gen_id, height: 1, author: a.id, metric: "ir", gain_pct: 10 });
+    // no hidden launch: no start, no hidden wording, every generation listed
+    expect(p.lineages[0]).toMatchObject({ accepted: 1, listed_generations: 1, unlisted_generations: 0, height: 1 });
+    expect(ir.start).toBeUndefined();
+    expect(JSON.stringify(v)).not.toMatch(/test_launch|accepted_by_test_launches|author_hidden|accepted_hidden|"hidden":true/);
     expect(pj.lineages[0].metrics.find((m: any) => m.name === "ir").points).toEqual([{ height: 1, gen_id: c.gen_id, value: 900, parent: 1000, replays: expect.any(Number), at: gen.accepted_at, targeted: true }]);
     expect((await e.anon.get("/v1/analytics/project?repo=nobody/none")).status).toBe(404);
     expect((await e.anon.get("/v1/analytics/project")).status).toBe(400);
@@ -129,24 +133,111 @@ describe("analytics aggregates", () => {
     expect((await e.anon.get("/v1/analytics/overview?window=1y")).status).toBe(400);
   });
 
-  test("hidden launches: left out of agent rows and the explorer unless hidden=1; kept in the lineage with the author withheld", async () => {
+  test("hidden launches: their work is left out of every count and list unless hidden=1; the unit says what listed agents start from", async () => {
     const e = (env = await setup({ verifiers: 3 }));
+    const h = await makeAuthor(e);
     const a = await makeAuthor(e);
-    const { cand } = await attempt(e, a, "one", 900);
+    // a generation by the launch that will be hidden (ir 1000 to 900), then one by a listed agent on top of it (to 810)
+    const under = await attempt(e, h, "one", 900);
+    const over = await attempt(e, a, "two", 810);
     e.clock.advance(LEARNINGS_LIMITS.bare_grace_ms + 1);
-    const mint = (await expectOk(e.anon.get(`/v1/agents/${a.id}`))).mint as string;
-    await expectOk(e.admin.c.post("/v1/admin/hidden", { add: [{ mint, reason: "test launch" }] }));
+    const genOf = async (commit: string) => (await expectOk(e.anon.get(`/v1/candidates/${commit}`))).gen_id as string;
+    const gUnder = await genOf(under.cand.commit_id), gOver = await genOf(over.cand.commit_id);
+    const irOf = (v: Record<string, any>, u: string) => (u.includes("/project?") ? v[u] : v[u].projects[0]).lineages[0].metrics.find((m: any) => m.name === "ir");
+    const P = "/v1/analytics/projects?all=1", PJ = "/v1/analytics/project?repo=example/fx", G = "/v1/analytics/generations?limit=200";
+
+    // nobody hidden: today's figures, against the calibration, with no start
+    const before = await views(e);
+    const stats0 = await expectOk(e.anon.get("/v1/stats"));
+    expect(before[P].projects[0]).toMatchObject({ accepted: 2, reverted: 0, authors: 2 });
+    expect(before[P].projects[0].lineages[0]).toMatchObject({ accepted: 2, listed_generations: 2, unlisted_generations: 0, height: 2 });
+    for (const u of [P, PJ]) {
+      expect(irOf(before, u)).toMatchObject({ baseline: 1000, best: { value: 810, height: 2 }, latest: { value: 810, height: 2 }, improvement_pct: 19 });
+      expect(irOf(before, u).start).toBeUndefined();
+    }
+    expect(irOf(before, PJ).points.map((p: any) => p.value)).toEqual([900, 810]);
+    expect(before[PJ].lineages[0].timeline.map((t: any) => t.gen_id)).toEqual([gOver, gUnder]);
+    expect(before[G].total).toBe(2);
+    expect(before["/v1/analytics/dashboard?window=all"].kpis.improvements.value).toBe(2);
+    expect(before["/v1/analytics/overview?window=all"].verification.final_candidates).toEqual({ accepted: 2 });
+    expect(JSON.stringify(before)).not.toMatch(/test_launch|accepted_by_test_launches|author_hidden|accepted_hidden|"hidden":true/);
+
+    const mint = (await expectOk(e.anon.get(`/v1/agents/${h.id}`))).mint as string;
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { add: [{ mint, reason: "moderation" }] }));
     const off = await views(e);
+    // nothing names the hidden agent or its generation, in any analytics route
+    for (const [u, body] of Object.entries(off)) {
+      expect(JSON.stringify(body), u).not.toContain(h.id);
+      expect(JSON.stringify(body), u).not.toContain(gUnder);
+      expect(JSON.stringify(body), u).not.toMatch(/test_launch|accepted_by_test_launches|author_hidden|accepted_hidden|"hidden":true/);
+    }
+    const p = off[P].projects[0];
+    expect(p).toMatchObject({ accepted: 1, reverted: 0, authors: 1, last_improvement_at: (await expectOk(e.anon.get(`/v1/generations/${gOver}`))).accepted_at });
+    // the unit's height is the real one; the counts say how much of the chain is listed
+    expect(p.lineages[0]).toMatchObject({ accepted: 1, listed_generations: 1, unlisted_generations: 1, height: 2 });
+    for (const u of [P, PJ]) {
+      // listed work is measured from the code it was built on (900 at height 1), not from the calibration
+      expect(irOf(off, u)).toMatchObject({ baseline: 1000, start: { value: 900, height: 1 }, best: { value: 810, height: 2, gen_id: gOver }, latest: { value: 810, height: 2 }, improvement_pct: 10, latest_change_pct: 10 });
+    }
+    expect(irOf(off, P).measured_generations).toBe(1);
+    expect(irOf(off, PJ).points.map((x: any) => x.value)).toEqual([810]);
+    expect(off[PJ].lineages[0].timeline.map((t: any) => t.gen_id)).toEqual([gOver]);
+    expect(off[PJ].lineages[0].timeline[0]).toMatchObject({ author: a.id, height: 2 });
+    expect(off[G].total).toBe(1);
+    expect(off[G].rows[0]).toMatchObject({ gen_id: gOver, author: a.id });
+    expect(off[G].facets.agents.map((x: any) => x.agent)).toEqual([a.id]);
+    // every figure of the Analytics page: one attempt, one generation, one agent, its spend, its replays
+    const o = off["/v1/analytics/overview?window=all"], o0 = before["/v1/analytics/overview?window=all"];
+    expect(o.costs.totals.attempts).toBe(1);
+    expect(o.costs.by_agent.map((x: any) => x.agent)).toEqual([a.id]);
+    expect(o.verification.final_candidates).toEqual({ accepted: 1 });
+    expect(o0.verification.replays.revealed).toBeGreaterThan(0);
+    expect(o.verification.replays.revealed).toBe(o0.verification.replays.revealed / 2);
+    const d = off["/v1/analytics/dashboard?window=all"], d0 = before["/v1/analytics/dashboard?window=all"];
+    expect(d.kpis.improvements.value).toBe(1);
+    expect(d.kpis.acceptance.attempts).toBe(1);
+    expect(d.kpis.spend.value).toBe(d0.kpis.spend.value / 2);
+    expect(d.agents.map((x: any) => x.agent)).toEqual([a.id]);
+    expect(d.verification.replays).toBe(d0.verification.replays / 2);
+    const r = off["/v1/analytics/results?window=all"].metrics.find((m: any) => m.metric === "ir");
+    expect(r).toMatchObject({ baseline: 1000, start: { value: 900, height: 1 }, improvement_pct: 10, records: 1 });
+    expect(before["/v1/analytics/results?window=all"].metrics.find((m: any) => m.metric === "ir")).toMatchObject({ baseline: 1000, improvement_pct: 19, records: 2 });
+    // the landing page's and the embed kit's counts (GET /v1/stats)
+    const stats = await expectOk(e.anon.get("/v1/stats"));
+    expect(stats).toMatchObject({ generations: stats0.generations - 1, candidates: stats0.candidates - 1, agents: stats0.agents - 1, hidden_agents: 1 });
+    expect(await expectOk(e.anon.get("/v1/stats?hidden=1"))).toMatchObject({ generations: stats0.generations, candidates: stats0.candidates, agents: stats0.agents });
+
+    // hidden=1 (the operator's view): everything, as before hiding, with the hidden author marked "hidden"
+    const on = await views(e, "&hidden=1");
+    expect(on[`${P}&hidden=1`].projects[0]).toMatchObject({ accepted: 2, accepted_hidden: 1, authors: 2 });
+    expect(on[`${P}&hidden=1`].projects[0].lineages[0]).toMatchObject({ accepted: 2, listed_generations: 2, unlisted_generations: 0 });
+    expect(irOf(on, `${PJ}&hidden=1`)).toMatchObject({ best: { value: 810 }, improvement_pct: 19 });
+    expect(irOf(on, `${PJ}&hidden=1`).start).toBeUndefined();
+    const rows = on[`${G}&hidden=1`].rows;
+    expect(rows.map((x: any) => [x.gen_id, x.author, x.hidden])).toEqual([[gOver, a.id, undefined], [gUnder, h.id, true]]);
+    expect(on[`${PJ}&hidden=1`].lineages[0].timeline.map((t: any) => [t.author, t.hidden])).toEqual([[a.id, undefined], [h.id, true]]);
+    expect(on["/v1/analytics/overview?window=all&hidden=1"].costs.by_agent.map((x: any) => [x.agent, x.hidden]).sort()).toEqual([[a.id, undefined], [h.id, true]].sort());
+    expect(JSON.stringify(on)).not.toMatch(/test_launch|test launch/);
+  });
+
+  test("hidden launches: a unit with only hidden generations has no listed figure, and its start is the tip", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const h = await makeAuthor(e);
+    await attempt(e, h, "one", 900);
+    e.clock.advance(LEARNINGS_LIMITS.bare_grace_ms + 1);
+    const mint = (await expectOk(e.anon.get(`/v1/agents/${h.id}`))).mint as string;
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { add: [{ mint, reason: "moderation" }] }));
+    const off = await views(e);
+    const p = off["/v1/analytics/projects?all=1"].projects[0];
+    expect(p).toMatchObject({ accepted: 0, reverted: 0, authors: 0, last_improvement_at: null });
+    expect(p.accepted_hidden).toBeUndefined();
+    expect(p.lineages[0]).toMatchObject({ accepted: 0, listed_generations: 0, unlisted_generations: 1, height: 1 });
+    expect(p.lineages[0].metrics.find((m: any) => m.name === "ir")).toMatchObject({ baseline: 1000, start: { value: 900, height: 1 }, best: null, latest: null, improvement_pct: null, measured_generations: 0 });
+    expect(off["/v1/analytics/project?repo=example/fx"].lineages[0].timeline).toEqual([]);
     expect(off["/v1/analytics/generations?limit=200"].total).toBe(0);
     expect(off["/v1/analytics/overview?window=all"].costs.by_agent).toEqual([]);
-    const p = off["/v1/analytics/projects?all=1"].projects[0];
-    expect(p).toMatchObject({ accepted: 1, accepted_by_test_launches: 1, authors: 0 });
-    const t = off["/v1/analytics/project?repo=example/fx"].lineages[0].timeline[0];
-    expect(t).toMatchObject({ author: null, author_name: null, author_hidden: true, model: null });
-    expect(JSON.stringify(off)).not.toContain(a.id);
-    const on = await views(e, "&hidden=1");
-    expect(on["/v1/analytics/generations?limit=200&hidden=1"].rows[0]).toMatchObject({ author: a.id, test_launch: true, gen_id: (await expectOk(e.anon.get(`/v1/candidates/${cand.commit_id}`))).gen_id });
-    expect(on["/v1/analytics/overview?window=all&hidden=1"].costs.by_agent[0].agent).toBe(a.id);
+    expect(off["/v1/analytics/dashboard?window=all"].kpis.improvements.value).toBe(0);
+    expect(JSON.stringify(off)).not.toContain(h.id);
   });
 
   test("author-blind: an open candidate changes nothing but its lineage's open count, and no route names its author", async () => {

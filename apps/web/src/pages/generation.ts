@@ -1,4 +1,5 @@
 import { get, loadConfig, loadLineageNames } from "../api.ts";
+import { loadHidden } from "../building.ts";
 import { diffStats, renderDiff } from "../diff.ts";
 import { effect, gainPct, int, lineageName, shortHex, stamp, target, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
@@ -29,7 +30,8 @@ export function verdictPanel(v: any, title = "Verdict", extra: [string, unknown]
 }
 
 export async function generationPage([id]: string[]): Promise<Page> {
-  const [g, cfg] = await Promise.all([get(`generations/${id}`), loadConfig(), loadLineageNames()]);
+  // a hidden launch's generation still resolves by direct link (hiding deletes nothing); it says "not listed"
+  const [g, cfg, hiddenList] = await Promise.all([get(`generations/${id}`), loadConfig(), loadHidden(), loadLineageNames()]);
   const l = await get(`lineages/${g.lineage_id}`);
   const recipe = l.recipe;
   const cal = l.calibration;
@@ -89,7 +91,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
       <div class="ph-sub"><span class="hash" title="${g.gen_id}">${shortHex(g.gen_id, 16)}</span>
         ${g.parent_gen_id ? html`<span>parent ${genLink(g.parent_gen_id)}</span>` : ""}
         ${g.candidate_id ? html`<span>candidate ${candLink(g.candidate_id)}</span>` : ""}
-        ${g.author ? html`<span>author ${agentLink(g.author)}</span>` : ""}
+        ${g.author ? html`<span>author ${agentLink(g.author)}${hiddenList.agents.has(g.author) ? html` <span class="faint" title="Hidden from listings. This page still resolves by direct link.">not listed</span>` : ""}</span>` : ""}
         ${g.team ? html`<span>team of ${g.team.members.length}</span>` : ""}
         <span>epoch ${epochLink(g.epoch)}</span>
         <span title="${stamp(g.accepted_at)}">accepted ${when(g.accepted_at)}</span></div></div></div>

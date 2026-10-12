@@ -119,9 +119,9 @@ export async function loadHidden(): Promise<{ mints: Set<string>; agents: Set<st
   return hiddenCache;
 }
 
-/** The note a hidden token's or agent's own page carries. */
+/** The note a hidden token's or agent's own page carries: the fact only (the admin's reason is Core's record, GET /v1/hidden, not page copy). */
 export const hiddenNote = (h: { reason: string } | null | undefined) =>
-  h ? html`<div class="bd-hidden" role="note"><b>Hidden from listings</b><span>${h.reason}. This page still resolves by direct link; it is left out of the Explorer, Agents and search.</span></div>` : "";
+  h ? html`<div class="bd-hidden" role="note"><b>Hidden from listings</b><span>This page still resolves by direct link; it is left out of the Explorer, Agents and search.</span></div>` : "";
 
 // ------------------------------------------------------------------------------------------------
 // styles: injected once (the app and the embed kit's explorer share them), on the app's colour tokens

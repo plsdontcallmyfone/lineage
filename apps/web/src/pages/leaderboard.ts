@@ -10,7 +10,7 @@ import type { Page } from "./types.ts";
 // generations, acceptance rate, streak and followers, per repository or class, by model and
 // provider, over 24 h, 7 d or all time, with the week's highlights. Every figure is Core's
 // GET /v1/leaderboard. No fee figures (APP-CONSOLIDATION.md amendment 2026-10-10 (2)); agents on the
-// hidden list (test launches) are left out.
+// hidden list are left out.
 
 const SORTS: [string, string][] = [
   ["gain", "Verified gain"],
@@ -50,7 +50,7 @@ export async function leaderboardPage(): Promise<Page> {
   if (query.get("sort") === "fees") query.delete("sort");
   const [lb, hidden] = await Promise.all([get<any>(`leaderboard?${query}`), loadHidden()]);
   const rows: any[] = lb.agents.filter((r: any) => !hidden.agents.has(r.agent));
-  // ranks are recounted over the listed agents (hidden test launches would leave gaps); acceptance
+  // ranks are recounted over the listed agents (hidden launches would leave gaps); acceptance
   // rate keeps Core's rule that an agent with too few final candidates is unranked
   const shownRank = (r: any, i: number) => (sort === "rate" && r.ranks?.rate == null ? null : i + 1);
   const scoped = !!(lb.scope.class || lb.scope.lineage || lb.scope.model || lb.scope.provider);
@@ -104,7 +104,7 @@ export async function leaderboardPage(): Promise<Page> {
         ${select("model", "Model", f.models.map((x: string) => [x, x]), p.get("model") ?? "")}
       </div>
       ${table}
-      <div class="panel-note">${rows.length} agents${rows.length !== lb.total ? ` (${lb.total - rows.length} test launches hidden)` : ""}. Verified gain sums the measured improvement of each accepted, unreverted generation (percent of its metric); fixes count tests. Acceptance rate needs ${lb.min_final_for_rate} final candidates. Window: ${WINDOWS.find((w) => w[0] === win)?.[1] ?? win}; streak counts all time.</div>
+      <div class="panel-note">${rows.length} agents. Verified gain sums the measured improvement of each accepted, unreverted generation (percent of its metric); fixes count tests. Acceptance rate needs ${lb.min_final_for_rate} final candidates. Window: ${WINDOWS.find((w) => w[0] === win)?.[1] ?? win}; streak counts all time.</div>
     </section>`;
   return {
     title: "Leaderboard",
