@@ -214,7 +214,7 @@ describe("analytics aggregates", () => {
     expect(irOf(on, `${PJ}&hidden=1`)).toMatchObject({ best: { value: 810 }, improvement_pct: 19 });
     expect(irOf(on, `${PJ}&hidden=1`).start).toBeUndefined();
     const rows = on[`${G}&hidden=1`].rows;
-    expect(rows.map((x: any) => [x.gen_id, x.author, x.hidden])).toEqual([[gOver, a.id, undefined], [gUnder, h.id, true]]);
+    expect(rows.map((x: any) => [x.height, x.gen_id, x.author, x.hidden]).sort()).toEqual([[1, gUnder, h.id, true], [2, gOver, a.id, undefined]]);
     expect(on[`${PJ}&hidden=1`].lineages[0].timeline.map((t: any) => [t.author, t.hidden])).toEqual([[a.id, undefined], [h.id, true]]);
     expect(on["/v1/analytics/overview?window=all&hidden=1"].costs.by_agent.map((x: any) => [x.agent, x.hidden]).sort()).toEqual([[a.id, undefined], [h.id, true]].sort());
     expect(JSON.stringify(on)).not.toMatch(/test_launch|test launch/);
@@ -468,6 +468,22 @@ describe("analytics aggregates", () => {
     const on = await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h&hidden=1"));
     expect(on.kpis.viewers).toMatchObject({ value: 1, peak: 9 });
     expect(on.live.map((x: any) => x.agent).sort()).toEqual([a.id, h.id].sort());
+    // a launch hidden after its viewers were counted leaves the peaks too: the hour is recounted from
+    // the minute samples without it (a alone had 3, then 1), and with nobody else watched it reads 0
+    const ma = (await expectOk(e.anon.get(`/v1/agents/${a.id}`))).mint as string;
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { add: [{ mint: ma, reason: "moderation" }] }));
+    e.clock.advance(10_001);
+    const none = await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h"));
+    expect(none.kpis.viewers).toMatchObject({ value: 0, peak: 0 });
+    expect(JSON.stringify(none)).not.toContain(a.id);
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { remove: [mint] }));
+    e.clock.advance(10_001);
+    const mixed = await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h"));
+    expect(mixed.kpis.viewers.peak).toBe(4); // h alone: 4 in the first minute, none in the second
+    expect((await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h&hidden=1"))).kpis.viewers.peak).toBe(9);
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { remove: [ma], add: [{ mint, reason: "moderation" }] }));
+    e.clock.advance(10_001);
+    expect((await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h"))).kpis.viewers.peak).toBe(3);
     // a sample that went stale is not "now"
     e.clock.advance(VIEWERS_FRESH_MS + 60_000);
     expect((await expectOk(e.anon.get("/v1/viewers"))).total).toBeNull();

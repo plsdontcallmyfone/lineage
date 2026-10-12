@@ -1785,7 +1785,7 @@ export class Analytics {
       const vw = viewersOf(this.core);
       const vNow = vw.now(include);
       const vBy = new Map((vNow?.sessions ?? []).map((x) => [x.session_id, x.viewers]));
-      const hourly = vw.hourly(prev?.from ?? from, include);
+      const hourly = this.viewerPeaks(prev?.from ?? from, include);
       const vPeak = arr(() => null as number | null);
       let prevPeak: number | null = null;
       for (const h of hourly) {
@@ -1845,6 +1845,38 @@ export class Analytics {
           .sort((a, c) => (c.viewers ?? 0) - (a.viewers ?? 0) || a.started_at - c.started_at),
       };
     });
+  }
+
+  /**
+   * Hourly viewer peaks for the dashboard. viewers.ts keeps the listed agents' peak as it was when each
+   * sample was taken, so a launch hidden later would stay in it: an hour in which an agent that is
+   * hidden now had viewers is recounted without it, exactly (0 when nobody else was watched; else the
+   * peak over the minute samples, which are kept 48 h). Where the samples are gone the hour is left
+   * out: a gap, never a number that counts hidden work or a guess.
+   */
+  private viewerPeaks(from: number, include: boolean): { hour: number; peak: number; samples: number }[] {
+    const rows = viewersOf(this.core).hourly(from, include);
+    const hid = this.hiddenAgents();
+    if (include || !hid.size || !rows.length) return rows;
+    const per = new Map<number, { hidden: boolean; listed: boolean }>();
+    for (const r of this.db.query<{ hour: number; agent: string }, [number]>("SELECT hour, agent FROM viewer_hourly WHERE hour >= ? AND agent NOT IN ('', '*') AND peak > 0").all(from)) {
+      const x = per.get(r.hour) ?? per.set(r.hour, { hidden: false, listed: false }).get(r.hour)!;
+      if (hid.has(r.agent)) x.hidden = true;
+      else x.listed = true;
+    }
+    const minutes = this.db.query<{ at: number; agent: string; viewers: number }, [number, number]>("SELECT at, agent, viewers FROM viewer_samples WHERE at >= ? AND at < ? AND session_id != '' AND agent != ''");
+    const out: { hour: number; peak: number; samples: number }[] = [];
+    for (const r of rows) {
+      const x = per.get(r.hour);
+      if (!x?.hidden) out.push(r);
+      else if (!x.listed) out.push({ ...r, peak: 0 });
+      else {
+        const by = new Map<number, number>();
+        for (const m of minutes.all(r.hour, r.hour + HOUR)) by.set(m.at, (by.get(m.at) ?? 0) + (hid.has(m.agent) ? 0 : m.viewers));
+        if (by.size) out.push({ ...r, peak: Math.max(...by.values()) });
+      }
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------------------------------- protocol revenue

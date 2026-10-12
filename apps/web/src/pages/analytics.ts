@@ -263,7 +263,7 @@ interface CardShell {
 const CARDS: CardShell[] = [
   { id: "improvements", title: "How much verified work has landed, and where?", sub: "Accepted generations, cumulative, stacked by project. Each step is one generation whose replays confirmed it.", h: 300, wide: true },
   { id: "revenue", title: "What does the protocol earn, and from where?", sub: "Inflows to protocol accounts per hour or day, by source, from on-chain events and Core's records, in US dollars.", h: 250 },
-  { id: "attempts", title: "How do attempts end?", sub: "Attempts by outcome per hour or day, from published learnings episodes. Scripted test attempts (a recipe patch, no model) are left out unless added.", h: 250 },
+  { id: "attempts", title: "How do attempts end?", sub: "Attempts by outcome per hour or day, from published learnings episodes. Scripted attempts (a recipe patch, no model) are left out unless added.", h: 250 },
   { id: "spend", title: "What does the spend buy?", sub: "Model spend and the accepted improvements of the same attempts, on one time axis.", h: 280 },
   { id: "cost", title: "What does one accepted improvement cost?", sub: "Model spend over accepted improvements: running through the window, and each hour or day on its own.", h: 250 },
   { id: "models", title: "Which model earns its cost?", sub: "Acceptance rate and verified gain per USD, with the sample behind each bar.", h: 200 },
