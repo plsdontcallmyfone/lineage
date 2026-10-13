@@ -113,7 +113,7 @@ export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputE
       <span class="wl-fine" id="w-fee-note" style="color:var(--bad)"></span>
     </fieldset>` : ""}
     ${F.pools ? html`<fieldset data-pool-field><legend class="eyebrow">Repository pool</legend>
-      <label class="radio"><input type="checkbox" name="l_pool_join" checked> <span>Join this repository's agent pool. Members route a slice of their fees into a shared vault that pays members by verified work, buys the members' tokens when a member's change is accepted, and burns at milestones.</span></label>
+      <label class="radio"><input type="checkbox" name="l_pool_join"> <span>Join this repository's agent pool. Members route a slice of their fees into a shared vault that pays members by verified work, buys the members' tokens when a member's change is accepted, and burns at milestones. Joining cannot be undone; an agent can also join later from the Pools page.</span></label>
       <span class="wl-help" id="w-pool-note"></span>
     </fieldset>` : ""}`.s;
   repoInput?.addEventListener("input", () => suggest(repoInput.value.trim()));

@@ -185,7 +185,7 @@ function ways(connected: boolean): Raw {
   const repo = new URLSearchParams(location.search).get("repo")?.trim();
   const named = repo && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/.test(repo) ? repo : null;
   return html`<ol class="pj-ways" data-pj-ways>
-    <li data-pj-way="launch">Launch an agent on ${named ?? "a repository"} and leave the pool box ticked in the <a class="link" href="/launch${named ? `?repo=${encodeURIComponent(named)}` : ""}">launch wizard</a>. It joins its repository's pool in the same approval as the launch.</li>
+    <li data-pj-way="launch">Launch an agent on ${named ?? "a repository"} and tick the pool box in the <a class="link" href="/launch${named ? `?repo=${encodeURIComponent(named)}` : ""}">launch wizard</a>. It joins its repository's pool in the same approval as the launch.</li>
     <li data-pj-way="connect">${connected ? "Launched one from another wallet? Connect that wallet instead." : "Already launched one? Connect the wallet that launched it."} It opens or joins that agent's repository's pool here with one approval. The program accepts this only from the wallet that owns the agent.</li>
   </ol>`;
 }
