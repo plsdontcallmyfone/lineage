@@ -9,16 +9,15 @@
 // The exact cost (the transfer and the network fee of this very message, from a simulation) is shown
 // before anything is signed. Send is offered only while Core says messages are being read.
 import { avatarSvg, svgDataUri } from "../../../packages/embed/src/pattern.ts";
-import { r, system, type Ix } from "../../../packages/chain/src/browser/index.ts";
 import { repoLabel } from "../src/fmt.ts";
 import { html, type Raw } from "../src/html.ts";
 import { fmtUsd, loadUsd, solToUsd } from "../src/usd.ts";
 import { buildAndSimulate, loadChainCfg, NET, signAndSend, sol } from "./chain.ts";
+import { talkIxs, tidy } from "./talk-tx.ts";
 import { connectWallet, onSession, restoreSession, session, startDiscovery } from "./standard.ts";
 
-export const MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 /** Compute units asked for the first simulation; the send asks for what that one used, with room. */
-const SIM_UNITS = 120_000;
+const SIM_UNITS = 400_000;
 
 interface Agent { agent: string; name: string | null; avatar: { url?: string } | null; mint: string | null; repo: string | null; wallet: string | null }
 interface Board { open: boolean; closed_why: string | null; memo_prefix: string; min_lamports: number; max_bytes: number; replies: boolean; agents: Agent[] }
@@ -43,14 +42,6 @@ const when = (ms: number) => new Date(ms).toLocaleString("en-US", { month: "shor
 const avatar = (a: Agent, size: number): Raw => html`<img src="${a.avatar?.url ? `/api${a.avatar.url.replace(/^\/v1/, "")}` : svgDataUri(avatarSvg(a.agent, 64))}" width="${size}" height="${size}" alt="" loading="lazy">`;
 /** One line under an agent's name: its coin and its repository. */
 const about = (a: Agent) => [a.mint && T.symbols.get(a.mint) ? `$${T.symbols.get(a.mint)}` : null, a.repo ? repoLabel(a.repo) : null].filter(Boolean).join(" · ") || "no repository yet";
-
-/** The text as it will be sent: one line, like Core shows it. */
-export const tidy = (s: string) => s.replace(/\s+/g, " ").trim();
-
-/** The two instructions of a message (the compute budget is added when it is built). */
-export function talkIxs(o: { from: string; agent: string; wallet: string; lamports: bigint; prefix: string; text: string }): Ix[] {
-  return [system.transfer(o.from, o.wallet, o.lamports), { programId: MEMO_PROGRAM, keys: [r(o.from, true)], data: new TextEncoder().encode(`${o.prefix}${o.agent}:${tidy(o.text)}`) }];
-}
 
 /** Why Send is not offered now, or null. */
 function blocked(): string | null {
@@ -287,22 +278,20 @@ export async function mountTalk(root: HTMLElement): Promise<void> {
     priceSoon();
   });
   try {
-    const [board] = await Promise.all([
-      fetch("/api/talk").then(async (x) => {
-        if (!x.ok) throw new Error(x.status === 404 ? "Messages to agents are not available on this network yet." : `The agent list did not load (HTTP ${x.status}).`);
-        return x.json() as Promise<Board>;
-      }),
-      loadChainCfg().catch(() => null),
-      loadUsd().catch(() => null),
-      fetch("/market/tokens?limit=500&hidden=1").then((x) => (x.ok ? x.json() : null)).then((j: { tokens?: { mint: string; symbol: string | null }[] } | null) => {
-        for (const t of j?.tokens ?? []) if (t.symbol) T.symbols.set(t.mint, t.symbol);
-      }).catch(() => null),
-    ]);
-    T.board = board;
+    const x = await fetch("/api/talk");
+    if (!x.ok) throw new Error(x.status === 404 ? "Messages to agents are not available on this network yet." : `The agent list did not load (HTTP ${x.status}).`);
+    T.board = (await x.json()) as Board;
   } catch (e) {
     T.loadErr = (e as Error).message;
     return render();
   }
+  // what the page can show without: the network profile (needed only to price and send), dollar prices, coin tickers
+  void loadChainCfg().catch(() => null);
+  void loadUsd().then(() => render()).catch(() => null);
+  void fetch("/market/tokens?limit=500&hidden=1").then((r) => (r.ok ? r.json() : null)).then((j: { tokens?: { mint: string; symbol: string | null }[] } | null) => {
+    for (const t of j?.tokens ?? []) if (t.symbol) T.symbols.set(t.mint, t.symbol);
+    if (j?.tokens?.length) render();
+  }).catch(() => null);
   const want = new URLSearchParams(location.search).get("agent");
   T.pick = T.board.agents.find((a) => a.agent === want)?.agent ?? null;
   render();

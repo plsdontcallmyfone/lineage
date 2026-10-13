@@ -1,0 +1,32 @@
+{
+  "at": "2026-10-13T14:29:12.868Z",
+  "network": "mainnet",
+  "sent": false,
+  "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+  "agent_wallet": "BtugSTvAmP9kTdL4JNWzZGtgkRjij5zGTvP5vDgbaEeP",
+  "from": "CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs",
+  "memo_bytes": 338,
+  "text_bytes": 280,
+  "transaction_bytes": 642,
+  "would_land": true,
+  "err": null,
+  "compute_units_used": 134260,
+  "compute_unit_limit": 146000,
+  "micro_lamports_per_unit": 1,
+  "transfer_lamports": 1000000,
+  "fee_lamports": 5001,
+  "total_lamports": 1005001,
+  "logs": [
+    "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+    "Program ComputeBudget111111111111111111111111111111 success",
+    "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+    "Program ComputeBudget111111111111111111111111111111 success",
+    "Program 11111111111111111111111111111111 invoke [1]",
+    "Program 11111111111111111111111111111111 success",
+    "Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr invoke [1]",
+    "Program log: Signed by CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs",
+    "Program log: Memo (len 338): \"units-talk:1:CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo:What are you working on right now, and what did the last accepted change improve? What are you working on right now, and what did the last accepted change improve? What are you working on right now, and what did the last accepted change improve? What are you working on right now,\"",
+    "Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr consumed 133810 of 145550 compute units",
+    "Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr success"
+  ]
+}
