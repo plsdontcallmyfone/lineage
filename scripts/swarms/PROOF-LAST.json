@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-13T03:47:59.741Z",
-  "model_usd": 3.458367120499997,
+  "at": "2026-10-13T04:30:04.178Z",
+  "model_usd": 1.068970521,
   "models": [
     {
       "provider": "anthropic",
@@ -16,7 +16,7 @@
     }
   ],
   "lead": 1,
-  "vault_usd": 4.6,
+  "vault_usd": 1.3,
   "units": [
     {
       "recipe": "base58-py",
@@ -40,27 +40,6 @@
   ],
   "placements": [
     {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "encode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "int_ir",
-      "stacked": 0
-    },
-    {
       "seat": 2,
       "role": "builder",
       "unit": "98ebf8bf5a",
@@ -71,49 +50,7 @@
       "seat": 1,
       "role": "lead",
       "unit": "f04b295565",
-      "target": "decode_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
       "target": "encode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "decode_long_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "encode_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "encode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "decode_ir",
       "stacked": 0
     },
     {
@@ -124,67 +61,11 @@
       "stacked": 0
     },
     {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "encode_long_ir",
-      "stacked": 1
-    },
-    {
       "seat": 3,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "decode_long_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "98ebf8bf5a",
-      "target": "encode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "int_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 2,
       "role": "builder",
       "unit": "98ebf8bf5a",
       "target": "encode_ir",
       "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "decode_ir",
-      "stacked": 1
     },
     {
       "seat": 1,
@@ -204,20 +85,6 @@
       "seat": 1,
       "role": "lead",
       "unit": "98ebf8bf5a",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "encode_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
       "target": "decode_ir",
       "stacked": 1
     },
@@ -226,7 +93,56 @@
       "role": "lead",
       "unit": "98ebf8bf5a",
       "target": "encode_ir",
-      "stacked": 1
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "decode_ir",
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "check_ir",
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "decode_ir",
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "check_ir",
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "decode_ir",
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "decode_ir",
+      "stacked": 0
+    },
+    {
+      "seat": 1,
+      "role": "lead",
+      "unit": "98ebf8bf5a",
+      "target": "check_ir",
+      "stacked": 0
     },
     {
       "seat": 1,
@@ -246,40 +162,12 @@
       "seat": 1,
       "role": "lead",
       "unit": "98ebf8bf5a",
-      "target": "check_ir",
+      "target": "encode_ir",
       "stacked": 0
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "decode_long_ir",
-      "stacked": 1
     },
     {
       "seat": 1,
       "role": "lead",
-      "unit": "f04b295565",
-      "target": "int_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
       "unit": "98ebf8bf5a",
       "target": "encode_ir",
       "stacked": 0
@@ -288,623 +176,206 @@
       "seat": 1,
       "role": "lead",
       "unit": "98ebf8bf5a",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "check_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "encode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 3,
-      "role": "builder",
-      "unit": "f04b295565",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "98ebf8bf5a",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "int_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "check_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "decode_long_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 2,
-      "role": "builder",
-      "unit": "98ebf8bf5a",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "encode_long_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "decode_long_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "encode_long_ir",
-      "stacked": 1
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
-      "target": "decode_ir",
-      "stacked": 0
-    },
-    {
-      "seat": 1,
-      "role": "lead",
-      "unit": "f04b295565",
       "target": "decode_ir",
       "stacked": 0
     }
   ],
   "candidates": [
     {
-      "commit_id": "d4939d866a356fe4395f8670d160b759cba5d9f29c347409ec8615786faf0725",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791861253595,
-      "finalized_at": 1791861318252
-    },
-    {
-      "commit_id": "96b5a40869abc238515a1ba57354765c638dd5bfe2744b3d63bf5ffbea500970",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "encode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791861146178,
-      "finalized_at": 1791861207806
-    },
-    {
-      "commit_id": "bf52b1646d8f4ff19433e995eec2c626963c3f5cd8c2cf29b4d431bb66cb5e1f",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791861041785,
-      "finalized_at": 1791861099629
-    },
-    {
-      "commit_id": "8fff73106bba821bed241730791afc11a23cb68f2ede37b34e58f4e3a901e6ee",
+      "commit_id": "17324fd1261914975badff281239b3dc92246b53ab35c5adfca37b1f8246dea1",
       "unit": "base58-py",
       "kind": "perf",
       "target": "decode_ir",
       "status": "accepted",
       "reason": null,
-      "committed_at": 1791860576518,
-      "finalized_at": 1791860599144
+      "committed_at": 1791864429918,
+      "finalized_at": 1791864456557
     },
     {
-      "commit_id": "94e1336d37fe9a47c8b0b71c0ce44aa7e164b32789cd6c0b92d104e5dd11f973",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791860514874,
-      "finalized_at": 1791860582710
-    },
-    {
-      "commit_id": "93f7827551c3161a26d016420a4009b35f8ba306374e2b514c41f737fe3711e9",
-      "unit": "base58-py",
-      "kind": "perf",
-      "target": "decode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791860318829,
-      "finalized_at": 1791860381313
-    },
-    {
-      "commit_id": "0cc5b87acd8a4c33da40cb8c5405ed0623eca4f3051fdd140ffe9d4ed0a6f82a",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "int_ir",
-      "status": "rejected",
-      "reason": "no_improvement",
-      "committed_at": 1791860263267,
-      "finalized_at": 1791860366110
-    },
-    {
-      "commit_id": "9c2f485365b5b98b6ac5027d3c45a344aa1ff02cb43cc595ffe17bde4b496033",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791860250350,
-      "finalized_at": 1791860305755
-    },
-    {
-      "commit_id": "3f72df27b69dfb780cb091807c6186532e3737026f6992657119fea7fc5463ab",
+      "commit_id": "3e037e7f65f4ce9569d14e0ed6aa81a08cfd5230d84d970dfad9a1d199634b6d",
       "unit": "base58-py",
       "kind": "perf",
       "target": "check_ir",
       "status": "accepted",
       "reason": null,
-      "committed_at": 1791860103067,
-      "finalized_at": 1791860142245
+      "committed_at": 1791864365080,
+      "finalized_at": 1791864387757
     },
     {
-      "commit_id": "1c907cce26b022dd9d1d9e4bd1936e90b97db3cffbd4a0ced95f659fdc4e1572",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "encode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791860072399,
-      "finalized_at": 1791860128542
-    },
-    {
-      "commit_id": "49e1af37f4780d72260c54c9c57c36f9a8baa3890a7d73689b3b5dc7ca253ef2",
-      "unit": "base58-py",
-      "kind": "perf",
-      "target": "check_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859981435,
-      "finalized_at": 1791859995811
-    },
-    {
-      "commit_id": "daddfe8f1e742cc1de5bc0e73694c18e00dbc9a3e5ec90863ee5ccd8945f04bd",
-      "unit": "base58-py",
-      "kind": "perf",
-      "target": "encode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859926243,
-      "finalized_at": 1791859941746
-    },
-    {
-      "commit_id": "deb3418778cfbdf96aae99be12bd59816a023f133c2b2701771ce99ba9c5e79f",
-      "unit": "base58-py",
-      "kind": "perf",
-      "target": "check_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859871119,
-      "finalized_at": 1791859906086
-    },
-    {
-      "commit_id": "9d6682697b5db4f0c817a0f7d4f5c802e836fada923a38ea6a45dd6dde030229",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859835211,
-      "finalized_at": 1791859892564
-    },
-    {
-      "commit_id": "eb34cde3ed1e0d84f8b33c0e53addb646f7355870e77ba9d0e96634f116f706c",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859689257,
-      "finalized_at": 1791859792631
-    },
-    {
-      "commit_id": "82cf463ac2cff52ded141c1e0e05507d294077f0c54cce6b4cab3d17c07ec5ee",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "check_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859537853,
-      "finalized_at": 1791859720240
-    },
-    {
-      "commit_id": "6fde23e4e431e471949fb9cce5fafb076d610c15f1dc9b2c913a8baad4ff5492",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859438842,
-      "finalized_at": 1791859532308
-    },
-    {
-      "commit_id": "1a17412c653a9f5b3e050a8b4a0aae4a3c2727475017ae6a4b1add21d4c1c623",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "encode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791859165767,
-      "finalized_at": 1791859260424
-    },
-    {
-      "commit_id": "4569cec1ab1d68edaa7ef13c13bd91d21d35be28ce8631ed86b53bb18241c08b",
-      "unit": "base58-py-heavy",
-      "kind": "perf",
-      "target": "decode_long_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791858828001,
-      "finalized_at": 1791858913624
-    },
-    {
-      "commit_id": "69b8028b6981570d569e71a160279517d19742986f1fba93dcbdc78085b501bb",
-      "unit": "base58-py",
-      "kind": "perf",
-      "target": "encode_ir",
-      "status": "accepted",
-      "reason": null,
-      "committed_at": 1791858730699,
-      "finalized_at": 1791858745461
-    },
-    {
-      "commit_id": "aac07c7ee153078ce71154d3fc1a08c369d47c971303b555ad6627199b114e2f",
+      "commit_id": "37adb05ffe1266edab73282d7df08dae6b1ffa10cb4466bc66f10b0a7dfb5948",
       "unit": "base58-py",
       "kind": "perf",
       "target": "decode_ir",
       "status": "accepted",
       "reason": null,
-      "committed_at": 1791858644929,
-      "finalized_at": 1791858662513
+      "committed_at": 1791864286727,
+      "finalized_at": 1791864308445
     },
     {
-      "commit_id": "ad6f946795d6615507c1cd8e37d1c35ec7202c4370aa308325f126eeb4f34e26",
-      "unit": "base58-py-heavy",
+      "commit_id": "755eea4c3ac2d9b6b7d6ea2a7f74fd8f7d182eb1c4856a425ac50c9072fbddc2",
+      "unit": "base58-py",
       "kind": "perf",
       "target": "encode_ir",
       "status": "accepted",
       "reason": null,
-      "committed_at": 1791858491557,
-      "finalized_at": 1791858593446
+      "committed_at": 1791864208611,
+      "finalized_at": 1791864235120
     },
     {
-      "commit_id": "8cbf6adcdb18ceba9b481fb79f377cca82ef5b8453c9e2cc08453ed15e94bc8b",
+      "commit_id": "2f4805d2af6f3cc4ffd62c251b237f0bd1eff23054e2e8bc68536cb554a29ef1",
+      "unit": "base58-py",
+      "kind": "perf",
+      "target": "decode_ir",
+      "status": "accepted",
+      "reason": null,
+      "committed_at": 1791864138114,
+      "finalized_at": 1791864162148
+    },
+    {
+      "commit_id": "e53595ec768bbf20cc88eabe90272e0c2acad9e1f7a8b0b78be3848e8d4c7335",
       "unit": "base58-py",
       "kind": "perf",
       "target": "check_ir",
       "status": "accepted",
       "reason": null,
-      "committed_at": 1791858484917,
-      "finalized_at": 1791858500338
+      "committed_at": 1791864033241,
+      "finalized_at": 1791864121598
+    },
+    {
+      "commit_id": "47fe7cadb541a31ad2eddf7913f6a405fd1b1e885c76cc08b53da4e968caa433",
+      "unit": "base58-py-heavy",
+      "kind": "perf",
+      "target": "encode_ir",
+      "status": "accepted",
+      "reason": null,
+      "committed_at": 1791863949498,
+      "finalized_at": 1791864096047
+    },
+    {
+      "commit_id": "dccb9e279948c5a3c891d0086ba4f41d951a05bd9c62c87029f482bf99a2aa97",
+      "unit": "base58-py",
+      "kind": "perf",
+      "target": "encode_ir",
+      "status": "accepted",
+      "reason": null,
+      "committed_at": 1791863864938,
+      "finalized_at": 1791863893246
     }
   ],
   "final": [
-    "d4939d86 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "96b5a408 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "bf52b164 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "8fff7310 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "94e1336d accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "93f78275 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "0cc5b87a rejected by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "9c2f4853 accepted by seat 2 (claude-haiku-4-5 via openrouter)",
-    "3f72df27 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "1c907cce accepted by seat 2 (claude-haiku-4-5 via openrouter)",
-    "49e1af37 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "daddfe8f accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "deb34187 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "9d668269 accepted by seat 2 (claude-haiku-4-5 via openrouter)",
-    "eb34cde3 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "82cf463a accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "6fde23e4 accepted by seat 3 (gpt-5-mini via openrouter)",
-    "1a17412c accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "4569cec1 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "69b8028b accepted by seat 2 (claude-haiku-4-5 via openrouter)",
-    "aac07c7e accepted by seat 2 (claude-haiku-4-5 via openrouter)",
-    "ad6f9467 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
-    "8cbf6adc accepted by seat 2 (claude-haiku-4-5 via openrouter)"
+    "17324fd1 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "3e037e7f accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "37adb05f accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "755eea4c accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "2f4805d2 accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "e53595ec accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "47fe7cad accepted by seat 1 (claude-sonnet-5-5 via openrouter)",
+    "dccb9e27 accepted by seat 3 (gpt-5-mini via openrouter)"
   ],
   "seats": {
     "1": {
-      "usd": 1.7780898259999998,
-      "sandbox_s": 1828.6050000000002,
-      "attempts": 26
+      "usd": 0.8218339224999999,
+      "sandbox_s": 355.124,
+      "attempts": 14
     },
     "2": {
-      "usd": 1.3485154007499998,
-      "sandbox_s": 1102.348,
-      "attempts": 15
+      "usd": 0.21308647349999996,
+      "sandbox_s": 584.948,
+      "attempts": 2
     },
     "3": {
-      "usd": 0.33176189375,
-      "sandbox_s": 1304.673,
-      "attempts": 9
+      "usd": 0.034050125,
+      "sandbox_s": 110.086,
+      "attempts": 2
     }
   },
   "usage": [
     {
-      "amount": "1124540000",
+      "amount": "1069320000",
       "detail": {
-        "cost": "1124540000",
+        "cost": "1069320000",
         "desktop_s": 0,
         "desktop_usd": "0.000000",
-        "model_tokens": 38304,
-        "sandbox_s": 0,
-        "seats": {
-          "1": {
-            "attempts": 0,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 0,
-            "usd": 0.056226330500000005
-          }
-        },
-        "usage_epoch": 7,
-        "usd": "0.056226"
-      }
-    },
-    {
-      "amount": "1728240000",
-      "detail": {
-        "cost": "1728240000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 47472,
-        "sandbox_s": 68,
+        "model_tokens": 32248,
+        "sandbox_s": 13,
         "seats": {
           "1": {
             "attempts": 1,
             "desktop_s": 0,
             "desktop_usd": 0,
-            "sandbox_s": 67.543,
-            "usd": 0.07961103849999998
+            "sandbox_s": 12.24,
+            "usd": 0.052165318999999995
           }
         },
-        "usage_epoch": 6,
-        "usd": "0.079611"
+        "usage_epoch": 2,
+        "usd": "0.052165"
       }
     },
     {
-      "amount": "1105080000",
+      "amount": "8801960000",
       "detail": {
-        "cost": "1105080000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 39409,
-        "sandbox_s": 0,
+        "cost": "8801960000",
+        "desktop_s": 239,
+        "desktop_usd": "0.010986",
+        "model_tokens": 404125,
+        "sandbox_s": 335,
         "seats": {
           "1": {
-            "attempts": 0,
+            "attempts": 6,
             "desktop_s": 0,
             "desktop_usd": 0,
-            "sandbox_s": 0,
-            "usd": 0.055253093
-          }
-        },
-        "usage_epoch": 5,
-        "usd": "0.055253"
-      }
-    },
-    {
-      "amount": "12336340000",
-      "detail": {
-        "cost": "12336340000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 859041,
-        "sandbox_s": 553,
-        "seats": {
-          "1": {
-            "attempts": 5,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 365.569,
-            "usd": 0.337740737
+            "sandbox_s": 100.193,
+            "usd": 0.3508618774999999
           },
           "2": {
-            "attempts": 1,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 100.70499999999998,
-            "usd": 0.21888417325000004
-          },
-          "3": {
             "attempts": 0,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 86.277,
-            "usd": 0.00489124375
+            "desktop_s": 238.82099999999988,
+            "desktop_usd": 0.010985766000000004,
+            "sandbox_s": 234.07299999999998,
+            "usd": 0.044749935
           }
         },
-        "usage_epoch": 4,
-        "usd": "0.561516"
+        "usage_epoch": 1,
+        "usd": "0.395612"
       }
     },
     {
-      "amount": "15152480000",
+      "amount": "14620800000",
       "detail": {
-        "cost": "15152480000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 2254469,
-        "sandbox_s": 822,
-        "seats": {
-          "1": {
-            "attempts": 5,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 328.827,
-            "usd": 0.30177810799999993
-          },
-          "2": {
-            "attempts": 3,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 304.913,
-            "usd": 0.2506460559999999
-          },
-          "3": {
-            "attempts": 2,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 187.61900000000003,
-            "usd": 0.12299933774999999
-          }
-        },
-        "usage_epoch": 3,
-        "usd": "0.675424"
-      }
-    },
-    {
-      "amount": "17009380000",
-      "detail": {
-        "cost": "17009380000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 1448701,
-        "sandbox_s": 932,
+        "cost": "14620800000",
+        "desktop_s": 858,
+        "desktop_usd": "0.039446",
+        "model_tokens": 825844,
+        "sandbox_s": 704,
         "seats": {
           "1": {
             "attempts": 7,
             "desktop_s": 0,
             "desktop_usd": 0,
-            "sandbox_s": 258.07099999999997,
-            "usd": 0.47807166749999985
+            "sandbox_s": 242.69100000000003,
+            "usd": 0.41880672599999996
           },
           "2": {
-            "attempts": 3,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 350.73900000000003,
-            "usd": 0.20258468699999993
+            "attempts": 2,
+            "desktop_s": 590.0289999999995,
+            "desktop_usd": 0.027141334000000003,
+            "sandbox_s": 350.875,
+            "usd": 0.16833653849999997
           },
           "3": {
             "attempts": 2,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 322.56199999999995,
-            "usd": 0.07661235924999996
-          }
-        },
-        "usage_epoch": 2,
-        "usd": "0.757269"
-      }
-    },
-    {
-      "amount": "15336580000",
-      "detail": {
-        "cost": "15336580000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 1469848,
-        "sandbox_s": 901,
-        "seats": {
-          "1": {
-            "attempts": 4,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 416.5110000000001,
-            "usd": 0.2719333185000001
-          },
-          "2": {
-            "attempts": 3,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 185.24599999999998,
-            "usd": 0.32690615074999996
-          },
-          "3": {
-            "attempts": 3,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 299.095,
-            "usd": 0.07788943675000001
-          }
-        },
-        "usage_epoch": 1,
-        "usd": "0.676729"
-      }
-    },
-    {
-      "amount": "13850800000",
-      "detail": {
-        "cost": "13850800000",
-        "desktop_s": 0,
-        "desktop_usd": "0.000000",
-        "model_tokens": 1299057,
-        "sandbox_s": 962,
-        "seats": {
-          "1": {
-            "attempts": 4,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 392.084,
-            "usd": 0.19747553299999998
-          },
-          "2": {
-            "attempts": 5,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 160.745,
-            "usd": 0.34949433374999994
-          },
-          "3": {
-            "attempts": 2,
-            "desktop_s": 0,
-            "desktop_usd": 0,
-            "sandbox_s": 409.12,
-            "usd": 0.049369516249999995
+            "desktop_s": 267.48599999999993,
+            "desktop_usd": 0.012304355999999999,
+            "sandbox_s": 110.086,
+            "usd": 0.034050125
           }
         },
         "usage_epoch": 0,
-        "usd": "0.596339"
+        "usd": "0.621193"
       }
     }
   ],
-  "lead_plans": 25,
+  "lead_plans": 12,
   "results": [
     {
       "check": "Core serves swarms with the flag on for this process",
@@ -924,7 +395,7 @@
     {
       "check": "one registered agent, one vault, three seats from its signed soul",
       "ok": true,
-      "detail": "soul digest 757e70bd3e10 (what set_profile commits), seats 1 Wren 1 lead claude-sonnet-5-5, 2 Wren 2 builder claude-haiku-4-5, 3 Wren 3 builder gpt-5-mini; vault 92000000000 base units (4.6 USD at the TEST rate)"
+      "detail": "soul digest b6475da81e4a (what set_profile commits), seats 1 Wren 1 lead claude-sonnet-5-5, 2 Wren 2 builder claude-haiku-4-5, 3 Wren 3 builder gpt-5-mini; vault 26000000000 base units (1.3 USD at the TEST rate)"
     },
     {
       "check": "the swarm is one agent in every list",
@@ -934,12 +405,12 @@
     {
       "check": "bound with ONE signature: every seat speaks with the one runtime key",
       "ok": true,
-      "detail": "runtime key FA3Zw7fa, key seq 1"
+      "detail": "runtime key BLmtzXHv, key seq 1"
     },
     {
       "check": "the seats take different targets",
       "ok": true,
-      "detail": "seat 1 (lead): base58-py-heavy encode_ir; seat 2 (builder): base58-py check_ir; seat 3 (builder): base58-py-heavy int_ir"
+      "detail": "seat 1 (lead): base58-py-heavy encode_ir; seat 2 (builder): base58-py decode_ir; seat 3 (builder): base58-py encode_ir"
     },
     {
       "check": "units first: both units have a seat before either has two",
@@ -954,17 +425,17 @@
     {
       "check": "no candidate of the swarm was made stale",
       "ok": true,
-      "detail": "23 candidate(s): d4939d86 accepted, 96b5a408 accepted, bf52b164 accepted, 8fff7310 accepted, 94e1336d accepted, 93f78275 accepted, 0cc5b87a rejected no_improvement, 9c2f4853 accepted, 3f72df27 accepted, 1c907cce accepted, 49e1af37 accepted, daddfe8f accepted, deb34187 accepted, 9d668269 accepted, eb34cde3 accepted, 82cf463a accepted, 6fde23e4 accepted, 1a17412c accepted, 4569cec1 accepted, 69b8028b accepted, aac07c7e accepted, ad6f9467 accepted, 8cbf6adc accepted"
+      "detail": "8 candidate(s): 17324fd1 accepted, 3e037e7f accepted, 37adb05f accepted, 755eea4c accepted, 2f4805d2 accepted, e53595ec accepted, 47fe7cad accepted, dccb9e27 accepted"
     },
     {
       "check": "a candidate committed beside an open one of the swarm on its unit depends on it (one stack per unit)",
       "ok": true,
-      "detail": "2 such candidate(s), 2 stacked"
+      "detail": "0 such candidate(s), 0 stacked"
     },
     {
       "check": "every final candidate is authored by the swarm's agent id and names its seat (attested by the runtime, published once final)",
       "ok": true,
-      "detail": "d4939d86 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 96b5a408 accepted by seat 1 (claude-sonnet-5-5 via openrouter); bf52b164 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 8fff7310 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 94e1336d accepted by seat 1 (claude-sonnet-5-5 via openrouter); 93f78275 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 0cc5b87a rejected by seat 1 (claude-sonnet-5-5 via openrouter); 9c2f4853 accepted by seat 2 (claude-haiku-4-5 via openrouter); 3f72df27 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 1c907cce accepted by seat 2 (claude-haiku-4-5 via openrouter); 49e1af37 accepted by seat 1 (claude-sonnet-5-5 via openrouter); daddfe8f accepted by seat 1 (claude-sonnet-5-5 via openrouter); deb34187 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 9d668269 accepted by seat 2 (claude-haiku-4-5 via openrouter); eb34cde3 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 82cf463a accepted by seat 1 (claude-sonnet-5-5 via openrouter); 6fde23e4 accepted by seat 3 (gpt-5-mini via openrouter); 1a17412c accepted by seat 1 (claude-sonnet-5-5 via openrouter); 4569cec1 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 69b8028b accepted by seat 2 (claude-haiku-4-5 via openrouter); aac07c7e accepted by seat 2 (claude-haiku-4-5 via openrouter); ad6f9467 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 8cbf6adc accepted by seat 2 (claude-haiku-4-5 via openrouter)"
+      "detail": "17324fd1 accepted by seat 1 (claude-sonnet-5-5 via openrouter); 3e037e7f accepted by seat 1 (claude-sonnet-5-5 via openrouter); 37adb05f accepted by seat 1 (claude-sonnet-5-5 via openrouter); 755eea4c accepted by seat 1 (claude-sonnet-5-5 via openrouter); 2f4805d2 accepted by seat 1 (claude-sonnet-5-5 via openrouter); e53595ec accepted by seat 1 (claude-sonnet-5-5 via openrouter); 47fe7cad accepted by seat 1 (claude-sonnet-5-5 via openrouter); dccb9e27 accepted by seat 3 (gpt-5-mini via openrouter)"
     },
     {
       "check": "each seat ran the model its soul names, through OpenRouter",
@@ -974,7 +445,7 @@
     {
       "check": "at least one candidate was replayed and accepted, with its seat on the record",
       "ok": true,
-      "detail": "22 accepted; seat 1 Wren 1: 15 accepted of 16 final; seat 2 Wren 2: 6 accepted of 6 final; seat 3 Wren 3: 1 accepted of 1 final"
+      "detail": "8 accepted; seat 1 Wren 1: 7 accepted of 7 final; seat 3 Wren 3: 1 accepted of 1 final"
     },
     {
       "check": "an open candidate's seat is withheld",
@@ -983,43 +454,58 @@
     },
     {
       "check": "the vault paid exactly the posted amounts, one record per usage epoch for the whole swarm",
-      "ok": true,
-      "detail": "vault 92000000000 -> 14356560000, 77643440000 base units in 8 record(s)"
+      "ok": false,
+      "detail": "vault 26000000000 -> 13507920000, 24492080000 base units in 3 record(s)"
     },
     {
       "check": "the vault is metered once per seat: the seats' lines add up to each debit",
       "ok": true,
-      "detail": "epoch 7: 1124540000 base units = seat 1 0.0562 USD + 0 s | epoch 6: 1728240000 base units = seat 1 0.0796 USD + 68 s | epoch 5: 1105080000 base units = seat 1 0.0553 USD + 0 s | epoch 4: 12336340000 base units = seat 1 0.3377 USD + 366 s, seat 2 0.2189 USD + 101 s, seat 3 0.0049 USD + 87 s | epoch 3: 15152480000 base units = seat 1 0.3018 USD + 329 s, seat 2 0.2506 USD + 305 s, seat 3 0.1230 USD + 188 s | epoch 2: 17009380000 base units = seat 1 0.4781 USD + 259 s, seat 2 0.2026 USD + 351 s, seat 3 0.0766 USD + 323 s | epoch 1: 15336580000 base units = seat 1 0.2719 USD + 417 s, seat 2 0.3269 USD + 186 s, seat 3 0.0779 USD + 300 s | epoch 0: 13850800000 base units = seat 1 0.1975 USD + 393 s, seat 2 0.3495 USD + 161 s, seat 3 0.0494 USD + 410 s"
+      "detail": "epoch 2: 1069320000 base units = seat 1 0.0522 USD + 13 s | epoch 1: 8801960000 base units = seat 1 0.3509 USD + 101 s, seat 2 0.0447 USD + 235 s | epoch 0: 14620800000 base units = seat 1 0.4188 USD + 243 s, seat 2 0.1683 USD + 351 s, seat 3 0.0341 USD + 111 s"
     },
     {
       "check": "the runtime's meter and the seats' lines agree",
       "ok": true,
-      "detail": "3.4584 USD of model spend; seat 1: 1.7781 USD, 1829 sandbox s, 26 attempts; seat 2: 1.3485 USD, 1103 sandbox s, 15 attempts; seat 3: 0.3318 USD, 1305 sandbox s, 9 attempts"
+      "detail": "1.0690 USD of model spend; seat 1: 0.8218 USD, 356 sandbox s, 14 attempts; seat 2: 0.2131 USD, 585 sandbox s, 2 attempts; seat 3: 0.0341 USD, 111 sandbox s, 2 attempts"
+    },
+    {
+      "check": "one desktop per seat at E2B, under the one agent",
+      "ok": true,
+      "detail": "agent.s2 paused, agent paused, agent.s3 paused"
+    },
+    {
+      "check": "seat 1 keeps the agent's own stream id, seats 2 and 3 add their number; only they are charged",
+      "ok": true,
+      "detail": "seat 1: 97df602230 free, seat 2: d9b6bbdf96 charged, seat 3: aded8d752d charged"
+    },
+    {
+      "check": "the screens of seats 2 and 3 are charged to the vault at the setting's rate for the time they ran; seat 1's is free",
+      "ok": true,
+      "detail": "0.1656 USD an hour (Core's swarm setting): seat 1 0 s = 0.0000 USD, seat 2 829 s = 0.0381 USD, seat 3 267 s = 0.0123 USD; 0.0504 USD in the debits"
+    },
+    {
+      "check": "a seat the vault no longer carries has its desktop paused with the reason",
+      "ok": true,
+      "detail": "3:desktop paused (vault low), 2:desktop paused (vault low), 1:desktop paused (vault low)"
     },
     {
       "check": "a low vault shrinks the swarm, highest seat first, while lower seats keep working",
-      "ok": true,
-      "detail": "seat 3 at 2 of 3, seat 2 at 1 of 3; attempts started after the first pause by seats 2, 1"
-    },
-    {
-      "check": "then the agent sleeps with the vault below the sleep threshold",
       "ok": false,
-      "detail": "compute 14356560000, sleep threshold 1000000000"
+      "detail": "seat 3 at 2 of 3, seat 2 at 1 of 3; attempts started after the first pause by seats 2, 1, 3"
     },
     {
       "check": "model spend within the run's cap",
       "ok": true,
-      "detail": "3.4584 of 4.5 USD"
+      "detail": "1.0690 of 1.3 USD"
     },
     {
       "check": "every model call was routed through OpenRouter",
       "ok": true,
-      "detail": "50 attempts routed"
+      "detail": "18 attempts routed"
     },
     {
       "check": "no secret in the runtime's output",
       "ok": true,
-      "detail": "1395 lines"
+      "detail": "450 lines"
     }
   ]
 }

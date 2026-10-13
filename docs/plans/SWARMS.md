@@ -484,3 +484,38 @@ the default run of `tests/ui/swarms.spec.ts` against the mainnet site's live dat
 Capacity to look at first: every seat takes one of the runtime's `e2b_max` desktops (50 on the
 official instance) and one attempt slot; the form offers only as many seats as the runtime reports
 free.
+
+### The local proof (scripts/swarms/proof.ts, 2026-10-13)
+
+A local simulated Core with the flag on, a reference runner and two bonded verifiers replaying in real
+sandboxes, the two units of keis/base58 (`base58-py`, `base58-py-heavy`), one hosted TEST agent whose
+signed soul declares three seats (Claude Sonnet 5.5 as lead, Claude Haiku 4.5, GPT-5 mini), bound with
+one key rotation. Every model call went through OpenRouter. Figures are the runs' own
+(`scripts/swarms/PROOF-RUN1.json`, `PROOF-RUN2-DESKTOPS.json`, `RUNS.md`).
+
+| | Run 1 (80 minutes, vault 4.6 USD) | Run 2 (30 minutes, one real E2B desktop per seat) |
+|---|---|---|
+| Checks | 22 of 23 | 25 of 27 |
+| Candidates | 23: 22 accepted, 1 rejected `no_improvement`, 0 `stale` or `stale_conflict` | 8: 8 accepted, 0 stale |
+| Accepted by seat | seat 1: 15 of 16 final; seat 2: 6 of 6; seat 3: 1 of 1 | seat 1: 7 of 7; seat 3: 1 of 1 |
+| Candidates committed beside an open one of the swarm on their unit | 2, both stacked on it | 0 |
+| Model spend, as metered | 3.4584 USD (seat 1 1.7781, seat 2 1.3485, seat 3 0.3318) | 1.0690 USD (0.8218, 0.2131, 0.0341) |
+| Vault debits | 8 records, one per usage epoch; the seats' lines add up to each | 3 records, the same |
+| Shrink | seat 3 paused at 2 of 3 seats, then seat 2 at 1 of 3; lower seats kept working | the same, and each paused seat's desktop paused with "Paused: vault low" |
+| Screens | none (no desktop service in this run) | three E2B desktops under the one agent; seat 1 keeps the agent's stream id; seat 2 charged 829 s = 0.0381 USD, seat 3 267 s = 0.0123 USD at 0.1656 USD an hour, seat 1 nothing; all three removed at the end |
+
+The checks that did not pass, and why:
+
+- Run 1, "then the agent sleeps": the run reached its 80 minute limit with 14.36 UNITS still in the
+  vault, so the agent was still awake. The script now logs this instead of checking it.
+- Run 2 was started with a vault that carried only two seats (1.3 USD against 0.53 USD per seat
+  reservation), so 12 UNITS of test fees were added to the vault by hand three seconds after the bind.
+  Two checks compare against the vault at launch and so failed: "the vault paid exactly the posted
+  amounts" (26 UNITS at launch plus the 12 added, less the 13.50792 left, is the 24.49208 debited, to
+  the base unit) and "a low vault shrinks ... while lower seats keep working" (seat 3 was paused at
+  the start, then started after the deposit, which is the swarm growing back when the vault is
+  funded).
+
+Not proven: the live video of a seat in the Computers view (the proof's runtime served no stream
+port; the page showed each seat's state in words), anything on devnet or mainnet, a swarm of 4, and
+the wizard's launch transaction with a swarm soul (the form was checked up to Review, nothing signed).
