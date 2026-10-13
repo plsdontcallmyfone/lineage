@@ -8,6 +8,7 @@ import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { requireFeature } from "./features.ts";
 import { extractProofs } from "./links.ts";
 import { base58Encode, canonicalUrl, isKind, signKind, statementDigest, verifyStatement } from "./protocol.ts";
+import { revenueOf } from "./revenue.ts";
 
 // GitHub fee routing and claims, Core side (docs/plans/GITHUB-FEE-CLAIMS.md 5 and 11). Core holds
 // no funds and no GitHub token: fees accrue on chain in an escrow keyed by the numeric id of the
@@ -102,6 +103,27 @@ export interface FeeClaimsOptions {
   timeoutMs: number;
   /** above this many routed repositories a sign-in reads the user's own list instead of asking GitHub about each one */
   directCheckMax: number;
+  /** the quote coin's dollar price now and its decimals (Core's copy of the market indexer's reading), or why there is none */
+  usd: () => { ok: true; quote_usd: number; read_at: number; decimals: number } | { ok: false; reason: string };
+}
+
+/** One repository's escrow as anyone may read it (GET /v1/fee-claims/waiting): amounts in the quote coin's base units, dollars beside them. */
+export interface WaitingRepo {
+  github_id: string;
+  repository: { id: string; full_name: string; html_url: string; owner: { id: string; login: string; type: string; avatar_url: string | null } };
+  /** unclaimed: the escrow vault's balance on chain */
+  waiting: string;
+  waiting_usd: number | null;
+  claimed: string;
+  claimed_usd: number | null;
+  /** everything ever routed to this escrow */
+  routed_total: string;
+  /** the agents whose route names this repository now, largest contribution first */
+  agents: { agent: string; bps: number; routed_total: string; set_at: number }[];
+  /** unix seconds: when the first of those routes was set on chain; null with no route now */
+  routed_since: number | null;
+  /** unix seconds: when Core first saw the balance that is waiting now (since the last claim); null while nothing waits */
+  waiting_since: number | null;
 }
 
 interface Session {
@@ -133,6 +155,7 @@ const SCHEMA = `
     avatar_url TEXT, private INTEGER NOT NULL, fetched_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS fee_claim_repo_names (name TEXT NOT NULL, repo_id INTEGER NOT NULL, seen_at INTEGER NOT NULL, PRIMARY KEY (name, repo_id));
   CREATE TABLE IF NOT EXISTS fee_claim_bound (repo_id INTEGER PRIMARY KEY, agent TEXT NOT NULL, bound_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS fee_claim_waiting (repo_id INTEGER NOT NULL, claim_seq INTEGER NOT NULL, since INTEGER NOT NULL, PRIMARY KEY (repo_id, claim_seq));
 `;
 
 const b64u = (b: Uint8Array | string) => Buffer.from(b).toString("base64url");
@@ -151,6 +174,8 @@ export class FeeClaims {
   private routesAt = 0;
   private routesHeld: FeeRoute[] = [];
   private unboundAt = new Map<number, number>();
+  private waitingAt = 0;
+  private waitingHeld: Omit<WaitingRepo, "waiting_usd" | "claimed_usd">[] = [];
   constructor(core: Core) {
     this.core = core;
     this.c = core as unknown as Internals;
@@ -177,6 +202,11 @@ export class FeeClaims {
       network: "devnet",
       timeoutMs: 10_000,
       directCheckMax: 60,
+      usd: () => {
+        const u = revenueOf(core).usd(), d = revenueOf(core).quoteDecimals();
+        if (!u.ok) return { ok: false, reason: u.reason };
+        return d === null ? { ok: false, reason: "the market indexer has not named the quote coin's decimals yet" } : { ok: true, quote_usd: u.quote_usd, read_at: u.read_at, decimals: d };
+      },
     };
     this.c.db.exec(SCHEMA);
   }
@@ -441,6 +471,65 @@ export class FeeClaims {
   async recipientByRepo(fullName: string) {
     this.on();
     return this.recipient(String((await this.repoByName(fullName.trim().replace(/^https:\/\/github\.com\//i, "").replace(/\/+$/, ""))).id));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // fees waiting for the owners (owner 2026-10-13): a public view, no sign-in
+
+  /** Every repository escrow with its agents, read from chain (held for 30 seconds). Only ids bound to their repository appear. */
+  private async waitingRows() {
+    const now = this.c.now();
+    if (this.waitingAt !== 0 && now - this.waitingAt < 30_000) return this.waitingHeld;
+    const [routes, ids] = [await this.routes(), await this.routedRepos()];
+    const rows: FeeClaims["waitingHeld"] = [];
+    for (const id of ids) {
+      const [got, repo] = await Promise.all([this.escrowAccount(id), this.repoById(id)]);
+      if (!repo || repo.private) continue;
+      const mine = routes.filter((r) => r.githubId === BigInt(id)).sort((a, b) => (b.accruedTotal > a.accruedTotal ? 1 : b.accruedTotal < a.accruedTotal ? -1 : a.agent < b.agent ? -1 : 1));
+      const balance = got?.balance ?? 0n, seq = Number(got?.escrow.claimSeq ?? 0n);
+      let since: number | null = null;
+      if (balance > 0n) {
+        // the chain keeps no time for an escrow: Core notes when it first saw a balance at this claim number
+        this.c.db.query("INSERT OR IGNORE INTO fee_claim_waiting (repo_id, claim_seq, since) VALUES (?, ?, ?)").run(id, seq, Math.floor(now / 1000));
+        since = this.c.db.query<{ since: number }, [number, number]>("SELECT since FROM fee_claim_waiting WHERE repo_id = ? AND claim_seq = ?").get(id, seq)?.since ?? null;
+      }
+      rows.push({
+        github_id: String(id), repository: FeeClaims.repoView(repo), waiting: balance.toString(), claimed: (got?.escrow.claimed ?? 0n).toString(), routed_total: (got?.escrow.accrued ?? 0n).toString(),
+        agents: mine.map((r) => ({ agent: r.agent, bps: r.bps, routed_total: r.accruedTotal.toString(), set_at: Number(r.setAt) })),
+        routed_since: mine.length ? Math.min(...mine.map((r) => Number(r.setAt))) : null, waiting_since: since,
+      });
+    }
+    rows.sort((a, b) => (BigInt(b.waiting) > BigInt(a.waiting) ? 1 : BigInt(b.waiting) < BigInt(a.waiting) ? -1 : a.repository.full_name.toLowerCase() < b.repository.full_name.toLowerCase() ? -1 : 1));
+    this.waitingHeld = rows;
+    this.waitingAt = now;
+    return rows;
+  }
+
+  /**
+   * GET /v1/fee-claims/waiting[?repo=owner/name]: what sits unclaimed in each repository's escrow, largest first, with the agents
+   * that route to it, what was claimed so far and since when it has been waiting. Dollars are the amount at the quote coin's
+   * current price (the indexer's dollar rule for a figure of now); null with `usd_reason` when Core holds no reading. With `repo`
+   * the list holds that repository alone, or nothing when no agent routes fees to it. Chain facts and public GitHub names only.
+   */
+  async waiting(repo?: string) {
+    this.on();
+    let rows = await this.waitingRows();
+    const name = repo === undefined ? null : repo.trim().replace(/^https:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "");
+    if (name !== null) {
+      const [o, n] = name.split("/");
+      if (name.split("/").length !== 2 || !GITHUB_LOGIN.test(o ?? "") || !GITHUB_REPO.test(n ?? "")) throw bad("bad_repo", "repo is owner/name");
+      // by the names GitHub ever resolved to the id (a renamed repository keeps its escrow), without asking GitHub again
+      const known = new Set(this.c.db.query<{ repo_id: number }, [string]>("SELECT repo_id FROM fee_claim_repo_names WHERE name = ? COLLATE NOCASE").all(name).map((x) => String(x.repo_id)));
+      rows = rows.filter((r) => known.has(r.github_id) || r.repository.full_name.toLowerCase() === name.toLowerCase());
+    }
+    const u = this.opts.usd();
+    const usd = (base: string) => (u.ok ? (Number(BigInt(base)) / 10 ** u.decimals) * u.quote_usd : null);
+    const repositories: WaitingRepo[] = rows.map((r) => ({ ...r, waiting_usd: usd(r.waiting), claimed_usd: usd(r.claimed) }));
+    const total = rows.reduce((s, r) => s + BigInt(r.waiting), 0n).toString();
+    return {
+      repositories, total_waiting: total, total_waiting_usd: usd(total),
+      usd: u.ok ? { quote_usd: u.quote_usd, read_at: u.read_at, decimals: u.decimals } : null, usd_reason: u.ok ? null : u.reason,
+    };
   }
 
   // ---------------------------------------------------------------------------------------------

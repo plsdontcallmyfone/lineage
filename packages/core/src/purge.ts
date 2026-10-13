@@ -112,7 +112,7 @@ export const RULES: Record<string, Rule> = {
   recipe_proposals: "keep", calib_replays: "keep", upstream_repos: "keep", upstream_seen: "keep", revenue_sources: "keep",
   swarm_settings: "keep", // the admin's swarm settings (swarms.ts): no launch owns them
   pool_kv: "keep", fee_claim_kv: "keep", fee_claim_states: "keep", fee_claim_users: "keep",
-  fee_claim_repos: "keep", fee_claim_repo_names: "keep", fee_claim_bound: "keep", // GitHub repositories by numeric id and the ids bound to them: no launch owns them
+  fee_claim_repos: "keep", fee_claim_repo_names: "keep", fee_claim_bound: "keep", fee_claim_waiting: "keep", // GitHub repositories by numeric id and the ids bound to them: no launch owns them
   tweet_links: "keep", // the tweet a reply bot's link answers: it names no launch (tweet_launches, a rows table, ties one to it)
   shadows: "keep", shadow_keys: "keep", shadow_msg_keys: "keep", shadow_souls: "keep",
 };

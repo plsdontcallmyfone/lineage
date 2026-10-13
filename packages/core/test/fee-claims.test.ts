@@ -347,3 +347,94 @@ describe("fee claims", () => {
     expect((await post(s.e, "/v1/fee-claims/attest", { session: (await gistSession(s.e, s.gh, "octocat")).session })).status).toBe(503);
   });
 });
+
+// Fees waiting for the owners (owner 2026-10-13): the public view, no sign-in.
+describe("fees waiting for the owners", () => {
+  const SOLO = { id: 7000001, full_name: "octocat/solo", admins: ["octocat"] };
+  const QUIET = { id: 7000002, full_name: "acme/quiet", admins: ["Mona"] };
+  /** Three repository escrows (unclaimed with two agents, partly claimed, empty) and one keyed by an account id. */
+  function seeded(o: { usd?: boolean } = {}) {
+    process.env.UNITS_FEATURE_GITHUB_FEE_CLAIMS = "1";
+    env = bare();
+    gh = startMockGithub({ port: 0, users: [OCTO, MONA, HUBOT, ACME], repos: [HELLO, ENGINE, CLASH, SOLO, QUIET], clientId: "cid", clientSecret: "csecret" });
+    const accounts = new Map<Address, { owner: string; data: Uint8Array }>();
+    accounts.set(claimPdas.config(), acct("ClaimConfig", new Writer().address(generateAgentKey().id).u16(2000).u16(2000).i64(600).i64(120).i64(600).bool(false).u8(255)));
+    const route = (id: number, repoUrl: string, routed: bigint, setAt: number) => {
+      const agent = generateAgentKey().id;
+      accounts.set(claimPdas.feeRoute(agent), acct("FeeRoute", new Writer().address(agent).u64(id).u16(2000).i64(setAt).u64(0).u16(0).i64(0).u64(routed).u64(routed).u32(0).u8(254)));
+      accounts.set(generateAgentKey().id, acct("AgentLaunch", new Writer().address(agent).address(generateAgentKey().id).address(generateAgentKey().id).fixed32("ab".repeat(32)).string(repoUrl)));
+      return agent;
+    };
+    const escrow = (id: number, o: { accrued: bigint; claimed: bigint; seq: bigint; wallet?: Address }) => {
+      accounts.set(claimPdas.escrow(id), acct("ClaimEscrow", new Writer().u64(id).address(o.wallet ?? ZERO).address(ZERO).i64(0).u64(o.accrued).u64(o.claimed).u64(o.seq).u8(255).u8(254)));
+      accounts.set(claimPdas.vault(id), tokenAccount(o.accrued - o.claimed));
+    };
+    // 250 UNITS unclaimed from two agents; 100 routed and 40 claimed; a route that has earned nothing yet
+    const big = route(ENGINE.id, "https://github.com/acme/engine", 200_000_000n, 1_760_000_500), small = route(ENGINE.id, "https://github.com/acme/engine", 50_000_000n, 1_760_000_100);
+    escrow(ENGINE.id, { accrued: 250_000_000n, claimed: 0n, seq: 0n });
+    const part = route(HELLO.id, "https://github.com/octocat/hello-world", 100_000_000n, 1_760_000_900);
+    const pinned = generateAgentKey().id;
+    escrow(HELLO.id, { accrued: 100_000_000n, claimed: 40_000_000n, seq: 2n, wallet: pinned });
+    const none = route(QUIET.id, "https://github.com/acme/quiet", 0n, 1_760_001_000);
+    escrow(QUIET.id, { accrued: 0n, claimed: 0n, seq: 0n });
+    // keyed by octocat's ACCOUNT id by an agent on another repository: never a repository's escrow
+    route(OCTO.id, "https://github.com/someone/else", 9_000_000n, 1_760_000_000);
+    escrow(OCTO.id, { accrued: 9_000_000n, claimed: 0n, seq: 0n });
+    feeClaimsOf(env.core).configure({
+      githubApi: gh.url, rpc: fakeChain(accounts), lineMint: LINE,
+      usd: () => (o.usd === false ? { ok: false, reason: "no market indexer configured for this Core (UNITS_INDEXER_URL)" } : { ok: true, quote_usd: 0.0004, read_at: 1_760_002_000, decimals: 6 }),
+    });
+    return { e: env, big, small, part, none, pinned };
+  }
+
+  test("the list: unclaimed, partly claimed and empty escrows, largest first, in dollars at the current price with the coin amount", async () => {
+    const { e, big, small, part, none, pinned } = seeded();
+    const t0 = Math.floor(e.clock.now() / 1000);
+    const r = await get(e, "/v1/fee-claims/waiting");
+    expect(r.status).toBe(200);
+    expect(r.body.repositories.map((x: any) => x.repository.full_name)).toEqual(["acme/engine", "octocat/Hello-World", "acme/quiet"]);
+    const [engine, hello, quiet] = r.body.repositories;
+    expect(engine).toEqual({
+      github_id: String(ENGINE.id), repository: { id: String(ENGINE.id), full_name: "acme/engine", html_url: "https://github.com/acme/engine", owner: { id: String(ACME.id), login: "acme", type: "Organization", avatar_url: expect.anything() } },
+      waiting: "250000000", waiting_usd: 0.1, claimed: "0", claimed_usd: 0, routed_total: "250000000",
+      agents: [{ agent: big, bps: 2000, routed_total: "200000000", set_at: 1_760_000_500 }, { agent: small, bps: 2000, routed_total: "50000000", set_at: 1_760_000_100 }],
+      routed_since: 1_760_000_100, waiting_since: t0,
+    });
+    // the dollar rule for a figure of now: the amount times the current reading
+    expect(hello).toMatchObject({ waiting: "60000000", claimed: "40000000", routed_total: "100000000", agents: [{ agent: part, routed_total: "100000000" }], routed_since: 1_760_000_900, waiting_since: t0 });
+    expect(hello.waiting_usd).toBeCloseTo(0.024, 10);
+    expect(hello.claimed_usd).toBeCloseTo(0.016, 10);
+    // nothing has come in yet: listed with zero, and no waiting time
+    expect(quiet).toMatchObject({ waiting: "0", waiting_usd: 0, claimed: "0", routed_total: "0", agents: [{ agent: none }], waiting_since: null });
+    expect(r.body).toMatchObject({ total_waiting: "310000000", usd: { quote_usd: 0.0004, read_at: 1_760_002_000, decimals: 6 }, usd_reason: null });
+    expect(r.body.total_waiting_usd).toBeCloseTo(0.124, 10);
+    // nothing private: no wallet (the pinned one included), no session, no login of a claimant, no attestation, and no escrow that is not a repository's
+    const text = JSON.stringify(r.body);
+    for (const secret of [pinned, "wallet", "session", "login\":\"octocat\",\"method", "signature", "attest", String(OCTO.id) + "\",\"repository", "someone/else"]) expect(text).not.toContain(secret);
+    expect(Object.keys(engine).sort()).toEqual(["agents", "claimed", "claimed_usd", "github_id", "repository", "routed_since", "routed_total", "waiting", "waiting_since", "waiting_usd"]);
+    expect(r.body.repositories.some((x: any) => x.github_id === String(OCTO.id))).toBe(false);
+  });
+
+  test("one repository by name (a former name too); a repository nothing is routed to answers an empty list; the waiting time is kept and starts again after a claim", async () => {
+    const { e } = seeded();
+    const first = await get(e, "/v1/fee-claims/waiting?repo=Acme/Engine");
+    expect(first.body.repositories.map((x: any) => x.repository.full_name)).toEqual(["acme/engine"]);
+    expect(first.body.total_waiting).toBe("250000000");
+    const since = first.body.repositories[0].waiting_since;
+    e.clock.advance(3_600_000);
+    expect((await get(e, "/v1/fee-claims/waiting?repo=https://github.com/acme/engine")).body.repositories[0].waiting_since).toBe(since);
+    expect((await get(e, "/v1/fee-claims/waiting?repo=octocat/hello-world")).body.repositories[0]).toMatchObject({ waiting: "60000000" });
+    for (const name of ["octocat/solo", "nobody/nothing", "Mona/unrelated", "someone/else"]) expect((await get(e, `/v1/fee-claims/waiting?repo=${name}`)).body).toMatchObject({ repositories: [], total_waiting: "0" });
+    for (const bad of ["nope", "a/b/c", "a b/c"]) expect((await get(e, `/v1/fee-claims/waiting?repo=${encodeURIComponent(bad)}`)).status).toBe(400);
+  });
+
+  test("without a dollar reading every dollar figure is null with the reason, never a coin number in its place; with the feature off the route is not served", async () => {
+    const { e } = seeded({ usd: false });
+    const r = await get(e, "/v1/fee-claims/waiting");
+    expect(r.body).toMatchObject({ usd: null, usd_reason: "no market indexer configured for this Core (UNITS_INDEXER_URL)", total_waiting: "310000000", total_waiting_usd: null });
+    for (const x of r.body.repositories) expect([x.waiting_usd, x.claimed_usd]).toEqual([null, null]);
+    delete process.env.UNITS_FEATURE_GITHUB_FEE_CLAIMS;
+    const off = await get(e, "/v1/fee-claims/waiting");
+    expect([off.status, off.body.error]).toEqual([404, "feature_off"]);
+  });
+});

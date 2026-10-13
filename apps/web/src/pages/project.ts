@@ -1,5 +1,6 @@
 import { get } from "../api.ts";
 import { effect, repoLabel, stamp, when } from "../fmt.ts";
+import { injectWaitingStyle, loadWaiting, REPO_NAME, waitingSection } from "../fees-waiting.ts";
 import { html, type Raw } from "../html.ts";
 import { auditBadge, badge, empty, icon, kindBadge, panel } from "../ui.ts";
 import { githubLink, type GithubField } from "./generation-github.ts";
@@ -105,10 +106,13 @@ function injectStyle() {
 
 export async function projectPage(params: string[]): Promise<Page> {
   injectStyle();
+  injectWaitingStyle();
   const key = decodeURIComponent(params[0] ?? "");
   const hidden = qs().get("hidden") === "1";
   const p = await get<Project>(`analytics/project?repo=${encodeURIComponent(key)}${hidden ? "&hidden=1" : ""}`);
   const title = p.github ? repoLabel(p.repo) : p.repo;
+  // fees waiting for the repository's owners (fees-waiting.ts): nothing unless an agent routes fees to it
+  const waiting = p.github && REPO_NAME.test(title) ? await loadWaiting(title) : null;
   // retired lineages that never accepted a generation say nothing here; they stay on their own pages
   const shown = p.lineages.filter((l) => l.status === "active" || l.timeline.length);
   const quiet = p.lineages.length - shown.length;
@@ -123,6 +127,7 @@ export async function projectPage(params: string[]): Promise<Page> {
       ["Agents working now", String(p.live_agents.length), p.live_agents.map((a) => agentLabel(a.agent, a.name)).join(", ") || "none"],
       ["Open candidates", String(p.open_candidates), "a count only until final"],
     ])}</section>
+    ${waitingSection(waiting, title)}
     ${shown.sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || b.timeline.length - a.timeline.length).map(
       (l) => html`<section class="pjd-lin" data-lineage="${l.lineage_id}">
         <div class="pjd-lin-h"><h2>${l.recipe_name ?? "unit"}</h2><span class="sub">${[unitGens(l), `${l.open_candidates} open candidate`].filter(Boolean).join(", ")}${l.open_candidates === 1 ? "" : "s"}</span>

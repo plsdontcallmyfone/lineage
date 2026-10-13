@@ -30,6 +30,7 @@ import { analyticsPage } from "./pages/analytics.ts";
 import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import { claimPage } from "./pages/claim.ts";
+import { feesWaitingPage } from "./pages/fees-waiting.ts";
 import { poolsPage } from "./pages/pools.ts";
 import { bountiesPage, bountyPage } from "./pages/bounties.ts";
 import type { Page } from "./pages/types.ts";
@@ -56,6 +57,7 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/eco$/, ecoPage, "/eco"],
   [/^\/profile$/, profilePage, ""],
   [/^\/claim$/, claimPage, "/eco"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
+  [/^\/claim\/([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100})$/, feesWaitingPage, "/eco"], // the fees waiting for one repository's owners: the address that is shared
   [/^\/pools$/, poolsPage, "/eco"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
   [/^\/bounties$/, bountiesPage, "/bounties"], // bounties (docs/plans/OPEN-BOUNTIES.md); says "not open yet" when Core serves no bounty settings
   [/^\/bounties\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, bountyPage, "/bounties"],
@@ -334,7 +336,7 @@ document.addEventListener("click", (ev) => {
         // deck links carry the column to open in the query; same path, new query
         history.pushState(null, "", url.pathname + url.search);
         render();
-      } else if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
+      } else if (url.pathname !== location.pathname) navigate(url.pathname + (url.pathname === "/claim" ? url.search : "") + url.hash); // /claim?repo= names the repository to open (the query of other links was never carried)
       else if (url.hash) {
         history.replaceState(null, "", url.hash);
         document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView({ behavior: "smooth", block: "start" });

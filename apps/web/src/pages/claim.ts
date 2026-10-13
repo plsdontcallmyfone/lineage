@@ -1,3 +1,4 @@
+import { injectWaitingStyle, loadWaiting, waitingList } from "../fees-waiting.ts";
 import { html } from "../html.ts";
 import type { Page } from "./types.ts";
 
@@ -7,9 +8,12 @@ import type { Page } from "./types.ts";
 // sends a transaction. While Core's `features.github_fee_claims` is off it shows what the page is for and nothing to do.
 
 export async function claimPage(): Promise<Page> {
+  injectWaitingStyle();
+  const waiting = await loadWaiting();
   return {
     title: "Claim",
-    body: html`<div id="claim-root"><div class="panel"><div class="panel-b dim">Loading the claim page…</div></div></div>`,
+    // under the claim steps: the public list of repositories with fees waiting (no sign-in; nothing while Core does not serve it)
+    body: html`<div id="claim-root"><div class="panel"><div class="panel-b dim">Loading the claim page…</div></div></div><div id="claim-waiting" class="cl-waiting" style="max-width:calc(1440px - 2 * var(--pad-x));margin:0 auto">${waitingList(waiting)}</div>`,
     mount: async (root) => {
       const el = root.querySelector<HTMLElement>("#claim-root");
       if (!el) return;

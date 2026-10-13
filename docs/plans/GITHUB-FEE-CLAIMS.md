@@ -400,3 +400,39 @@ New Core tables: `fee_claim_repos`, `fee_claim_repo_names`, `fee_claim_bound` (k
 
 Devnet needs its admin to send `set_claim_config` with `min_bps = max_bps = 2000` (it holds 1000 and
 3000 today, so the tick there reads 10% until then), and its Core and pages redeployed.
+
+## 12. Fees waiting for the owners (owner 2026-10-13)
+
+"Unclaimed fees waiting for you." A public view, no sign-in, of what sits in each repository's escrow.
+
+- **Core**: `GET /v1/fee-claims/waiting`, and `?repo=owner/name` for one repository (an empty list
+  when nothing is routed to it; by every name GitHub ever gave the repository). Per repository:
+  `waiting` (the escrow vault's balance on chain) and `claimed`, each in base units with `_usd`;
+  `routed_total`; the `agents` whose route names it now with their share and `set_at`;
+  `routed_since` (the earliest of those routes, a chain fact); `waiting_since`. Largest first.
+  Only escrows bound to their repository (11.2) appear, so an account-keyed escrow of the first
+  build is never listed; no wallet, claimant or attestation is in the answer. Held for 30 seconds.
+- **Dollars**: the amount times the quote coin's current price, the rule for a figure of "now" at
+  the top of `packages/indexer/src/api.ts`, from Core's copy of the indexer's reading
+  (`revenue.ts`). With no reading every `_usd` is null with `usd_reason`, and the pages say so.
+- **`waiting_since` is Core's observation, not a chain fact.** The escrow account holds no time.
+  Core notes when it first saw a balance at the escrow's current claim number (table
+  `fee_claim_waiting`), so the time starts again after a claim, and it is late by however long
+  nobody had asked Core (the pages ask whenever someone opens them).
+- **Pages** (`apps/web/src/fees-waiting.ts`): the list "Repositories with fees waiting" under the
+  claim steps on `/claim`; a section on the repository's project page ("$X is waiting for the
+  owners of owner/repo. Anyone with admin on the repository can claim it.", a Claim button to
+  `/claim?repo=owner/repo`); and `/claim/<owner>/<name>`, the address to share, whose title and
+  description the web server writes into the document it serves (`apps/web/claim-preview.ts`,
+  `og:` and `twitter:` tags, the amount when something waits, read from Core and kept a minute).
+  Empty states: no repository with fees waiting; a route that has earned nothing; nothing routed
+  to this repository. Where the feature is off the list and the section are absent.
+- A link to `/claim?repo=` from inside the app lost its query (the router carried only the path),
+  so the profile chip never opened its repository; fixed for `/claim`.
+- **Proven**: Core tests 3 (unclaimed with two agents, partly claimed, empty, the dollar rule, the
+  account-id escrow left out, nothing private, no reading, the flag); page and preview tests 7;
+  `bun scripts/claims/waiting-proof.ts` 44/44 in headless Chromium at 1280 and 390 on a staged
+  chain, then on a chain with no route. **Not proven**: a real escrow (none holds anything on
+  mainnet today: no agent has set a route), the preview as X or another site renders it, and the
+  tags on a statically hosted copy of the app (they are written by `apps/web/server.ts`).
+

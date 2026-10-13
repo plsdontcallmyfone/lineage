@@ -192,6 +192,11 @@ describe("social writes", () => {
     // the Claim page's three writes (GitHub fee claims): same origin, small bodies; nothing else under /api takes a POST
     for (const p of ["/api/fee-claims/proofs/gist", "/api/fee-claims/wallet", "/api/fee-claims/attest"]) expect(classify("POST", p)).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
     for (const p of ["/api/fee-claims/oauth/start", "/api/fee-claims/attestations", "/v1/fee-claims/attest", "/api/admin/pools/run"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    // fees waiting for the owners: a public read (the api and v1 classes) and a page of its own per repository; never a write
+    for (const path of ["/api/fee-claims/waiting", "/v1/fee-claims/waiting"]) expect(classify("GET", path)).toMatchObject({ klass: path.startsWith("/v1") ? "v1" : "api", cors: true, sameOrigin: false, stream: false });
+    expect(classify("POST", "/api/fee-claims/waiting")).toEqual({ refuse: 405, why: "method" });
+    expect(classify("GET", "/claim/octocat/Hello-World")).toEqual({ klass: "page", upstream: "web", cors: false, stream: false, sameOrigin: false });
+    expect(classify("POST", "/claim/octocat/Hello-World")).toEqual({ refuse: 405, why: "method" });
     // launch from a tweet: the launch page's one write
     expect(classify("POST", "/api/tweet-launches")).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
     expect(classify("POST", "/api/tweet-launches/AAAAAAAAAAAAAAAAAAAAAA")).toEqual({ refuse: 405, why: "method" });

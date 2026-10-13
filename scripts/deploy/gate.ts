@@ -21,6 +21,8 @@
 //   POST /api/fee-claims/proofs/gist, /api/fee-claims/wallet, /api/fee-claims/attest   the Claim page (GitHub fee
 //                             claims): Core checks the gist, the wallet's signature and the session; same origin only;
 //                             the social class; bodies capped at 8 KB
+//   GET  /api/fee-claims/waiting (and under /v1), /claim/<owner>/<name>   the fees waiting for a repository's owners: a public
+//                             read in the api and v1 classes, and the page of one repository in the page class
 //   POST /api/tweet-launches   the launch page hands in the launch a reply bot's link led to (launch from a tweet);
 //                             same origin only; the social class
 //   GET  /api/tweet-links/:id, /api/agents/:id/tweet-origin (and under /v1)   "Started from a tweet": the tweet an open

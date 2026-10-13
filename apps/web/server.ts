@@ -53,6 +53,7 @@ import { chainBrowserPlugin } from "../../packages/chain/src/browser/plugin.ts";
 import { Faucet } from "./wallet/faucet.ts";
 import { publishSoul, SoulDrafts } from "./wallet/souls.ts";
 import sites from "../../config/sites.json" with { type: "json" };
+import { CLAIM_SHARE_PATH, loadClaimPreview, withPreview } from "./claim-preview.ts";
 
 const arg = (n: string, d?: string) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -559,6 +560,14 @@ const server = Bun.serve({
       const f = Bun.file(join(DIR, "public/providers", provLogo[1]!));
       if (!(await f.exists())) return new Response("not found", { status: 404 });
       return new Response(f, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
+    }
+    // the shareable page of the fees waiting for one repository's owners: the same document with its own title and
+    // description, so a posted link previews with them (claim-preview.ts)
+    const share = CLAIM_SHARE_PATH.exec(p);
+    if (share && req.method === "GET") {
+      const name = `${share[1]}/${share[2]}`;
+      const origin = (process.env.UNITS_SITE_URL ?? "").replace(/\/+$/, "") || null;
+      return new Response(withPreview(await indexHtml().text(), await loadClaimPreview(CORE, name), origin ? `${origin}/claim/${name}` : null), { headers: { ...PAGE_HEADERS, "cache-control": "no-cache" } });
     }
     return new Response(indexHtml(), { headers: PAGE_HEADERS });
   },

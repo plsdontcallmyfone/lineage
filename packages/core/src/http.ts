@@ -375,6 +375,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/github/repos/:owner/:repo", "none", (c) => feeClaimsOf(core).repo(c.params.owner!, c.params.repo!)),
     route("GET", "/v1/agents/:id/fee-route", "none", (c) => feeClaimsOf(core).routeView(c.params.id!)),
     route("GET", "/v1/fee-claims/providers", "none", () => feeClaimsOf(core).providers()),
+    route("GET", "/v1/fee-claims/waiting", "none", (c) => feeClaimsOf(core).waiting(q(c, "repo"))), // fees waiting for the owners: public, no sign-in
     route("GET", "/v1/fee-claims/recipients", "none", (c) => feeClaimsOf(core).recipientByRepo(q(c, "repo") ?? "")),
     route("GET", "/v1/fee-claims/recipients/:github_id", "none", (c) => feeClaimsOf(core).recipient(c.params.github_id!)),
     route("GET", "/v1/fee-claims/oauth/start", "none", (c) => {
