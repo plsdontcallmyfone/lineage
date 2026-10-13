@@ -4,9 +4,9 @@ Owner, 2026-10-13: "we want the binding of the agent to be seamless, there's alw
 and the same day: "add a popup on a button above the navbar that shows up if you launched a token but
 didn't bind them".
 
-Status: sections 1 to 8 built and live. Section 9 (required bind): the bind service, its safety net,
-health and the deploy kit are built and tested; the launch form's part is specified, not built.
-Section 10 (a backup signature on a durable nonce): a devnet finding and a proposal.
+Status: sections 1 to 8 built and live. Section 9 (required bind) and section 10 (the backup signature
+on a durable nonce, with the runtime key pool) are built and proven on devnet (section 11). No mainnet
+transaction was sent for either.
 
 ## 1. The problem
 
@@ -172,9 +172,7 @@ instance, 2026-10-13: `units-main-runtime` in `deactivating (stop-sigterm)`, not
 bind port). A launch built in that window had no reservation, went out without the bind, and needed a
 second signature its launcher did not come back for.
 
-Status of this section: 9.1, 9.4 (server side), 9.5 and 9.7 are built and tested; 9.2 and 9.3 (the
-launch form) are specified here and NOT built yet; section 10 (the backup signature) is a finding and a
-proposal, not built.
+Status of this section: built. Proofs in section 11.
 
 ### 9.1 The bind service: the bind surface outlives the runtime
 
@@ -210,25 +208,29 @@ through the gate, longest answer 36 ms. Across the service's own restart: 4 ms t
 start, 137 ms between its last answer before and its first after; directly 4 requests were refused,
 through the gate none (the gate retries a refused dial), longest answer 261 ms.
 
-### 9.2 The launch form: the bind is required (NOT BUILT YET)
+### 9.2 The launch form: the bind is required
 
-- Building a hosted launch asks for the reservation and keeps asking for about 40 s with the line
-  "Getting the agent's runtime key…". Still none: the launch is not built. One sentence, "The hosted
-  runtime did not give this agent its key, so the launch was not built. Nothing was signed or sent.",
-  and a Try again button.
-- Right before the wallet is asked, the reservation is asked for once more (it expires 15 minutes
-  after it was last asked for). No answer: nothing is signed. Another key than the one the review was
-  built with: the launch is built again by itself.
+- Building a hosted launch asks for the reservation and keeps asking for 20 s (the whole build has 25)
+  with the line "Getting the agent's runtime key…". Still none: the launch is not built. One sentence,
+  "The hosted runtime did not give this agent its key, so the launch was not built. Nothing was signed
+  or sent.", and a Try again button.
+- Right before the wallet is asked, the reservation is asked for once more, for 12 s (it expires 15
+  minutes after it was last asked for). No answer: "The hosted runtime is not answering, so nothing was
+  signed. Try again." Another key than the one the review was built with: the launch is built again by
+  itself and says so.
 - After the wallet signed, the co-signature is asked for up to 20 s. Still none: nothing is sent,
-  "The hosted runtime did not co-sign the agent's binding, so nothing was sent. Try again."
+  "bind: The hosted runtime did not co-sign the agent's binding, so nothing was sent. Try again."
+  The runtime refusing the transaction itself is not retried: "The hosted runtime refused the agent's
+  binding (<its reason>), so nothing was sent."
 - A launch on the launcher's own worker is untouched.
 - Escape hatch, off by default: `UNITS_BIND_OPTIONAL=1` in the web server's environment (it reaches
   the page in `/chain/config`, which answers when the bind service does not). The form then behaves as
   section 3.4: the bind is optional and follows the launch.
-- Before the form is filled, the page reads `/runtime/bind/health` once and shows a quiet line only
-  when it is down.
+- When the form opens, the page reads `/runtime/bind/health` once and shows one quiet line under the
+  Runtime choice only when it is down: "Hosted launches are paused for a moment: the hosted runtime is
+  not handing out keys. You can fill in the form; Launch works again once it is back."
 
-### 9.3 On chain: together, or finished without the launcher (NOT BUILT YET on the page)
+### 9.3 On chain: together, or finished without the launcher
 
 - Mainnet bundle with room: the bind is in the bundle. Launch and bind land together or not at all.
 - Bundle already full (five transactions): the bind cannot be merged into a launch transaction (the
@@ -237,8 +239,14 @@ through the gate none (the gate retries a refused dial), longest answer 261 ms.
   bind service as well (9.4). The launched screen shows "binding" until the chain shows it.
 - Bundle refused, ordered sends: the bind is the last of them; if the page stops before it, 9.4.
 - A wallet that wants the transactions one by one: declining the bind sends nothing.
-- The launched screen ends at "bound" by itself, or shows "Finish setup: bind" as the primary button
-  with the reason.
+- A wallet that changes the bind in any way but its own guard instructions: nothing is sent.
+- The launched screen's Runtime row ends at the hosted runtime's signing key by itself. While a backup
+  signature is held (section 10) it reads "Your agent will start as soon as the runtime is back.
+  Nothing more to sign." and the wallet is never asked again. With no backup and nothing more the page
+  can do, it shows the reason and "Finish setup: bind" as the primary button.
+- In code: `apps/web/wallet/chain.ts` `signAndSendAll` parts carry `mustSign` (signatures before any
+  send, or the call throws), `hold` (co-signed, out of the bundle, sent right after) and `keep`
+  (co-signed, never sent by the page); `bind-plan.ts` builds them.
 
 ### 9.4 The safety net: the service finishes what the wallet approved
 
@@ -298,62 +306,206 @@ shows it (`reserve.full`) and the escape hatch of 9.2 is the answer while it las
 - After a rollback to a release without it: `systemctl disable --now units-bind` (or
   `units-main-bind`); the older gate and runtime do not use it.
 
-## 10. A backup signature that does not expire: what the chain allows (finding, 2026-10-13)
+## 10. The backup signature: a bind that does not expire (owner, 2026-10-13)
 
-Asked for: in the launch's own approval, a second `rotate_agent_key` built on a durable nonce, kept by
-the server and sent whenever the runtime is back, with the nonce account created and funded in the
-launch transactions.
+"the bind must work regardless ... a just in case bind signature taken at launch that the server sends
+later if there was an issue."
 
-**That shape cannot work, shown on devnet** (`bun scripts/launch-e2e/nonce-devnet.ts`, record in
-`scripts/launch-e2e/NONCE-DEVNET-LAST.json`, 9 of 9 checks, fees only):
+Status: built. Proofs in section 11.
+
+### 10.1 What the chain allows (run on devnet, `scripts/launch-e2e/nonce-devnet.ts`, 9 of 9)
 
 - A nonce account's stored value is set when `InitializeNonceAccount` runs:
-  sha256("DURABLE_NONCE" + the blockhash before the block it landed in) (check 1b, recomputed from
-  the landing block). It does not exist when the wallet signs.
-- A transaction signed in the same approval as the creation can only carry the blockhash known then,
-  so it is an ordinary transaction: once that blockhash aged out it was refused, "Blockhash not found"
-  (check 2).
-- So one approval cannot both create the nonce account and sign over its value. A wallet cannot be
-  asked a second time later without that being the "second thing to sign" this work removes.
+  sha256("DURABLE_NONCE" + the blockhash before the block it landed in), recomputed from the landing
+  block (check 1b). It does not exist when the wallet signs.
+- So a rotation signed in the same approval as the account's creation can only carry the blockhash
+  known then: an ordinary transaction, refused with "Blockhash not found" once that blockhash aged out
+  (check 2). **A nonce account made in the launch transactions cannot back a signature of the same
+  approval.** The account has to exist before the launch.
+- A transaction signed over the stored value of an account that already exists landed 90 s after its
+  signing (3a), advanced the nonce (3b), was refused when sent again (3c), and is not a nonce
+  transaction when anything stands before `AdvanceNonceAccount` (3d). The authority withdrew the whole
+  balance and the account was gone (4).
+- Solana's own documentation says the same of the order ("Build the transaction with
+  `AdvanceNonceAccount` as the first instruction and the nonce value as the `recent_blockhash`",
+  solana.com/docs/core/transactions/durable-nonces, read 2026-10-13) and adds: "Durable nonces may be
+  deprecated in a future release." If they are, this section falls back to section 9 alone.
 
-**What does work, shown in the same run:** a transaction signed over the stored value of a nonce
-account that already exists landed 90 s after its signing and long after every blockhash of that time
-(3a), advanced the nonce (3b), was refused when sent again (3c), and is not a nonce transaction when
-anything stands before `AdvanceNonceAccount` (3d). The authority alone withdrew the whole balance and
-the account was gone (4).
+### 10.2 The design as built
 
-**The next best design (proposed, NOT built; it needs the owner's word because the platform funds it):**
+1. **The key pool** (`packages/runtime/src/pool.ts`). The runtime side makes runtime keys ahead of
+   time, each with its own nonce account: address derived from the payer and the key
+   (`CreateAccountWithSeed`, the payer as base, so the payer is the creation's only signer), 80 bytes,
+   the KEY as nonce authority. Payer and signer: the runtime authority key. Files in
+   `<state_dir>/pool-keys` (mode 700, keys 600) beside `keys/`.
+2. **Bounds** (runtime config `bind_pool`, written by `site-config.ts`): 20 ready keys, refilled when
+   fewer than 8 are ready, never more than 40 nonce accounts alive at once (ready, handed out and
+   waiting to be closed together), 4 creations a minute, and never a refill that takes the payer under
+   0.05 SOL. Rent for 80 bytes read on mainnet 2026-10-13: 1,056,640 lamports. **Locked at the target:
+   0.0211328 SOL; at the cap: 0.0422656 SOL**; each creation and each close also pays a 5,000 lamport
+   fee. All rent returns when the accounts close.
+3. **Hand-out.** A new reservation takes a ready pool key as the agent's own key file (a hard link,
+   then the pool file is removed: one key, one agent) and its answer carries
+   `nonce: { account, value }` read from chain at that moment. No ready key: an ordinary key and no
+   `nonce`, and the launch still binds in its bundle (section 9), never unbound.
+4. **In the launch's approval** the wallet also signs `bind backup`:
+   `AdvanceNonceAccount(account, authority = reserved key)`, compute limit, compute price,
+   `rotate_agent_key(owner, agent, reserved key)`, over the nonce's value, the launcher as fee payer.
+   The reserved key already signs the rotation as the new key, so being the nonce authority adds no
+   signer; it stays read-only and never pays. The page never sends it and it is no cost row: it costs
+   the launcher a network fee only if it is ever used (the review says "no fee unless used"), and the
+   launcher's wallet must hold that fee then.
+5. **Co-signer and firewall** (`packages/chain/src/cosign.ts`, `firewall.ts`), each on its own: one more
+   instruction is accepted, only as instruction 0, only the System program's `AdvanceNonceAccount`
+   with exactly three accounts and four bytes of data, on the nonce account of THIS key with THIS key
+   as authority. After it: compute budget and exactly one `rotate_agent_key` of this agent's record to
+   this key (a wallet's Lighthouse guard after it is still passed over). Refused: a System instruction
+   anywhere else, any other System instruction, another nonce account, another authority, a second
+   rotation, another agent, a key with no nonce account.
+6. **Kept and sent** (`bind-service.ts`). The co-sign request is the hand-over: the service keeps the
+   wallet-signed backup (with the nonce value it read from chain; one signed over anything else is not
+   kept) before it answers. It sends it only when the agent is a hosted launch on chain without its
+   bind AND the ordinary bind can no longer land, then again with growing gaps (2 s doubling to 60 s)
+   until the chain shows the bind. Dropped: bound; the record is not a hosted launch; no launch 15
+   minutes after signing; the nonce moved or the account is gone (counted as launched unbound and
+   listed for the owner); 7 days.
+7. **Cleanup, without the launcher** (the pool pass, once a minute in the runtime, or
+   `lineage-runtime pool --config <file> --fill`). The key is the nonce authority, so it signs the
+   withdrawal of the whole balance to the payer, the payer paying the fee: when its agent is bound (by
+   either path: the backup is void once the account is gone), and for a key set aside after its
+   reservation expired. A reservation that expires with the key never having signed: the key goes back
+   to the pool with its account untouched (no transaction carries its signature, so there is nothing to
+   void; no advance is sent). A key that ever co-signed is never given to another agent (it is set
+   aside as before, and closed). The firewall lets a key sign that withdrawal only when it is the whole
+   transaction, of its own account, to the payer that funded it, the key read-only and not paying; a key
+   still in the pool or set aside can sign nothing else at all.
+8. **When the pool cannot be filled** (the payer under its floor, the cap reached, creations failing):
+   `GET /runtime/bind/health` says so under `backup` (`ok`, `ready`, `alive`, `cap`, `locked_lamports`,
+   `payer_lamports`, `why`), `lineage-runtime status` prints it under `bind_pool`, and launches go on
+   with the bind in the bundle alone. `backup` never makes the health answer not ok.
 
-1. A pool of runtime keys made ahead of time by the runtime side, each with its own nonce account that
-   already exists: created with the pool key as base and as nonce authority, 80 bytes, rent 1,056,640
-   lamports on devnet as read (mainnet: read at the time; about 0.0015 SOL), paid by the platform. The
-   public half, the nonce account and its current value are what the bind service hands out as a
-   reservation, one per agent id, under today's limits and expiry. The private half stays in the key
-   store; a pool key is firewall-guarded and signs nothing until it is the reserved key of exactly one
-   agent.
-2. In the launch's approval the launcher also signs: `AdvanceNonceAccount(nonce, authority = the
-   reserved key)` first, then the compute budget, then `rotate_agent_key(owner, agent, reserved key)`,
-   over the nonce's stored value. The reserved key already signs the rotation, so it being the nonce
-   authority adds no signer, stays read-only and never pays (section 5's rules hold). The launcher pays
-   the fee when it is sent, so the launcher's wallet must still hold a few thousand lamports then.
-3. The co-signer and the firewall accept exactly one more instruction, only as instruction 0: the system
-   program's `AdvanceNonceAccount` on the nonce account recorded for this reservation with this key as
-   authority; everything else as today.
-4. The bind service keeps the wallet-signed durable rotation (per agent id and reservation), and sends
-   it whenever the launch is on chain without its bind, minutes or hours later; a second send fails
-   harmlessly because the nonce moved.
-5. Cleanup needs no launcher: the pool key is the authority, so the runtime side withdraws the rent
-   back to the platform when the agent is bound (the fast path) or the reservation expired unused, and
-   the key and account return to the pool or are retired. If the launcher is to carry the rent, the
-   launch adds a transfer to the platform and the review shows it as a cost row; then it is not
-   refunded by closing, and that should be said plainly on the review.
-6. Open before building: mainnet SOL for the pool (rent per pool key, returned on cleanup), who signs
-   those creations (the runtime authority key is the payer today), the pool's size, and how real
-   wallets treat a nonce transaction inside a batch (not checked yet: no wallet documentation was read
-   for this section and no real wallet was run).
+Counters added: `backups_kept`, `bound_by_backup`.
 
-What a kept never-expiring rotation can do: move this one agent's record to this one reserved key, if
-and only if the signer is the record's owner. It cannot be used for another agent (the rotation names
-the record), with another key (it names the key), or twice (the nonce). The owner voids it by rotating
-or by the nonce being advanced; it is deleted once the agent is bound. Nothing acts for the agent
-until that owner-signed rotation has landed on chain: this is not off-chain delegation.
+### 10.3 What it covers, and what it does not
+
+The backup covers everything after the approval: the bind left out of or failing in the send, a
+closed tab, and the hosted runtime AND the bind service being away for minutes or hours afterwards.
+At the approval itself the bind service must answer (the reservation and the two co-signatures): it
+is a process of its own that restarts in about a tenth of a second behind a gate that waits 15 s for
+it, and the hosted runtime's restarts and drains do not touch it. A design in which no server process
+answers at launch time needs the keys' public halves and their allocation to agent ids somewhere that
+is itself always on, which is the same requirement moved; not built.
+
+### 10.4 Wallets (read 2026-10-13; no real wallet was run)
+
+- **Phantom** documents that it may add Lighthouse instructions: "When you submit a transaction to
+  Phantom, it may be augmented with Lighthouse assertion instructions before being submitted to the
+  network." (docs.phantom.com/developer-powertools/lighthouse). The page gives no conditions and does
+  not say where they are placed. **Phantom's documentation says nothing about durable nonce
+  transactions** (the whole docs dump was searched; no statement that it leaves them unmodified).
+- Phantom adds priority fees only when "The transaction(s) do not already have signature(s) present",
+  "do not have existing priority fee instructions" and stay under the size limit
+  (docs.phantom.com/developer-powertools/solana-priority-fees). The backup carries its own compute
+  budget instructions, so by that page none is added.
+- A user thread on Phantom's forum reports the warning "This transaction could steal your funds in the
+  future" whenever a `nonceAdvance` instruction is present (github.com/orgs/phantom/discussions/205,
+  2024; Phantom did not confirm it as intended). A launcher may see that warning on the batch.
+- One third-party project states that Phantom inserts Lighthouse instructions ahead of the advance,
+  which would make it an ordinary expired transaction (github.com/McRitchie-Studio/solana-studio
+  README; unverified, no transaction given).
+- **Solflare**: docs.solflare.com says nothing on added instructions or on durable nonces. A user on
+  Solana StackExchange reports that it adds an assertion at signing (question 21473, unanswered).
+- **What the page does with any of that.** The backup is the one part of the approval that may be
+  left out. A wallet that will not sign it, or that hands it back with anything but its own guard
+  instructions AFTER the advance: the page's check or the runtime's co-signer refuses it (anything
+  before the advance is refused by the co-signer and the firewall), only the backup is dropped, and
+  the launch goes out bound in its bundle as section 9 requires. A wallet that refuses the whole batch
+  is asked one by one: declining the backup leaves only the backup out; declining the bind sends
+  nothing. So the worst a wallet does to the backup is remove the second net, never the first.
+
+### 10.5 What a kept, never-expiring rotation can and cannot do
+
+- It can do one thing: set THIS agent's signing key to THIS reserved runtime key, and only if its
+  signer is the record's owner at that time. That is the choice the launcher made by launching hosted.
+- It cannot be used for another agent (the rotation names the record, and the co-signer and firewall
+  check the record against the reservation's agent id), with another key (it names the key, and only
+  that key's own nonce account is accepted), or twice (landing advances the nonce; shown on devnet).
+- The owner voids it at any time: by any transaction that advances that nonce, or simply by the agent
+  being bound, after which the nonce account is closed. An owner who later rotates the key away (to run
+  the agent themselves) is not pulled back: by then the agent was bound, the kept backup was deleted,
+  and its nonce account is gone.
+- It is deleted from the service once the agent is bound, and at the limits of 10.2 item 6. It is kept
+  in `<state_dir>/bind-service/pending.json`, mode 600, in the runtime user's state directory, beside
+  the keys. It holds no key: a transaction with two public signatures.
+- Stolen from the server it is still only that one rotation to that one key, which is what would be
+  sent anyway.
+- This is not off-chain delegation. Nothing acts for the agent until the owner-signed rotation has
+  landed on chain, and the registry then shows exactly what the owner signed.
+
+## 11. Proof of sections 9 and 10
+
+Unit tests (all stand-ins named in the files):
+
+- `packages/runtime/test/bind-service.test.ts` (19), `bind-pool.test.ts` (19), with `bind.test.ts` and
+  `bind-reserve.test.ts`: the service with no runtime process, the shared key store under a 6-process
+  race, the kept rotations in every outcome, health, the pool's bounds, one key one agent, closing,
+  the backup's every outcome and refusal.
+- `packages/chain/test/nonce-bind.test.ts` (11): the co-signer and the firewall, each refusal twice.
+- `apps/web/test/bind-required.test.ts` (21) with `bind-plan.test.ts` and `bind-bundle.test.ts`: every
+  refusal of the launch form sends nothing; full bundle; one-by-one signing; the backup in the approval;
+  the mainnet bundle holding one fewer than the approval.
+- `scripts/deploy/bind-service.test.ts` (16): the unit, the deploy order, the gate, the monitor.
+
+Headless, mock wallet (`UI_PORT=9663 bunx playwright test tests/ui/launch-bind.spec.ts`, 1280 and 390
+px, the wizard walked against the live site's reads, every send answered by the spec and none reaching a
+node): normal (one wallet request; the bind and the backup co-signed before the first send; the review's
+`bind backup` row "no fee unless used"; the Runtime row ends bound); reservation slow then answering
+(the line "Getting the agent's runtime key…"), then unavailable (the refusal sentence, Try again, the
+wallet never asked); the runtime gone at signing (nothing signed); tab closed after the launch was sent
+(both rotations were with the runtime before the first send); delayed (the launch lands without its
+bind, the runtime away: "Your agent will start as soon as the runtime is back. Nothing more to sign.",
+no button, no second wallet request, then bound by itself).
+
+Devnet, real transactions (`bun scripts/launch-e2e/bind-service-devnet.ts --required --backup`, record
+`scripts/launch-e2e/BIND-SERVICE-DEVNET-LAST.json`; the bind service as its own process, the page's own
+signer, the agent loop a stand-in that holds the runtime's lock, the real `Runtime` class adopting each
+agent afterwards from the same directory):
+
+Last run 2026-10-13, 24 of 24 checks, 0.0478 devnet SOL in all:
+
+- **A1, the agent loop restarts while the wallet approves.** SIGTERM as the wallet was asked, a 3 s
+  drain, a new process; the bind service stayed up. One wallet request, launch and bind landed, the
+  registry shows the reserved key after one rotation; 3589 ms from asking the wallet to bound. The
+  service sent nothing itself. The real `Runtime` adopted agent `9bTmCC26kZaaCMrQD1VfJZkuyGEgHd1qfdJq2oMQtxdR`
+  with the key the service had reserved. (The same case and A2 also ran 9 of 9 on the code that was on
+  origin/main at 6f16612, before the pool existed.)
+- **A2, the co-signature never reaches the page and the tab is closed.** The service co-signed and
+  kept the rotation; its answer was dropped; the page sent the launch alone and did nothing more. The
+  service sent the kept rotation: bound 11295 ms after the wallet was asked, one wallet request in all
+  (agent `6NygzZRBgmkVEisruaRPah7pDAZrSBjEDvbgeRdmBFpc`).
+- **C, no reservation to be had.** Refused after the time it was given with the sentence of 9.2, the
+  waiting line said once, the wallet never asked, nothing on chain for that agent; a reservation that
+  answered after 3 s was waited for.
+- **B, the backup across a long stop.** A pool of 2 keys made by a throwaway payer standing in for the
+  runtime authority (rent 1056640 lamports each). The reservation handed out pool key
+  `8sSXjRokT9mjvr9Z4TTH6a4k86gLsavSZz2XsCRS6th6` with nonce account
+  `AFNvx5LCqLKWkpMBhoQkDo3qPE8ZSyxNPY5NwKL45vSE`. The live service refused, with HTTP 400 each, a backup
+  with a transfer beside it, over another key's nonce account, for another agent, with the advance not
+  first, and a withdrawal dressed as a bind. One approval carried the launch, the bind and the backup
+  (3 transactions); the bind's co-signature was dropped on the way back, and the bind service and the
+  agent loop were killed as the launch was being sent. The launch landed without its bind. Everything
+  stayed down 300 s; the launch's own blockhash was gone by then. The service was started again and
+  bound the agent from the kept backup with no further wallet request: about 10 s after it started,
+  323 s after the wallet had signed (transaction
+  `27X7z9w6Jy7kXBf33EoxKvGyxMZe3CVU6TCnHctjYZsEyUV7pcPd1Ap35rqahaSATx45jt2vKwpbBWPe7byi6MFo`).
+  The nonce advanced; the same signed bytes sent again were refused ("Blockhash not found"). Then the
+  real `Runtime` adopted the agent with the pool key and one pool pass closed its nonce account, the
+  1056640 lamports back with the payer, and refilled the pool.
+- The record was written from the working tree before these commits were made; the code is the same.
+
+Restarts, measured locally: section 9.1.
+
+Not proven: a real wallet extension (section 10.4 is documentation only); the Jito bundle on mainnet
+with the bind in it and the backup beside it (the bundle path ran against a stand-in block engine in
+the unit and headless tests); the full hosted runtime loop and the `units-bind` unit on a server; the
+pool's refill and close on mainnet.

@@ -1,0 +1,274 @@
+{
+  "at": "2026-10-13T14:42:38.225Z",
+  "network": "devnet",
+  "launcher": "FKQBjvfwfbwSynjRE8mT1ijSEc34JamjK1R3AgtvzYji",
+  "commit": "33feed4",
+  "bind_service": "its own process: packages/runtime/src/main.ts bind",
+  "A1": {
+    "agent": "9bTmCC26kZaaCMrQD1VfJZkuyGEgHd1qfdJq2oMQtxdR",
+    "mint": "CUPoEZRK5x1pjHYxuVKKGA5o1ZmTi51pxTS2WFu4eTEx",
+    "runtime_key": "4m11WAzMvY7uwoA1XYd5Up6suXtLDB1GHw3VfJzu7B2t",
+    "signatures": [
+      {
+        "label": "launch",
+        "signature": "NN3xnpZsdiobmPdpcwY6p2UpYCZX1sGqS6WnL8xBqeeazR9FW3hw69P9ZJN1kGKFLESAJrtQsVFRRKtTBa6xufR"
+      },
+      {
+        "label": "bind",
+        "signature": "2DA2kzH75ZoPKC4WXgz6jsQSA3oFAKk2uvNECBherBXAtCLKVAz3453fYHotdZdfbLJ3RQfMSg9jyFLSjyDuQ9MD"
+      }
+    ],
+    "ms_from_approval_request_to_bound": 3589,
+    "agent_loop": "left after 3003 ms, started again"
+  },
+  "A2": {
+    "agent": "6NygzZRBgmkVEisruaRPah7pDAZrSBjEDvbgeRdmBFpc",
+    "mint": "BrTyJ7XLPFV16cqB6f3N8MECaqGwUPRXs1ychQuWjXmN",
+    "runtime_key": "9vM7i8jF1CwKWzyZXfQ2kGyK7YbodZ36wvfvzGD9MPoH",
+    "ms_from_approval_request_to_bound": 11295,
+    "service_log": "sent the kept rotation of 6NygzZRBgmkVEisruaRPah7pDAZrSBjEDvbgeRdmBFpc to 9vM7i8jF1CwKWzyZXfQ2kGyK7YbodZ36wvfvzGD9MPoH (3dqVmkrt4kqt6ujvcqFFX1Qt2AFDwowF6hWcrzsicfW3kyrk4TjDiWedkfe5CufQRgGyLcfdhzRZJsnX4A4HJ8pS); its launch was on chain without it"
+  },
+  "C": {
+    "refusal": "The hosted runtime did not give this agent its key, so the launch was not built. Nothing was signed or sent.",
+    "waiting_line": "Getting the agent's runtime key…",
+    "tries": 7
+  },
+  "B_refusals": {
+    "with_a_transfer": {
+      "status": 400,
+      "message": "refusing to co-sign: a System program instruction that is not the first instruction"
+    },
+    "another_nonce_account": {
+      "status": 400,
+      "message": "refusing to co-sign: the first instruction is not AdvanceNonceAccount of this key's nonce account AFNvx5LCqLKWkpMBhoQkDo"
+    },
+    "another_agent": {
+      "status": 400,
+      "message": "refusing to co-sign: rotate_agent_key targets agent record 7t89rV2uer44qccRNgnMVtBkdBPxLcsmyvHtqaD5f9ag, not the record "
+    },
+    "advance_not_first": {
+      "status": 400,
+      "message": "refusing to co-sign: a System program instruction that is not the first instruction"
+    },
+    "a_withdrawal": {
+      "status": 400,
+      "message": "refusing to co-sign: the first instruction is not AdvanceNonceAccount of this key's nonce account AFNvx5LCqLKWkpMBhoQkDo"
+    }
+  },
+  "B": {
+    "agent": "5AurH8CHS3SdP8PM2A9NUUzzvPm2N15V9w2UdNi4eZ43",
+    "mint": "S9WkBwqdjAADwdWpJvc3jpqYQjd31dP5oskvvKABQAi",
+    "runtime_key": "8sSXjRokT9mjvr9Z4TTH6a4k86gLsavSZz2XsCRS6th6",
+    "nonce_account": "AFNvx5LCqLKWkpMBhoQkDo3qPE8ZSyxNPY5NwKL45vSE",
+    "nonce_value_signed": "12Rrz7sNqmketn5jvkXaXJwGfxfvVK7giigDXx9NUAVi",
+    "nonce_value_after": "2L3W6WgPCKQFpBNwq3rsgY5UBzgmxB8KoCYZzdSZW9rF",
+    "backup_signature": "27X7z9w6Jy7kXBf33EoxKvGyxMZe3CVU6TCnHctjYZsEyUV7pcPd1Ap35rqahaSATx45jt2vKwpbBWPe7byi6MFo",
+    "down_s": 300,
+    "s_from_wallet_to_bound": 323,
+    "second_send": "sendTransaction: Transaction simulation failed: Blockhash not found",
+    "rent_lamports": "1056640",
+    "pool_payer": "Ad5F23Nq3FJZeTBxwcgGAVFF3zhbK9sVPvWiz1yH2Umc",
+    "pool_after": {
+      "at": 1791902923088,
+      "ok": true,
+      "why": null,
+      "ready": 2,
+      "alive": 3,
+      "target": 2,
+      "low": 2,
+      "cap": 4,
+      "rent_lamports": "1056640",
+      "locked_lamports": "3169920",
+      "payer": "Ad5F23Nq3FJZeTBxwcgGAVFF3zhbK9sVPvWiz1yH2Umc",
+      "payer_lamports": "8800080",
+      "made": 2,
+      "closed": 1
+    }
+  },
+  "devnet_sol_spent": 0.047790806,
+  "runtime_requests": [
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> tx+sign_only",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> tx+sign_only",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> tx+sign_only",
+    "POST /runtime/bind/<id> tx+sign_only"
+  ],
+  "health_after": {
+    "ok": true,
+    "service": "bind",
+    "mode": "devnet",
+    "pid": 47618,
+    "started_at": "2026-10-13T14:48:29.417Z",
+    "reserve": {
+      "ok": true,
+      "live": 5,
+      "max": 1000,
+      "full": false
+    },
+    "key_store": {
+      "ok": true
+    },
+    "cosigner": {
+      "ok": true
+    },
+    "chain": {
+      "ok": true,
+      "last_read_s": 13
+    },
+    "backup": {
+      "ok": true,
+      "ready": 2,
+      "alive": 3,
+      "cap": 4,
+      "locked_lamports": "3169920",
+      "payer_lamports": "8800080",
+      "why": null,
+      "pool_seen_s": 9
+    },
+    "kept": 0,
+    "counters": {
+      "reservations": 5,
+      "cosigns": 4,
+      "bound_with_launch": 0,
+      "bound_after": 2,
+      "sent_by_service": 2,
+      "launches_unbound": 0,
+      "backups_kept": 1,
+      "bound_by_backup": 1
+    }
+  },
+  "results": [
+    {
+      "check": "A1: the agent loop was told to stop while the wallet approved, and the launch still got its co-signature from the bind service",
+      "ok": true,
+      "detail": "launch NN3xnpZsdiob…; bind 2DA2kzH75ZoP…"
+    },
+    {
+      "check": "A1: one wallet request; on chain the signing key is the reserved runtime key after one rotation",
+      "ok": true,
+      "detail": "requests 1, 2 transactions; signing key 4m11WAzMvY7uwoA1XYd5Up6suXtLDB1GHw3VfJzu7B2t; 3589 ms from asking the wallet to bound"
+    },
+    {
+      "check": "A1: the agent loop drained and started again during the launch",
+      "ok": true,
+      "detail": "left after 3003 ms, started again"
+    },
+    {
+      "check": "A1: the service saw it bound by the page's own send and sent nothing itself",
+      "ok": true,
+      "detail": "{\"reservations\":1,\"cosigns\":1,\"bound_with_launch\":0,\"bound_after\":1,\"sent_by_service\":0,\"launches_unbound\":0,\"backups_kept\":0,\"bound_by_backup\":0}"
+    },
+    {
+      "check": "A1: the runtime adopts the agent from the shared key store with the key the service reserved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "A2: the launch landed without its bind (the page never had the co-signed rotation)",
+      "ok": true,
+      "detail": "left: the answer was lost on the way back"
+    },
+    {
+      "check": "A2: the bind service sent the rotation it kept: bound, with one wallet request in all and nothing asked of the page",
+      "ok": true,
+      "detail": "11295 ms from asking the wallet to bound"
+    },
+    {
+      "check": "A2: counted as sent by the service and bound after the launch",
+      "ok": true,
+      "detail": "{\"reservations\":2,\"cosigns\":2,\"bound_with_launch\":0,\"bound_after\":2,\"sent_by_service\":1,\"launches_unbound\":0,\"backups_kept\":0,\"bound_by_backup\":0}"
+    },
+    {
+      "check": "A2: the runtime adopts it with the same key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C: with no reservation to be had the launch is refused in one sentence, after trying for a while",
+      "ok": true,
+      "detail": "after 6007 ms and 4 tries; said \"Getting the agent's runtime key…\"; refused with \"The hosted runtime did not give this agent its key, so the launch was not built. Nothing was signed or sent.\""
+    },
+    {
+      "check": "C: the wallet was never asked and nothing is on chain for that agent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C: a reservation that answers late is waited for, not refused",
+      "ok": true,
+      "detail": "key after 4629 ms"
+    },
+    {
+      "check": "B: the pool made its keys, each with a nonce account the payer funded",
+      "ok": true,
+      "detail": "ready 2, rent 1056640 lamports each, locked 2113280; payer 12000000 -> 9876720"
+    },
+    {
+      "check": "B: the reservation hands out a pool key with its nonce account and the value stored on chain",
+      "ok": true,
+      "detail": "key 8sSXjRokT9mjvr9Z4TTH6a4k86gLsavSZz2XsCRS6th6, nonce account AFNvx5LCqLKWkpMBhoQkDo3qPE8ZSyxNPY5NwKL45vSE, value 12Rrz7sNqmketn5jvkXaXJwGfxfvVK7giigDXx9NUAVi"
+    },
+    {
+      "check": "B: the live service refuses a backup with another instruction, over another key's nonce account, for another agent, with the advance not first, or with a withdrawal",
+      "ok": true,
+      "detail": "with_a_transfer 400 refusing to co-sign: a System program instruction that is not the first instruction; another_nonce_account 400 refusing to co-sign: the first instruction is not AdvanceNonceAccount of this key's nonce account AFNvx5LCqLKWkpMBhoQkDo; another_agent 400 refusing to co-sign: rotate_agent_key targets agent record 7t89rV2uer44qccRNgnMVtBkdBPxLcsmyvHtqaD5f9ag, not the record ; advance_not_first 400 refusing to co-sign: a System program instruction that is not the first instruction; a_withdrawal 400 refusing to co-sign: the first instruction is not AdvanceNonceAccount of this key's nonce account AFNvx5LCqLKWkpMBhoQkDo"
+    },
+    {
+      "check": "B: one approval carried the launch, the bind and the backup; the backup was co-signed and kept, never sent by the page",
+      "ok": true,
+      "detail": "3 transactions in the one request; kept: bind backup"
+    },
+    {
+      "check": "B: the launch is on chain WITHOUT its bind, and the bind service and the agent loop are stopped",
+      "ok": true,
+      "detail": "signing key on chain is still the launch key; stopped 1749 ms ago"
+    },
+    {
+      "check": "B: after the stop the launch's own blockhash is gone, so the bind signed with it can never land, and the agent is still unbound",
+      "ok": true,
+      "detail": "blockhash 7SAXHQU7mLZ4… valid: false"
+    },
+    {
+      "check": "B: the service is back and binds the agent from the kept backup signature: no wallet request since the launch",
+      "ok": true,
+      "detail": "bound 9686 ms after the service started, 313 s after the wallet signed"
+    },
+    {
+      "check": "B: landing advanced the nonce",
+      "ok": true,
+      "detail": "12Rrz7sNqmke… -> 2L3W6WgPCKQF…"
+    },
+    {
+      "check": "B: the same signed transaction sent a second time is refused",
+      "ok": true,
+      "detail": "sendTransaction: Transaction simulation failed: Blockhash not found"
+    },
+    {
+      "check": "B: counted as bound by its backup signature, none launched unbound",
+      "ok": true,
+      "detail": "{\"reservations\":5,\"cosigns\":4,\"bound_with_launch\":0,\"bound_after\":2,\"sent_by_service\":2,\"launches_unbound\":0,\"backups_kept\":1,\"bound_by_backup\":1}"
+    },
+    {
+      "check": "B: the runtime adopts the agent with the pool key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "B: one pool pass closed the bound agent's nonce account and its rent is back with the payer (the pass also refilled the pool)",
+      "ok": true,
+      "detail": "closed 1, made 2; payer 9876720 -> 8800080 lamports; key pool: closed the nonce account of 8sSXjRokT9mjvr9Z4TTH6a4k86gLsavSZz2XsCRS6th6 (agent 5AurH8CHS3SdP8PM2A9NUUzzvPm2N15V9w2UdNi4eZ43 is bound), 1056640 lamports back to the payer: 5TFVrat8g49iqeQQTd"
+    }
+  ],
+  "passed": 24,
+  "total": 24
+}
