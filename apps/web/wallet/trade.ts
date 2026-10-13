@@ -53,6 +53,8 @@ export interface TradeToken {
   name: string | null;
   decimals: number;
   phase: string;
+  /** the curve is complete and its pool does not exist yet (the indexer's reading) */
+  awaiting_migration?: boolean;
   /** the token's US dollar price from the indexer; null or absent when it has none */
   price_usd?: number | null;
 }
@@ -101,6 +103,7 @@ class Box {
   /** the gear: slippage and the Pay with choice */
   private settings = false;
   private dead = false;
+  private waitTimer: ReturnType<typeof setTimeout> | null = null;
   private unsub: (() => void) | null = null;
   private offWallets: (() => void) | null = null;
 
@@ -177,14 +180,15 @@ class Box {
   }
 
   update(t: TradeToken) {
-    const was = this.t.phase;
+    const was = this.t.phase, wasWaiting = !!this.t.awaiting_migration;
     this.opts.token = { ...this.opts.token, ...t };
-    // a graduation seen by the indexer: re-read the venue from chain
-    if (t.phase !== was && this.gate === "ok") void this.readVenue().then(() => this.render(), () => {});
+    // a completed curve or a graduation seen by the indexer: re-read the venue from chain
+    if ((t.phase !== was || !!t.awaiting_migration !== wasWaiting) && this.gate === "ok") void this.readVenue().then(() => this.render(), () => {});
   }
 
   destroy() {
     this.dead = true;
+    if (this.waitTimer) clearTimeout(this.waitTimer);
     this.unsub?.();
     this.offWallets?.();
   }
@@ -207,6 +211,13 @@ class Box {
     if (la.graduated || p || (this.curve && curveMigrated(this.curve))) this.venue = { kind: "pool", pool };
     else if (this.curve?.complete) this.venue = { kind: "waiting", pool };
     else this.venue = { kind: "curve", pool: la.bondingCurve };
+    // between completion and pump.fun's migration (seconds, normally) the box looks again by itself until the pool is there
+    if (this.venue.kind === "waiting" && !this.waitTimer) {
+      this.waitTimer = setTimeout(() => {
+        this.waitTimer = null;
+        if (!this.dead) void this.readVenue().then(() => this.render(), () => {});
+      }, 5000);
+    }
   }
 
   private async readBalances() {
@@ -228,7 +239,7 @@ class Box {
     const pre = [token.createAtaIdempotent(a, a, lm, T22), token.createAtaIdempotent(a, a, this.t.mint, T22),
       token.createAtaIdempotent(a, PUMP.buybackRecipients[0], lm, T22)];
     if (v.kind !== "curve" && v.kind !== "pool") throw new Error(v.kind === "legacy" ? "This token was launched on the earlier Meteora venue and is read only here." :
-      "The curve is complete; trading resumes on PumpSwap once anyone runs the migration.");
+      "This coin's curve is complete. Trading moves to its pool shortly.");
     const t = { mint: this.t.mint, quoteMint: lm, quoteTokenProgram: T22, user: a, userBase: agentAccount, userQuote: lineAccount };
     const swap = v.kind === "curve"
       ? buy ? pump.buyExactQuoteInV3({ ...t, spendableQuoteIn: amountIn, minTokensOut: minOut }) : pump.sellV3({ ...t, amount: amountIn, minQuoteOut: minOut })
@@ -466,10 +477,10 @@ class Box {
     if (!v) return html`<span class="faint">reading the pool from ${netName()}…</span>`;
     const pool = html`<a class="link" href="${explorerAddress(v.pool)}" target="_blank" rel="noopener" title="${v.pool}">${v.pool.slice(0, 4)}…${v.pool.slice(-4)}</a>`;
     if (v.kind === "legacy") return html`<span class="b warn">Meteora (earlier venue), read only</span> ${pool}`;
-    if (v.kind === "waiting") return html`<span class="b warn">pump.fun curve complete</span> <span class="faint">trading resumes on PumpSwap after the migration</span>`;
+    if (v.kind === "waiting") return html`<span class="b warn">Curve complete</span> <span data-venue="waiting">This coin's curve is complete. Trading moves to its pool shortly.</span>`;
     return v.kind === "curve"
       ? html`<span class="b info">pump.fun bonding curve</span> ${pool}`
-      : html`<span class="b good">PumpSwap pool</span> ${pool}${this.la && !this.la.graduated ? html` <span class="faint">(migrated, graduation record pending)</span>` : ""}`;
+      : html`<span class="b good">PumpSwap pool</span> ${pool}`;
   }
 
   private render() {

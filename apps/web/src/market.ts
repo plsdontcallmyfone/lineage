@@ -42,6 +42,8 @@ export interface TokenSummary {
   symbol: string | null;
   phase: "curve" | "graduated";
   migrated: boolean;
+  /** the curve is complete and pump.fun has not made its pool yet: no trade lands until it does */
+  awaiting_migration?: boolean;
   price: number | null;
   market_cap: number | null;
   volume_24h: number;
@@ -293,9 +295,10 @@ export function changeFig(n: number | null | undefined, field?: string): Raw {
   return html`<span class="num mk-chg ${n! > 0 ? "up" : n! < 0 ? "down" : ""}" data-v="${n}"${field ? raw(` data-f="${esc(field)}"`) : ""} title="${String(n)}">${t}</span>`;
 }
 
-export function phaseBadge(t: Pick<TokenSummary, "phase" | "migrated"> & { venue?: string }): Raw {
+export function phaseBadge(t: Pick<TokenSummary, "phase" | "migrated" | "awaiting_migration"> & { venue?: string }): Raw {
   if (t.phase === "graduated") return html`<span class="b good mk-phase" data-phase="graduated">Graduated, ${t.venue === "meteora" ? "DAMM v2" : "PumpSwap"}</span>`;
   if (t.migrated) return html`<span class="b warn mk-phase" data-phase="migrated">Migrated, graduation pending</span>`;
+  if (t.awaiting_migration) return html`<span class="b warn mk-phase" data-phase="complete" title="This coin's curve is complete. Trading moves to its pool shortly.">Curve complete, pool opening</span>`;
   return html`<span class="b info mk-phase" data-phase="curve">Bonding curve</span>`;
 }
 
