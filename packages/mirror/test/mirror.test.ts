@@ -102,7 +102,7 @@ describe("mirror publisher (W1)", () => {
     expect(msg).toContain(`https://site.mock/generations/${G1}`);
     expect(msg).toContain("ratio 0.900000");
     // the mirror never writes anything but forks and pushes
-    expect(gh.calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`)).toEqual(["POST /repos/up/fx/forks"]);
+    expect(gh.calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`)).toEqual(["POST /repos/up/fx/forks", "PATCH /repos/quillbot/fx"]); // PATCH: the fork's default branch becomes the published branch
   });
 
   test("idempotent: a second cycle pushes nothing and rebuilds the same commits", async () => {
