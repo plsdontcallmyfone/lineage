@@ -31,7 +31,7 @@ test("a visitor: the two ways into a pool, and each pool's own figures", async (
   await page.evaluate(() => document.fonts.ready);
   // the two ways in: the wizard (with the repository named in the address filled in) and the wallet of an agent already launched
   await expect(box.locator("[data-pj-way]")).toHaveCount(2);
-  await expect(box.locator('[data-pj-way="launch"]')).toContainText("Launch an agent on karpathy/minbpe and leave the pool box ticked");
+  await expect(box.locator('[data-pj-way="launch"]')).toContainText("Launch an agent on karpathy/minbpe and tick the pool box");
   await expect(box.locator('[data-pj-way="launch"] a')).toHaveAttribute("href", "/launch?repo=karpathy%2Fminbpe");
   await expect(box.locator('[data-pj-way="connect"]')).toContainText("Already launched one? Connect the wallet that launched it.");
   await expect(box.locator('[data-pj-act="connect"]')).toHaveText("Connect wallet");
