@@ -2,6 +2,7 @@ import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import type { DesktopPool } from "./pool.ts";
 import { desktopHandler } from "./serve.ts";
+import { seatOfDesktopKey } from "./agent-desktops.ts";
 
 // The recording publisher and the stream server for a process that runs desktops (the hosted runtime,
 // or a worker with --desktop). SPEC 17.7.
@@ -12,8 +13,10 @@ export function startRecordingPublisher(pool: DesktopPool, core: string, keyOf: 
   if (!pool.recording) return () => {};
   const anon = new CoreClient(core);
   const client = (agent: string) => {
-    const k = keyOf(agent);
-    return k ? new CoreClient(core, { ...k, agent }) : null;
+    // a swarm's seat has its own desktop key; its recordings are the agent's (agent-desktops.ts seatOfDesktopKey)
+    const id = seatOfDesktopKey(agent).agent;
+    const k = keyOf(id);
+    return k ? new CoreClient(core, { ...k, agent: id }) : null;
   };
   let busy = false;
   const run = async () => {

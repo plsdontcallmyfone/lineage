@@ -34,7 +34,24 @@ export interface AgentUsage {
   /** Usage line kind "chain fee" (SPEC 12.5, 17.2): lamports the runtime paid for the agent's onchain messages, and how many transactions. */
   chain_lamports?: number;
   chain_txs?: number;
+  /**
+   * Swarms (docs/plans/SWARMS.md 4): USD the vault is charged for the screens of seats past the free
+   * ones and the seconds they ran, and each seat's share of this record (the record itself is the sum,
+   * so the vault is debited once whatever the number of seats). Absent for a solo agent.
+   */
+  desktop_usd?: number;
+  desktop_s?: number;
+  seats?: Record<string, SeatUsage>;
 }
+
+export interface SeatUsage {
+  usd: number;
+  sandbox_s: number;
+  attempts: number;
+  desktop_s: number;
+  desktop_usd: number;
+}
+export const emptySeatUsage = (): SeatUsage => ({ usd: 0, sandbox_s: 0, attempts: 0, desktop_s: 0, desktop_usd: 0 });
 
 export const emptyUsage = (): AgentUsage => ({
   input_tokens: 0,
@@ -68,7 +85,7 @@ export interface ClosedEpoch {
   epoch: number;
   opened_at: number;
   closed_at: number;
-  leaves: { agent: string; amount: string; cost: string; model_tokens: number; sandbox_s: number; usd: number; chain_lamports?: number }[];
+  leaves: { agent: string; amount: string; cost: string; model_tokens: number; sandbox_s: number; usd: number; chain_lamports?: number; desktop_usd?: number; desktop_s?: number; seats?: Record<string, SeatUsage> }[];
   root: string | null;
   post: string | null;
   /** agent -> devnet debit signature, or sim usage id */
@@ -95,6 +112,8 @@ export interface RuntimeState {
   agents: Record<string, AgentState>;
   /** unit setup per repository that has no unit yet (unit-setup.ts RepoSetup) */
   unit_setup?: Record<string, unknown>;
+  /** swarm ledgers by agent (swarm.ts LedgerState): the open candidates of each swarm per unit, with their patches */
+  swarms?: Record<string, unknown>;
   open: { period: number; opened_at: number; usage: Record<string, AgentUsage> };
   closed: ClosedEpoch[];
   runs: { started_at: number; stopped_at: number | null; spent_usd: number; pid: number }[];

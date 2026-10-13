@@ -20,6 +20,10 @@ import { sha256Hex } from "../../protocol/src/hash.ts";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
 import { UnitSetup, unitSetupWork, type RepoSetup, type UnitSetupWork } from "./unit-setup.ts";
+import { LEAD_PLAN_SYSTEM, leadPlanUser, parseLeadPlan, parseSlotKey, slotKey, SwarmLedger, type LedgerState, type RosterSeat, type SwarmConfig } from "./swarm.ts";
+import { ROLE_PARAGRAPHS, swarmSeats } from "../../souls/src/swarm.ts";
+import type { SeatHooks } from "../../worker/src/seat.ts";
+import { emptySeatUsage, type SeatUsage } from "./state.ts";
 
 /** A spend figure for logs; a corrupt record shows as such (the caps then refuse every attempt). */
 const usd4 = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(4) : `unknown (${String(x)})`);
@@ -35,8 +39,8 @@ export interface RuntimeDeps {
   backend: Backend;
   /** the runtime authority key (signs provenance; on devnet it is LaunchConfig.runtime_authority) */
   runtimeKey: AgentKey;
-  /** a proposer per agent (production: the Claude proposer; tests: one with a fake model client) */
-  proposer: (agent: string) => Proposer;
+  /** a proposer per agent (production: the Claude proposer; tests: one with a fake model client); `seat` is set only for a swarm's seat, whose model is its own */
+  proposer: (agent: string, seat?: number) => Proposer;
   log?: (m: string) => void;
   now?: () => number;
   /** heartbeats and activity from each agent's worker (SPEC 17.1); default on */
@@ -55,7 +59,9 @@ export interface RuntimeDeps {
    * proposers resolve it from the soul); `providerBalance`: OpenRouter's balance gate; `price`: the
    * quote token's price (default the configured TEST rate); `report`: posts the spend summary to Core.
    */
-  route?: (agent: string) => Promise<AgentRoute | null>;
+  route?: (agent: string, seat?: number) => Promise<AgentRoute | null>;
+  /** Swarms (docs/plans/SWARMS.md): false never runs seats on this runtime, whatever Core says. Default: follow Core's flag. */
+  swarms?: boolean;
   providerBalance?: OpenRouterBalance;
   price?: PriceSource;
   report?: (body: SpendReport) => Promise<void>;
@@ -99,11 +105,28 @@ export interface SpendReport {
     waiting_since?: number | null;
     /** per-agent desktops (desktop_mode per_agent): the agent's own desktop, in words a page can show; absent in per-attempt mode */
     desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number; stream?: string | null } | null;
+    /** a swarm's seats (docs/plans/SWARMS.md): state in words, the unit and target of the attempt in progress, model, screen, and spend over closed usage epochs; absent for a solo agent */
+    seats?: SeatReport[];
   }>;
+}
+
+export interface SeatReport {
+  seat: number;
+  state: "working" | "waiting" | "paused" | "asleep";
+  why: string | null;
+  since: number | null;
+  unit: string | null;
+  target: string | null;
+  model: { provider: string; id: string } | null;
+  via: "direct" | "openrouter" | null;
+  desktop: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number; stream: string | null; charged: boolean } | null;
+  spend: { usd: number; sandbox_s: number; desktop_s: number; desktop_usd: number; attempts: number; epochs: number };
 }
 
 interface Attempt {
   agent: string;
+  /** a swarm's seat; absent for a solo agent */
+  seat?: number;
   maxUsd: number;
   totals: AttemptTotals;
   /** the route the attempt was started on (OpenRouter attempts hold part of its balance) */
@@ -157,7 +180,23 @@ export class Runtime {
   private runSpent = 0;
   private log: (m: string) => void;
   private now: () => number;
-  private pendingProvenance: { agent: string; commit_id: string; totals: AttemptTotals }[] = [];
+  private pendingProvenance: { agent: string; commit_id: string; totals: AttemptTotals; seat?: number }[] = [];
+  /**
+   * Swarms (swarm.ts). `swarmCfg`: Core's settings, null while Core says swarms are off (then every
+   * agent is solo and nothing below is used). `rosters`: the seats of each bound agent whose soul
+   * declares two or more. The maps keyed "by agent" above (workers, running, attempts, lastStarted,
+   * misses, routes, waiting, desktopWaitSince) are keyed by slot key: the agent id for seat 1 and for
+   * every solo agent, `<agent>.s<k>` for seat k. The vault-level ones (vaults, hosted, exhausted,
+   * paused, holds) stay per agent.
+   */
+  private swarmCfg: SwarmConfig | null = null;
+  private swarmCfgAt = -Infinity;
+  private rosters = new Map<string, RosterSeat[]>();
+  private rosterAt = new Map<string, number>();
+  private ledgers = new Map<string, SwarmLedger>();
+  private planning = new Set<string>();
+  /** slot keys whose cached worker was made as a swarm's seat */
+  private seated = new Set<string>();
   private poster: AgentPoster | null = null;
   private follower: AgentFollower | null = null;
   private followState: FollowState = emptyFollowState();
@@ -203,7 +242,7 @@ export class Runtime {
       agents: () => Object.entries(this.state.agents).map(([agent, st]) => ({ agent, status: st.status, target_repo: st.target_repo })),
       keyOf: (agent) => this.store.keyFor(agent),
       awake: (agent) => this.vaults.get(agent)?.awake === true,
-      busy: (agent) => this.running.has(agent),
+      busy: (agent) => this.busy(agent),
       freeSlot: () => !this.stopping && this.running.size < this.slots(),
       budget: (agent, cap) => this.budget(agent, { cap }),
       run: (agent, maxUsd, job) => this.runSetup(agent, maxUsd, job),
@@ -235,6 +274,96 @@ export class Runtime {
 
   private save() {
     this.store.save();
+  }
+
+  // ------------------------------------------------------------------ seats (swarm.ts)
+
+  /** The seats of a swarm, or null: a solo agent, or swarms are off. */
+  seatsOf(agent: string): RosterSeat[] | null {
+    return this.rosters.get(agent) ?? null;
+  }
+
+  /** The slot keys of an agent: its id alone, or one key per seat. */
+  private keysOf(agent: string): string[] {
+    const r = this.rosters.get(agent);
+    return r ? r.map((x) => slotKey(agent, x.seat)) : [agent];
+  }
+
+  /** True while any attempt of the agent runs (any seat). */
+  private busy(agent: string): boolean {
+    if (this.running.has(agent)) return true;
+    const r = this.rosters.get(agent);
+    return !!r && r.some((x) => this.running.has(slotKey(agent, x.seat)));
+  }
+
+  private runningSeats(agent: string): number {
+    return this.keysOf(agent).filter((k) => this.running.has(k)).length;
+  }
+
+  private ledgerOf(agent: string): SwarmLedger {
+    let l = this.ledgers.get(agent);
+    if (!l) {
+      const all = (this.state.swarms ??= {}) as Record<string, LedgerState>;
+      const st = (all[agent] ??= { units: {}, holds: {} });
+      this.ledgers.set(agent, (l = new SwarmLedger(st, { now: () => this.now(), save: () => this.save(), log: (m) => this.log(`${agent.slice(0, 6)} ${m}`) })));
+    }
+    return l;
+  }
+
+  /**
+   * How many of a swarm's seats its vault carries now (docs/plans/SWARMS.md 4, the reserve rule): the
+   * full attempt reservations (cap plus sandbox reserve) that fit in what the vault does not owe. At
+   * least one: the last seat runs on a part cap exactly as a solo agent does. Seats past that number,
+   * in seat order, are paused, so a low vault shrinks the swarm from its highest seat down.
+   */
+  seatsFunded(agent: string): number {
+    const r = this.rosters.get(agent);
+    if (!r) return 1;
+    const v = this.vaults.get(agent);
+    if (!v || !this.prices) return r.length;
+    const one = costOf(this.prices, this.cfg.attempt_max_usd, this.cfg.sandbox_reserve_s);
+    if (one <= 0n) return r.length;
+    const free = v.balance - this.owed(agent);
+    const n = free > 0n ? Number(free / one) : 0;
+    return Math.max(1, Math.min(r.length, n));
+  }
+
+  /** Core's swarm settings and each bound agent's roster, read about once a minute. Core's flag off: no rosters, every agent solo. */
+  private async refreshSwarms(): Promise<void> {
+    if (this.deps.swarms === false) return;
+    const now = this.now();
+    if (now - this.swarmCfgAt >= 60_000 || this.swarmCfgAt === -Infinity) {
+      const r = await this.client.get("/v1/swarms/config").catch(() => null);
+      if (r?.status === 200 && r.body?.settings) {
+        if (!this.swarmCfg) this.log(`swarms: on (largest swarm ${r.body.settings.max_members}; a screen past seat ${r.body.settings.seat_desktop_free_seats} costs the vault ${r.body.settings.seat_desktop_usd_per_h === null ? "the desktop service's rate" : `${r.body.settings.seat_desktop_usd_per_h} USD an hour`})`);
+        this.swarmCfg = r.body.settings as SwarmConfig;
+        this.swarmCfgAt = now;
+      } else if (r?.status === 404) {
+        if (this.swarmCfg) this.log("swarms: Core switched them off; every agent is solo from the next attempt");
+        this.swarmCfg = null;
+        this.swarmCfgAt = now;
+        this.rosters.clear();
+        this.rosterAt.clear();
+      }
+      // any other answer (Core down): what was known stays
+    }
+  }
+
+  /** A bound agent's seats from its soul (about once a minute), read before its attempts are looked at. */
+  private async refreshRoster(agent: string): Promise<void> {
+    if (!this.swarmCfg) return;
+    const now = this.now();
+    if (now - (this.rosterAt.get(agent) ?? -Infinity) < 60_000) return;
+    const r = await this.client.get(`/v1/agents/${agent}/soul`).catch(() => null);
+    if (!r || (r.status !== 200 && r.status !== 404)) return; // Core did not answer: asked again on the next tick
+    this.rosterAt.set(agent, now);
+    const seats = r.status === 200 ? swarmSeats(r.body?.doc) : null;
+    // a roster never changes after launch (Core refuses it); seats past the network's size limit do not run
+    const roster = seats && seats.length >= 2 ? seats.slice(0, this.swarmCfg.max_members).map((m) => ({ seat: m.seat, name: m.name, role: m.role, model: m.model })) : null;
+    if (roster && roster.length >= 2) {
+      if (!this.rosters.has(agent)) this.log(`${agent.slice(0, 6)} is a swarm of ${roster.length}: ${roster.map((m) => `${m.name} (${m.role}, ${m.model.id})`).join(", ")}`);
+      this.rosters.set(agent, roster);
+    } else this.rosters.delete(agent);
   }
 
   async start(): Promise<void> {
@@ -275,7 +404,8 @@ export class Runtime {
 
   /** What a usage record costs: model spend and sandbox time, plus chain fees paid for the agent. */
   private usageCost(u: AgentUsage): bigint {
-    return costOf(this.prices, u.usd, u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0);
+    // desktop_usd: the screens of a swarm's seats past the free ones (absent, so 0, for a solo agent)
+    return costOf(this.prices, u.usd + (u.desktop_usd ?? 0), u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0);
   }
 
   /** Records lamports this runtime paid for one of the agent's onchain messages (usage line "chain fee"). */
@@ -354,8 +484,11 @@ export class Runtime {
   /** Base units the agent's running attempt still holds (unspent model reserve and sandbox reserve) plus open holds. */
   private reservedLine(agent: string): bigint {
     let line = 0n;
-    const a = this.attempts.get(agent);
-    if (a) line += costOf(this.prices, Math.max(0, a.maxUsd - a.totals.usd), Math.max(0, this.cfg.sandbox_reserve_s - a.totals.sandbox_s));
+    // a swarm's seats draw on the one vault: every running seat's reservation counts
+    for (const k of this.keysOf(agent)) {
+      const a = this.attempts.get(k);
+      if (a) line += costOf(this.prices, Math.max(0, a.maxUsd - a.totals.usd), Math.max(0, this.cfg.sandbox_reserve_s - a.totals.sandbox_s));
+    }
     const h = this.holds.get(agent);
     if (h && h.until > this.now()) line += costOf(this.prices, h.usd, 0);
     return line;
@@ -371,7 +504,7 @@ export class Runtime {
     return b - held;
   }
 
-  /** The cached route of an agent (refreshed in refreshAgents); null when unknown. */
+  /** The cached route of an agent, or of a swarm's seat by its slot key (refreshed in refreshAgents); null when unknown. */
   routeOf(agent: string): AgentRoute | null {
     return this.routes.get(agent)?.r ?? null;
   }
@@ -385,7 +518,8 @@ export class Runtime {
    * max_debit_per_epoch left this epoch; for an OpenRouter-routed model, what OpenRouter's known
    * balance still covers; and only with global_cap_scope "all", the global window.
    */
-  budget(agent: string, o: { sandbox?: boolean; cap?: number } = {}): { usd: number } | { usd: null; why: string; vault: boolean; short?: boolean } {
+  budget(agent: string, o: { sandbox?: boolean; cap?: number; seat?: number } = {}): { usd: number } | { usd: null; why: string; vault: boolean; short?: boolean } {
+    const key = slotKey(agent, o.seat ?? 1);
     const v = this.vaults.get(agent);
     if (!v) return { usd: null, why: "vault unknown", vault: false };
     if (!v.awake) return { usd: null, why: "asleep", vault: true };
@@ -395,30 +529,34 @@ export class Runtime {
     if (this.limits.maxDebitPerEpoch !== null) {
       let epochOwed = 0n;
       for (const u of Object.values(this.state.open.usage)) epochOwed += this.usageCost(u);
-      for (const a of this.attempts.keys()) epochOwed += this.reservedLine(a);
+      for (const a of new Set([...this.attempts.values()].map((x) => x.agent))) epochOwed += this.reservedLine(a);
       const left = this.limits.maxDebitPerEpoch - epochOwed;
       if (left < line) line = left;
     }
     const fromVault = usdFor(this.prices, line, o.sandbox === false ? 0 : this.cfg.sandbox_reserve_s);
     const used = this.usageOf(agent).usd;
     const epochCap = this.cfg.agent_epoch_max_usd;
-    const epochLeft = epochCap === null || epochCap === undefined ? Infinity : typeof used === "number" && Number.isFinite(used) && used >= 0 ? epochCap - used : 0;
+    let epochLeft = epochCap === null || epochCap === undefined ? Infinity : typeof used === "number" && Number.isFinite(used) && used >= 0 ? epochCap - used : 0;
     if (typeof used !== "number" || !Number.isFinite(used)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
+    // a swarm's optional caps per usage epoch (Core's swarm settings): the whole swarm's model spend, and this seat's
+    const sw = o.seat !== undefined && this.rosters.has(agent) ? this.swarmCfg : null;
+    if (sw && sw.swarm_epoch_max_usd !== null) epochLeft = Math.min(epochLeft, sw.swarm_epoch_max_usd - used);
+    if (sw && sw.seat_epoch_max_usd !== null) epochLeft = Math.min(epochLeft, sw.seat_epoch_max_usd - (this.usageOf(agent).seats?.[String(o.seat)]?.usd ?? 0));
     const g = this.cfg.global_cap_scope === "all" ? this.globalLeft() : Infinity;
-    const route = this.routeOf(agent);
+    const route = this.routeOf(key);
     const pr = route?.via === "openrouter" ? this.providerRoom() : null;
     const prov = pr === null ? Infinity : pr;
     const usd = Math.min(o.cap ?? this.cfg.attempt_max_usd, fromVault, epochLeft, g, prov);
     if (Number.isNaN(usd)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
     // an authoring attempt must also cover a minimum useful attempt at the agent's model's rate
-    const useful = o.sandbox === false ? 0 : this.minUsefulUsd(agent);
+    const useful = o.sandbox === false ? 0 : this.minUsefulUsd(key);
     const floor = o.sandbox === false ? Math.min(this.cfg.min_attempt_usd, o.cap ?? Infinity) : Math.max(this.cfg.min_attempt_usd, useful);
     if (!(usd >= floor)) {
       const need = useful > this.cfg.min_attempt_usd ? `; a useful attempt needs ${floor.toFixed(4)} USD, ${Math.max(0, usd).toFixed(4)} available` : "";
       const base =
         prov === usd ? `provider balance low (OpenRouter has ${(this.deps.providerBalance?.room() ?? 0).toFixed(2)} USD, ${Math.max(0, prov).toFixed(4)} free of running reserves)`
         : g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD${this.cfg.global_window_s ? ` per ${this.cfg.global_window_s} s window` : ""}) reached`
-        : epochLeft === usd ? "per-agent epoch cap reached"
+        : epochLeft === usd ? (sw ? "epoch cap reached" : "per-agent epoch cap reached")
         : `compute vault exhausted (${avail} base units unowed)`;
       return { usd: null, why: `${base}${need}`, vault: fromVault === usd, short: true };
     }
@@ -466,6 +604,8 @@ export class Runtime {
   }
 
   private meterFor(a: Attempt): Meter {
+    // a swarm's attempt is also counted under its seat (the agent's record stays the sum the vault is debited)
+    const seatUsage = (): SeatUsage | null => (a.seat === undefined ? null : ((this.usageOf(a.agent).seats ??= {})[String(a.seat)] ??= emptySeatUsage()));
     return {
       model: (u) => {
         const t = a.totals;
@@ -482,6 +622,8 @@ export class Runtime {
         s.cache_write_tokens += u.cache_write_tokens;
         s.usd += u.usd;
         if (!s.models.includes(u.model)) s.models.push(u.model);
+        const su = seatUsage();
+        if (su) su.usd += u.usd;
         this.state.spent_usd_total += u.usd;
         const w = this.cfg.global_cap_scope === "all" ? this.spendWindow() : null;
         if (w) w.usd += u.usd;
@@ -493,6 +635,8 @@ export class Runtime {
       sandbox: (sec) => {
         a.totals.sandbox_s += sec;
         this.usageOf(a.agent).sandbox_s += sec;
+        const su = seatUsage();
+        if (su) su.sandbox_s += sec;
         this.save();
       },
       harness: (h) => {
@@ -511,21 +655,34 @@ export class Runtime {
 
   // ------------------------------------------------------------------ agents
 
-  private worker(agent: string): Worker {
-    let w = this.workers.get(agent);
+  /** The worker of an agent, or of one seat of a swarm (each seat is its own worker of the agent's one key). */
+  private worker(agent: string, seat = 1): Worker {
+    const k = slotKey(agent, seat);
+    // a swarm's seat: its own model, its unit and target from the swarm's ledger; undefined for a solo agent
+    const rs = this.rosters.get(agent)?.find((x) => x.seat === seat);
+    let w = this.workers.get(k);
+    // a worker made before the agent's roster was known (or after it went) is made again as what the agent is now
+    if (w && this.seated.has(k) !== !!rs) {
+      void w.telemetry.stop();
+      this.workers.delete(k);
+      w = undefined;
+    }
     if (w) return w;
+    if (rs) this.seated.add(k);
+    else this.seated.delete(k);
     const key = this.store.keyFor(agent);
+    const tag = rs ? `${agent.slice(0, 6)} s${seat}` : agent.slice(0, 6);
     w = new Worker({
       core: this.cfg.core,
       key: { ...key, agent } as AgentKey,
-      proposer: this.deps.proposer(agent),
+      proposer: rs ? this.deps.proposer(agent, seat) : this.deps.proposer(agent),
       lineages: this.cfg.lineages,
       telemetry: this.deps.telemetry !== false,
-      stateDir: join(this.cfg.state_dir, "worker", agent),
-      log: (m) => this.log(`${agent.slice(0, 6)} ${m}`),
+      stateDir: join(this.cfg.state_dir, "worker", k),
+      log: (m) => this.log(`${tag} ${m}`),
       collab: "advisory",
-      // stacked authoring on the agent's own pending candidate (docs/plans/AGENT-EFFICIENCY.md)
-      series: this.cfg.efficiency?.series === true,
+      // stacked authoring on the agent's own pending candidate (docs/plans/AGENT-EFFICIENCY.md); a swarm's stack is its ledger's
+      series: !rs && this.cfg.efficiency?.series === true,
       // agents on one unit pointed at different targets, with an advisory intent each (agent productivity lane)
       spread: this.cfg.efficiency?.spread === true,
       spreadIntentTtlS: this.cfg.efficiency?.spread_intent_ttl_s,
@@ -535,38 +692,73 @@ export class Runtime {
       journalReserveUsd: this.cfg.efficiency?.journal_reserve_usd,
       messenger: this.deps.messenger?.(agent, key, (f) => this.meterChain(f)),
       desktop: this.deps.desktop,
-      attempt: () => {
-        const b = this.budget(agent);
-        if (b.usd === null) {
-          if (b.short) this.pause(agent, b.why);
-          else {
-            this.log(`${agent.slice(0, 6)} attempt not started: ${b.why}`);
-            this.waiting.set(agent, b.why);
-          }
-          if (b.vault) this.exhausted.add(agent);
-          return null;
-        }
-        // desktop hosts lane: no attempt without its live desktop when desktops are required
-        const dw = desktopGate(this.deps.desktop, agent);
-        if (dw) {
-          if (this.waiting.get(agent) !== dw) this.log(`${agent.slice(0, 6)} attempt not started: ${dw}`);
-          this.waiting.set(agent, dw);
-          if (!this.desktopWaitSince.has(agent)) this.desktopWaitSince.set(agent, this.now());
-          return null;
-        }
-        this.waiting.delete(agent);
-        this.desktopWaitSince.delete(agent);
-        const a: Attempt = { agent, maxUsd: b.usd, via: this.routeOf(agent)?.via ?? null, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
-        this.attempts.set(agent, a);
-        this.usageOf(agent).attempts++;
-        this.save();
-        this.log(`${agent.slice(0, 6)} attempt starts, cap ${b.usd.toFixed(4)} USD`);
-        return { maxUsd: b.usd, meter: this.meterFor(a) };
-      },
+      ...(rs ? { seat: this.seatHooks(agent, rs) } : {}),
+      attempt: () => this.beginAttempt(agent, seat),
     });
-    this.workers.set(agent, w);
+    this.workers.set(k, w);
     if (this.deps.telemetry !== false) void w.telemetry.start();
     return w;
+  }
+
+  /** What a worker asks before it runs the model: the attempt's cap and meter, or null with the reason noted. */
+  private beginAttempt(agent: string, seat: number): Pick<import("../../worker/src/proposers/types.ts").ProposeContext, "maxUsd" | "meter"> | null {
+    const k = slotKey(agent, seat);
+    const swarm = this.rosters.has(agent);
+    const tag = swarm ? `${agent.slice(0, 6)} s${seat}` : agent.slice(0, 6);
+    const b = this.budget(agent, swarm ? { seat } : {});
+    if (b.usd === null) {
+      if (swarm && this.runningSeats(agent) > 1) {
+        // other seats hold the vault's room: this seat waits, the swarm is not marked as out of funds
+        this.waiting.set(k, "Paused: vault low");
+        return null;
+      }
+      if (b.short) this.pause(agent, b.why);
+      else {
+        this.log(`${tag} attempt not started: ${b.why}`);
+        this.waiting.set(k, b.why);
+      }
+      if (b.vault) this.exhausted.add(agent);
+      return null;
+    }
+    // desktop hosts lane: no attempt without its live desktop when desktops are required
+    const dw = desktopGate(this.deps.desktop, k);
+    if (dw) {
+      if (this.waiting.get(k) !== dw) this.log(`${tag} attempt not started: ${dw}`);
+      this.waiting.set(k, dw);
+      if (!this.desktopWaitSince.has(k)) this.desktopWaitSince.set(k, this.now());
+      return null;
+    }
+    this.waiting.delete(k);
+    this.desktopWaitSince.delete(k);
+    const a: Attempt = { agent, ...(swarm ? { seat } : {}), maxUsd: b.usd, via: this.routeOf(k)?.via ?? null, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
+    this.attempts.set(k, a);
+    this.usageOf(agent).attempts++;
+    if (swarm) ((this.usageOf(agent).seats ??= {})[String(seat)] ??= emptySeatUsage()).attempts++;
+    this.save();
+    this.log(`${tag} attempt starts, cap ${b.usd.toFixed(4)} USD`);
+    return { maxUsd: b.usd, meter: this.meterFor(a) };
+  }
+
+  /** A seat's side of the swarm's ledger (packages/worker/src/seat.ts). */
+  private seatHooks(agent: string, rs: RosterSeat): SeatHooks {
+    const ledger = this.ledgerOf(agent);
+    const k = slotKey(agent, rs.seat);
+    return {
+      seat: rs.seat,
+      name: rs.name,
+      role: rs.role,
+      rolePrompt: `${ROLE_PARAGRAPHS[rs.role]} Your name in the group is ${rs.name}.`,
+      desktopKey: k,
+      place: (units, maxOpen) => {
+        const r = ledger.place(rs.seat, units, maxOpen);
+        if (r.ok) this.waiting.delete(k);
+        else this.waiting.set(k, r.why);
+        return r;
+      },
+      retarget: (unit, kind, target) => ledger.retarget(rs.seat, unit, kind, target),
+      commit: (unit, f) => ledger.commit(rs.seat, unit, f),
+      ended: (commitId) => ledger.ended(rs.seat, commitId),
+    };
   }
 
   /**
@@ -582,8 +774,21 @@ export class Runtime {
     for (const [agent, st] of Object.entries(this.state.agents)) {
       // bound to this runtime and still a hosted agent the backend knows
       if (st.status !== "bound" || !(this.discovered ?? this.hosted).has(agent)) continue;
-      const working = this.running.has(agent);
       const awake = this.vaults.get(agent)?.awake !== false;
+      const roster = this.rosters.get(agent);
+      if (roster) {
+        // a swarm: one desktop per seat; seats the vault does not carry now rest with their reason
+        const funded = this.seatsFunded(agent);
+        const broke = awake && !this.busy(agent) && (this.exhausted.has(agent) || !!this.pausedNow(agent));
+        roster.forEach((m, i) => {
+          const k = slotKey(agent, m.seat);
+          const working = this.running.has(k);
+          const low = awake && !working && (broke || i >= funded);
+          list.push({ agent: k, working, asleep: !awake || low, ...(low ? { asleep_why: "Paused: vault low" } : {}) });
+        });
+        continue;
+      }
+      const working = this.running.has(agent);
       // an awake agent whose vault cannot pay for an attempt does not work either: its desktop rests until a deposit
       const broke = awake && !working && (this.exhausted.has(agent) || !!this.pausedNow(agent));
       list.push({ agent, working, asleep: !awake || broke, ...(broke ? { asleep_why: "agent cannot pay for an attempt (vault low)" } : {}) });
@@ -593,6 +798,118 @@ export class Runtime {
     } catch (e) {
       this.log(`desktops: sync: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * The screens of a swarm's seats past the free ones are charged to its vault for the time they ran
+   * (docs/plans/SWARMS.md 4; Core's swarm settings): at the setting's hourly rate, or at the desktop
+   * service's own charge when the setting is null. The charge is part of the one amount the vault is
+   * debited per usage epoch. A solo agent's desktop, and a swarm's free seats, are never charged.
+   */
+  private meterSeatDesktops(): void {
+    const d = this.deps.desktop;
+    const cfg = this.swarmCfg;
+    if (!d?.takeRun || !cfg || !this.rosters.size) return;
+    let dirty = false;
+    for (const [agent, roster] of this.rosters) {
+      roster.forEach((m, i) => {
+        if (i < cfg.seat_desktop_free_seats) return;
+        const run = d.takeRun!(slotKey(agent, m.seat));
+        if (!(run.seconds > 0)) return;
+        const usd = cfg.seat_desktop_usd_per_h === null ? run.usd : (run.seconds / 3600) * cfg.seat_desktop_usd_per_h;
+        const u = this.usageOf(agent);
+        u.desktop_s = (u.desktop_s ?? 0) + run.seconds;
+        u.desktop_usd = (u.desktop_usd ?? 0) + usd;
+        const su = ((u.seats ??= {})[String(m.seat)] ??= emptySeatUsage());
+        su.desktop_s += run.seconds;
+        su.desktop_usd += usd;
+        dirty = true;
+      });
+    }
+    if (dirty) this.save();
+  }
+
+  /**
+   * The lead's planning call (docs/plans/SWARMS.md 3): one small model call in the lead's model that
+   * assigns each seat a unit and a free target with a two-line brief, from the units and targets the
+   * seats last reported and the ledger. Inside a cost cap (Core's lead_plan_max_usd, else the journal
+   * reserve), paid by the vault and counted under the lead's seat. When it cannot run or its answer
+   * is not usable, seats are placed from counts alone, restricted by the ledger.
+   */
+  private async leadPlan(agent: string, roster: RosterSeat[]): Promise<void> {
+    const cfg = this.swarmCfg;
+    const client = this.deps.postClient;
+    const ledger = this.ledgerOf(agent);
+    if (!cfg?.lead_plan || !client || this.planning.has(agent) || ledger.known.size === 0) return;
+    const lead = roster.find((m) => m.role === "lead") ?? roster[0]!;
+    const k = slotKey(agent, lead.seat);
+    const rate = this.routeOf(k)?.rate;
+    if (!rate || !(rate.output > 0)) return;
+    const cap = cfg.lead_plan_max_usd ?? this.cfg.efficiency?.journal_reserve_usd ?? JOURNAL_RESERVE_USD;
+    const user = leadPlanUser(roster, ledger.summary());
+    const fee = rate.fee_factor ?? 1;
+    const inputUsd = (((LEAD_PLAN_SYSTEM.length + user.length) / 2) * Math.max(rate.input, rate.cache_write) * fee) / 1e6;
+    const maxTokens = Math.min(1500, Math.floor(((cap - inputUsd) * 1e6) / (rate.output * fee)));
+    if (maxTokens < 200) return;
+    if (this.postRoom(agent, cap) < cap) return;
+    this.planning.add(agent);
+    try {
+      const res = await client.create({ model: lead.model.id, max_tokens: maxTokens, system: LEAD_PLAN_SYSTEM, messages: [{ role: "user", content: user }] });
+      const u = res.usage ?? {};
+      const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : 0);
+      const tokens = { input_tokens: n(u.input_tokens), output_tokens: n(u.output_tokens), cache_read_tokens: n(u.cache_read_input_tokens), cache_write_tokens: n(u.cache_creation_input_tokens) };
+      const usd = typeof u.usd === "number" && Number.isFinite(u.usd) && u.usd >= 0 ? u.usd : ((tokens.input_tokens * rate.input + tokens.output_tokens * rate.output + tokens.cache_write_tokens * rate.cache_write) * fee) / 1e6;
+      this.meterPost(agent, { ...tokens, usd, models: [res.model ?? lead.model.id] } as SoulUsage);
+      ((this.usageOf(agent).seats ??= {})[String(lead.seat)] ??= emptySeatUsage()).usd += usd;
+      this.save();
+      const text = res.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+      const plan = parseLeadPlan(text, roster, ledger.known, this.now());
+      ledger.setPlan(plan);
+      this.log(`${agent.slice(0, 6)} s${lead.seat} lead plan: ${plan ? Object.entries(plan.seats).map(([seat, a]) => `seat ${seat} -> ${a.unit.slice(0, 10)} ${a.kind} ${a.target}`).join(", ") : "no usable assignment; seats placed from counts"}; ${usd.toFixed(4)} USD metered`);
+    } finally {
+      this.holds.delete(agent);
+      this.planning.delete(agent);
+    }
+  }
+
+  /** A swarm's seats for the spend report: what each is doing in words, its model, its screen, and its share of the closed usage epochs. */
+  private seatReports(agent: string, roster: RosterSeat[]): SeatReport[] {
+    const v = this.vaults.get(agent);
+    const ledger = this.ledgerOf(agent);
+    const cfg = this.swarmCfg;
+    return roster.map((m, i) => {
+      const k = slotKey(agent, m.seat);
+      const at = ledger.activeOf(m.seat);
+      const w = this.waiting.get(k) ?? null;
+      const working = this.running.has(k) && !!at;
+      const state: SeatReport["state"] = !v?.awake ? "asleep" : working ? "working" : w === "Paused: vault low" || (!this.busy(agent) && this.exhausted.has(agent)) ? "paused" : "waiting";
+      const r = this.routeOf(k);
+      const desk = this.deps.desktop?.agentDesktop?.(k) ?? null;
+      const spend = { usd: 0, sandbox_s: 0, desktop_s: 0, desktop_usd: 0, attempts: 0, epochs: 0 };
+      for (const e of this.state.closed) {
+        const su = e.leaves.find((x) => x.agent === agent)?.seats?.[String(m.seat)];
+        if (!su) continue;
+        spend.usd += su.usd;
+        spend.sandbox_s += su.sandbox_s;
+        spend.desktop_s += su.desktop_s;
+        spend.desktop_usd += su.desktop_usd;
+        spend.attempts += su.attempts;
+        spend.epochs++;
+      }
+      return {
+        seat: m.seat,
+        state,
+        why: state === "asleep" ? "asleep (vault below the wake threshold)" : state === "paused" ? "Paused: vault low" : state === "waiting" ? w : null,
+        since: working ? at!.since : null,
+        // the unit and target of the attempt in progress: what the seat's intent already says, nothing about a submitted candidate
+        unit: working ? at!.unit : null,
+        target: working ? at!.target : null,
+        model: r?.model ?? m.model,
+        via: r?.via ?? null,
+        desktop: desk ? { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since, stream: desk.stream ?? null, charged: !!cfg && i >= cfg.seat_desktop_free_seats && cfg.seat_desktop_usd_per_h !== 0 } : null,
+        spend,
+      };
+    });
   }
 
   /** A newly seen hosted agent: its runtime key (made once) and the bind request for its owner. */
@@ -626,6 +943,7 @@ export class Runtime {
 
   /** The runtime key of an agent this runtime adopted (never makes one). */
   keyOf(agent: string): AgentKey | null {
+    agent = parseSlotKey(agent).agent; // a seat's desktop key names its agent (swarm.ts)
     return this.state.agents[agent] ? this.store.keyFor(agent) : null;
   }
 
@@ -673,7 +991,12 @@ export class Runtime {
       if (!this.isPurged(agent, st.mint)) continue;
       delete this.state.agents[agent];
       delete this.state.open.usage[agent];
-      for (const m of [this.workers, this.attempts, this.vaults, this.hosted, this.lastStarted, this.misses, this.routes, this.holds, this.waiting, this.desktopWaitSince, this.paused] as Map<string, unknown>[]) m.delete(agent);
+      const seatKeys = this.keysOf(agent);
+      for (const m of [this.workers, this.attempts, this.vaults, this.hosted, this.lastStarted, this.misses, this.routes, this.holds, this.waiting, this.desktopWaitSince, this.paused] as Map<string, unknown>[]) for (const k of new Set([agent, ...seatKeys])) m.delete(k);
+      this.rosters.delete(agent);
+      this.rosterAt.delete(agent);
+      this.ledgers.delete(agent);
+      if (this.state.swarms) delete this.state.swarms[agent];
       this.exhausted.delete(agent);
       this.discovered?.delete(agent);
       try {
@@ -685,7 +1008,7 @@ export class Runtime {
         }
         rmSync(join(this.cfg.state_dir, "bind-requests", `${agent}.json`), { force: true });
         // a running attempt still writes there; what is left goes on a later pass
-        if (!this.running.has(agent)) rmSync(join(this.cfg.state_dir, "worker", agent), { recursive: true, force: true });
+        if (!this.running.has(agent) && !seatKeys.some((k) => this.running.has(k))) for (const k of new Set([agent, ...seatKeys])) rmSync(join(this.cfg.state_dir, "worker", k), { recursive: true, force: true });
       } catch (e) {
         this.log(`a purged agent's files: ${(e as Error).message}`);
       }
@@ -728,6 +1051,7 @@ export class Runtime {
       }
       this.discovered = seen;
     }
+    await this.refreshSwarms();
     for (const [agent, st] of Object.entries(this.state.agents)) {
       const h = this.hosted.get(agent);
       if (!h) continue;
@@ -743,6 +1067,7 @@ export class Runtime {
         this.log(`agent ${agent}: its owner moved the signing key away from this runtime (${signing ?? "revoked"}); not authoring`);
       }
       if (st.status !== "bound") continue;
+      await this.refreshRoster(agent);
       const before = this.vaults.get(agent);
       let v = await b.vault(h);
       if (await b.refreshAwake(h, v, this.limits.wakeThreshold, this.limits.sleepThreshold)) v = await b.vault(h);
@@ -753,8 +1078,15 @@ export class Runtime {
         const r = await this.deps.route(agent).catch(() => null);
         if (r) this.routes.set(agent, { at: this.now(), r });
       }
+      // a swarm's seats 2 and up each run their own model
+      for (const m of this.rosters.get(agent) ?? []) {
+        const k = slotKey(agent, m.seat);
+        if (m.seat <= 1 || !this.deps.route || this.now() - (this.routes.get(k)?.at ?? -Infinity) < 60_000) continue;
+        const r = await this.deps.route(agent, m.seat).catch(() => null);
+        if (r) this.routes.set(k, { at: this.now(), r });
+      }
       // exhausted until the vault can pay for an attempt again (new fees, or a debit lowered what it owes)
-      if (this.exhausted.has(agent) && this.budget(agent).usd !== null) this.exhausted.delete(agent);
+      if (this.exhausted.has(agent) && this.budget(agent, this.rosters.has(agent) ? { seat: 1 } : {}).usd !== null) this.exhausted.delete(agent);
     }
   }
 
@@ -768,6 +1100,13 @@ export class Runtime {
     let funded = 0;
     for (const [agent, st] of Object.entries(this.state.agents)) {
       if (st.status !== "bound" || this.exhausted.has(agent) || !this.vaults.get(agent)?.awake) continue;
+      const roster = this.rosters.get(agent);
+      if (roster) {
+        // a swarm: a slot per seat that runs, and per seat its vault still carries
+        const run = this.runningSeats(agent);
+        funded += !this.pausedNow(agent) && this.budget(agent, { seat: 1 }).usd !== null ? Math.max(run, this.seatsFunded(agent)) : run;
+        continue;
+      }
       if (this.running.has(agent) || (!this.pausedNow(agent) && this.budget(agent).usd !== null)) funded++;
     }
     return Math.max(1, Math.min(ceiling, Math.max(this.cfg.max_concurrent, funded)));
@@ -776,60 +1115,128 @@ export class Runtime {
   private startAttempts(): void {
     if (this.stopping) return;
     const slots = this.slots();
+    // when each agent last started an attempt: its own time, or for a swarm the latest of its seats
+    const last = new Map<string, number>();
+    for (const agent of Object.keys(this.state.agents)) {
+      let t: number | undefined;
+      for (const k of this.keysOf(agent)) {
+        const x = this.lastStarted.get(k);
+        if (x !== undefined && (t === undefined || x > t)) t = x;
+      }
+      if (t !== undefined) last.set(agent, t);
+    }
     // least recently started first, so one agent cannot hold the only slot (max_concurrent) while others wait
-    for (const [agent, st] of fairOrder(Object.entries(this.state.agents), this.lastStarted)) {
+    const order = fairOrder(Object.entries(this.state.agents), last);
+    for (const [agent, st] of order) {
       if (this.running.size >= slots) return;
-      if (st.status !== "bound" || this.running.has(agent)) continue;
-      // no unit for its repository yet: unit setup (unit-setup.ts) works for it, an attempt has nothing to author on
-      if (this.setup.settingUp(agent)) continue;
-      if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) continue;
-      const v = this.vaults.get(agent);
-      if (!v?.awake) continue;
-      // paused under the minimum useful attempt: not looked at again until its recheck or a deposit
-      if (this.pausedNow(agent)) continue;
-      if (this.exhausted.has(agent)) continue;
-      // the vault first: an agent that can no longer pay is marked exhausted even inside its gap
-      const b = this.budget(agent);
-      if (b.usd === null) {
-        if (b.vault) this.exhausted.add(agent);
-        if (b.short) this.pause(agent, b.why);
-        else this.waiting.set(agent, b.why);
+      if (st.status !== "bound") continue;
+      const roster = this.rosters.get(agent);
+      if (!roster) {
+        if (this.running.has(agent)) continue;
+        if (!this.agentMayStart(agent, st)) continue;
+        this.startSeat(agent, 1, false);
         continue;
       }
-      if ((this.misses.get(agent)?.until ?? 0) > this.now()) continue;
-      this.lastStarted.set(agent, this.now());
-      const promise = this.attemptFor(agent).finally(() => this.running.delete(agent));
-      this.running.set(agent, { agent, promise });
+      // a swarm takes one slot in this pass, like any coin (slot fairness "coin"); with "seat" all of its seats that can
+      if (!this.agentMayStart(agent, st)) continue;
+      const perCoin = this.swarmCfg?.slot_fairness !== "seat";
+      if (perCoin && this.busy(agent)) continue;
+      for (const m of roster) {
+        if (this.running.size >= slots) return;
+        if (this.startSeat(agent, m.seat, true) && perCoin) break;
+      }
+    }
+    // then the swarms' further seats, lowest seat first, while slots are left: a swarm's second seat
+    // starts only after every funded coin had its turn above (docs/plans/SWARMS.md 5)
+    if (!this.rosters.size) return;
+    for (const [agent, st] of order) {
+      const roster = this.rosters.get(agent);
+      if (!roster || st.status !== "bound" || !this.agentMayStart(agent, st)) continue;
+      for (const m of roster) {
+        if (this.running.size >= slots) return;
+        this.startSeat(agent, m.seat, true);
+      }
     }
   }
 
-  private async attemptFor(agent: string): Promise<void> {
-    const w = this.worker(agent);
+  /** The checks of an agent as a whole, before any of its attempts starts. */
+  private agentMayStart(agent: string, st: { candidates: number }): boolean {
+    // no unit for its repository yet: unit setup (unit-setup.ts) works for it, an attempt has nothing to author on
+    if (this.setup.settingUp(agent)) return false;
+    if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) return false;
+    const v = this.vaults.get(agent);
+    if (!v?.awake) return false;
+    // paused under the minimum useful attempt: not looked at again until its recheck or a deposit
+    if (this.pausedNow(agent)) return false;
+    if (this.exhausted.has(agent)) return false;
+    return true;
+  }
+
+  /** Starts an attempt of `agent` (of its seat, for a swarm) when its budget and its gap allow. True when one started. */
+  private startSeat(agent: string, seat: number, swarm: boolean): boolean {
+    const k = slotKey(agent, seat);
+    if (this.running.has(k)) return false;
+    if (swarm) {
+      // the reserve rule: the vault carries this many seats now; the ones past it wait, highest seat first
+      const roster = this.rosters.get(agent)!;
+      if (roster.findIndex((m) => m.seat === seat) >= this.seatsFunded(agent)) {
+        if (this.waiting.get(k) !== "Paused: vault low") this.log(`${agent.slice(0, 6)} s${seat} paused: the vault carries ${this.seatsFunded(agent)} of ${roster.length} seats now`);
+        this.waiting.set(k, "Paused: vault low");
+        return false;
+      }
+      if (this.waiting.get(k) === "Paused: vault low") this.waiting.delete(k);
+    }
+    // the vault first: an agent that can no longer pay is marked exhausted even inside its gap
+    const b = this.budget(agent, swarm ? { seat } : {});
+    if (b.usd === null) {
+      if (swarm && this.busy(agent)) {
+        this.waiting.set(k, "Paused: vault low");
+        return false;
+      }
+      if (b.vault) this.exhausted.add(agent);
+      if (b.short) this.pause(agent, b.why);
+      else this.waiting.set(k, b.why);
+      return false;
+    }
+    if ((this.misses.get(k)?.until ?? 0) > this.now()) return false;
+    this.lastStarted.set(k, this.now());
+    const promise = this.attemptFor(agent, seat).finally(() => this.running.delete(k));
+    this.running.set(k, { agent, promise });
+    return true;
+  }
+
+  private async attemptFor(agent: string, seat = 1): Promise<void> {
+    const k = slotKey(agent, seat);
+    const roster = this.rosters.get(agent);
+    const tag = roster ? `${agent.slice(0, 6)} s${seat}` : agent.slice(0, 6);
+    // the lead plans the round before it works (docs/plans/SWARMS.md 3); a failed plan changes nothing
+    if (roster?.find((m) => m.seat === seat)?.role === "lead") await this.leadPlan(agent, roster).catch((e) => this.log(`${tag} lead plan skipped: ${(e as Error).message}`));
+    const w = this.worker(agent, seat);
     let commit: string | null = null;
     let failed = false;
     try {
       commit = await w.authorOnce();
     } catch (e) {
       failed = true;
-      this.log(`${agent.slice(0, 6)} attempt failed: ${(e as Error).message}`);
+      this.log(`${tag} attempt failed: ${(e as Error).message}`);
       // OpenRouter 402: its credits cannot cover requests; routed attempts wait until a top-up shows
       if ((e as { noCredits?: boolean }).noCredits && (e as { provider?: string }).provider === "openrouter") this.deps.providerBalance?.markNoCredits();
     }
-    const a = this.attempts.get(agent);
-    this.attempts.delete(agent);
+    const a = this.attempts.get(k);
+    this.attempts.delete(k);
     // the next attempt: after the short gap, or after the failure backoff when this one threw
     const gap = (this.cfg.attempt_gap_s ?? 30) * 1000;
     if (failed) {
-      const n = (this.misses.get(agent)?.n ?? 0) + 1;
+      const n = (this.misses.get(k)?.n ?? 0) + 1;
       const wait = Math.max(gap, failureBackoffMs(n));
-      this.misses.set(agent, { n, until: this.now() + wait });
-      this.log(`${agent.slice(0, 6)} ${n} failed attempt${n === 1 ? "" : "s"} in a row; next attempt in ${Math.round(wait / 1000)} s`);
-    } else this.misses.set(agent, { n: 0, until: this.now() + gap });
+      this.misses.set(k, { n, until: this.now() + wait });
+      this.log(`${tag} ${n} failed attempt${n === 1 ? "" : "s"} in a row; next attempt in ${Math.round(wait / 1000)} s`);
+    } else this.misses.set(k, { n: 0, until: this.now() + gap });
     if (!a) return; // no proposer run (not awake in Core, open-candidate limit, no lineage)
     a.totals.finished_at = this.now();
     this.save();
     const cost = costOf(this.prices, a.totals.usd, a.totals.sandbox_s);
-    this.log(`${agent.slice(0, 6)} attempt done: ${a.totals.usd.toFixed(4)} USD model spend, ${Math.ceil(a.totals.sandbox_s)} sandbox s, cost ${cost} base units${commit ? `, candidate ${commit.slice(0, 12)}` : ", no candidate"}`);
+    this.log(`${tag} attempt done: ${a.totals.usd.toFixed(4)} USD model spend, ${Math.ceil(a.totals.sandbox_s)} sandbox s, cost ${cost} base units${commit ? `, candidate ${commit.slice(0, 12)}` : ", no candidate"}`);
     // the follow step (follows.ts): after the session, inside what the attempt left under its cap; never holds up the loop
     if (this.follower && !this.stopping && a.totals.usd > 0)
       await this.follower.afterSession(agent, this.cfg.attempt_max_usd - a.totals.usd).catch((e) => this.log(`${agent.slice(0, 6)} follow step skipped: ${(e as Error).message}`));
@@ -837,7 +1244,7 @@ export class Runtime {
     this.state.agents[agent]!.candidates++;
     this.usageOf(agent).candidates.push(commit);
     this.save();
-    this.pendingProvenance.push({ agent, commit_id: commit, totals: a.totals });
+    this.pendingProvenance.push({ agent, commit_id: commit, totals: a.totals, ...(roster ? { seat } : {}) });
     await this.flushProvenance();
   }
 
@@ -870,6 +1277,7 @@ export class Runtime {
           amount: costOf(this.prices, p.totals.usd, p.totals.sandbox_s),
           price: { line_per_usd: this.cfg.compute_price_line_per_usd, line_per_sandbox_s: this.cfg.compute_price_line_per_sandbox_s },
           requestedModel: this.cfg.model,
+          ...(p.seat !== undefined ? { seat: p.seat } : {}),
         });
         const r = await this.client.post(`/v1/candidates/${p.commit_id}/provenance`, { record, sig: signProvenance(this.deps.runtimeKey, record) });
         if (r.status >= 300 && r.body?.error !== "provenance_exists") throw new Error(`HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
@@ -1003,9 +1411,9 @@ export class Runtime {
   /** Closes the open usage epoch when it is due and the chain clock allows it, then posts closed epochs in order. */
   private async epochs(force = false): Promise<void> {
     const open = this.state.open;
-    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0);
+    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0 || (u.desktop_usd ?? 0) > 0);
     const due = this.now() - open.opened_at >= this.cfg.usage_epoch_s * 1000;
-    const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.running.has(a));
+    const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.busy(a));
     const pending = this.state.closed.some((e) => !e.done);
     // no quote price (mainnet feed stale or out of band): the epoch stays open, no amount is invented
     const priced = !!this.applyPrice();
@@ -1019,7 +1427,7 @@ export class Runtime {
           // a vault cannot pay more than it holds; the shortfall stays in the record (cost) and is never invented
           const bal = this.vaults.get(agent)?.balance ?? cost;
           const amount = cost < bal ? cost : bal;
-          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0 });
+          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0, ...(u.seats ? { desktop_usd: u.desktop_usd ?? 0, desktop_s: u.desktop_s ?? 0, seats: u.seats } : {}) });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
         // subsidized spend (plan MODELS-AND-SELF-FUNDING): what the vaults could not pay, in USD, is what the global cap counts
@@ -1067,6 +1475,7 @@ export class Runtime {
       await this.refreshAgents();
       await this.setup.tick();
       this.syncDesktops();
+      this.meterSeatDesktops();
       await this.reportSpend();
       if (this.pendingProvenance.length) await this.flushProvenance();
       if (!this.posting) {
@@ -1188,6 +1597,8 @@ export class Runtime {
       else this.desktopWaitSince.delete(agent);
       const desk = this.deps.desktop?.agentDesktop?.(agent);
       if (desk) out.agents[agent]!.desktop = { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since, stream: desk.stream ?? null };
+      const roster = this.rosters.get(agent);
+      if (roster) out.agents[agent]!.seats = this.seatReports(agent, roster);
     }
     // bound agents first: Core takes at most 500 rows in one report
     for (const [agent, row] of Object.entries(unbound)) if (Object.keys(out.agents).length < 500) out.agents[agent] = row;

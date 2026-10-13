@@ -44,9 +44,22 @@ export interface AgentDesktopView {
   stream: string | null;
 }
 
+/**
+ * Swarms (docs/plans/SWARMS.md): every seat of a swarm has its own desktop. A desktop is keyed by the
+ * agent id for seat 1 (and for every solo agent, as before) and by `<agent>.s<k>` for seat k; a base58
+ * id holds no dot. Everything in this file treats the key as opaque.
+ */
+export const desktopKeyOf = (agent: string, seat: number): string => (seat <= 1 ? agent : `${agent}.s${seat}`);
+export function seatOfDesktopKey(key: string): { agent: string; seat: number } {
+  const m = /^(.+)\.s(\d{1,2})$/.exec(key);
+  return m ? { agent: m[1]!, seat: Number(m[2]) } : { agent: key, seat: 1 };
+}
+
 /** The fixed stream id of an agent's own desktop: 64 hex, the shape of a session id, and never one. */
 export function streamIdOf(agent: string): string {
-  return createHash("sha256").update(`units-desktop-stream\n${agent}`).digest("hex");
+  // a swarm's seat k (docs/plans/SWARMS.md 6) adds its number; seat 1 and every solo agent keep the id above
+  const s = seatOfDesktopKey(agent);
+  return createHash("sha256").update(`units-desktop-stream\n${s.seat > 1 ? `${s.agent}\n${s.seat}` : agent}`).digest("hex");
 }
 
 interface Stream {
@@ -439,7 +452,26 @@ export class AgentDesktops {
     if (s > 0) {
       this.unbooked += this.o.backend.usdPerS * s;
       r.metered_to = upTo;
+      const t = this.ran.get(r) ?? { seconds: 0, usd: 0 };
+      t.seconds += s;
+      t.usd += this.o.backend.usdPerS * s;
+      this.ran.set(r, t);
     }
+  }
+  /** running time counted per desktop since it was last taken (takeRun) */
+  private ran = new Map<Rec, { seconds: number; usd: number }>();
+  /**
+   * The running time of one desktop since the last call, and what the desktop service charges for it:
+   * the runtime bills a swarm's vault for the screens of its seats past the free ones. Taking it
+   * changes nothing in the day's spend above.
+   */
+  takeRun(key: string): { seconds: number; usd: number } {
+    const r = this.recs.get(key);
+    if (!r) return { seconds: 0, usd: 0 };
+    if (r.state === "running") this.meter(r);
+    const t = this.ran.get(r) ?? { seconds: 0, usd: 0 };
+    this.ran.delete(r);
+    return t;
   }
   /** counted and not yet written to the day's spend (one write per pass, not one per desktop) */
   private unbooked = 0;

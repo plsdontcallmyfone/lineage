@@ -75,9 +75,11 @@ export function hostedProposers(cfg: RuntimeConfig, keys: Record<string, string>
 }
 
 /** The model and route an agent runs on now (plan MODELS-AND-SELF-FUNDING), for the runtime's gates and spend report. */
-export function routeResolver(core: string, keys: Record<string, string>, registry: RegistrySource): (agent: string) => Promise<AgentRoute> {
-  return async (agent) => {
-    const r = resolveRoute(await registry.get(), await soulModel(core, agent), keys);
+export function routeResolver(core: string, keys: Record<string, string>, registry: RegistrySource): (agent: string, seat?: number) => Promise<AgentRoute> {
+  return async (agent, seat) => {
+    const choice = await soulModel(core, agent, fetch, seat);
+    if (seat !== undefined && !choice) return { via: null, model: null, why: `the soul names no model for seat ${seat}` };
+    const r = resolveRoute(await registry.get(), choice, keys);
     if (!r.ok) return { via: null, model: r.choice, why: r.why };
     // the routed model's rate prices the minimum useful attempt (runtime.ts minUsefulUsd)
     const p = r.model.rate ? anthropicPrices(r.model) : null;
