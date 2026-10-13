@@ -74,12 +74,14 @@ export function pauseOf(spend: any): Exclude<IdleKind, "next"> | null {
 const spendCache = new Map<string, { at: number; p: Promise<any> }>();
 
 /** The agent's idle status: the runtime's pause if it reports one, else waiting for the next session. */
-export async function idleStatus(get: (path: string) => Promise<any>, agent: string | null | undefined, lastEnd: number | null): Promise<IdleStatus> {
+export async function idleStatus(get: (path: string) => Promise<any>, agent: string | null | undefined, lastEnd: number | null, seat?: number): Promise<IdleStatus> {
   if (!agent) return { kind: "next", last_end: lastEnd };
-  let c = spendCache.get(agent);
+  // a swarm's seat (apps/web/src/swarm.ts seatPanelIO) reads its own desktop through `get`: cached per seat
+  const key = seat === undefined ? agent : `${agent}#${seat}`;
+  let c = spendCache.get(key);
   if (!c || Date.now() - c.at > 30_000) {
     c = { at: Date.now(), p: get(`agents/${agent}/spend`).catch(() => null) };
-    spendCache.set(agent, c);
+    spendCache.set(key, c);
   }
   const spend = await c.p;
   const kind = pauseOf(spend) ?? "next";

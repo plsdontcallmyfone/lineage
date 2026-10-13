@@ -229,6 +229,7 @@ describe("swarms: the flag is on", () => {
     v = await expectOk(e.anon.get(`/v1/agents/${a.id}/swarm`));
     expect(v.seats[1].last).toMatchObject({ commit_id: c.commit_id, status: "accepted", kind: "perf" });
     expect(v.seats[1].totals).toEqual({ final: 1, accepted: 1 });
+    expect(v.record).toEqual([expect.objectContaining({ commit_id: c.commit_id, seat: 2, name: "Wren 2", model: "claude-haiku-4-5", kind: "perf" })]);
     expect(v.seats[0].last).toBeNull();
   });
 

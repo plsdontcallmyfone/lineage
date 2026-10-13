@@ -217,10 +217,17 @@ export function buildRoutes(core: Core): Route[] {
         const off = q(c, "agent") ? new Map() : unlisted(c);
         return sessionsOf(core)
           .list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: int(c, "limit") }, c.agent)
-          .filter((s) => !s.agent || !off.has(s.agent));
+          .filter((s) => !s.agent || !off.has(s.agent))
+          // swarms on: which seat of a swarm a session is (null for a solo agent's); public like the session itself
+          .map((s) => (swarmsOn ? { ...s, seat: swarmsOf(core).sessionSeat(s.session_id) } : s));
       }),
     ),
-    route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") }))),
+    route("GET", "/v1/sessions/:id", "optional", (c) =>
+      core.tx(() => {
+        const v = sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") });
+        return swarmsOn ? { ...v, seat: swarmsOf(core).sessionSeat(v.session_id) } : v;
+      }),
+    ),
     route("POST", "/v1/sessions", "agent", (c) => {
       const s = sessionsOf(core).start(c.agent!, c.json());
       if (c.seat !== null) swarmsOf(core).noteSession(s.session_id, c.agent!, c.seat); // which seat of a swarm the session is (swarms.ts)

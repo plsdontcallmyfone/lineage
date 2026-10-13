@@ -100,6 +100,9 @@ writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { 
 chmodSync(join(OUT, "network.json"), 0o600);
 console.log(`network.json: chain mode ${L.network}, rpc ${MAIN ? "from the unit's environment" : redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
 console.log(`network.json: features agent_pools ${net.features?.agent_pools === true ? "on" : "off"}, github_fee_claims ${net.features?.github_fee_claims === true ? "on" : "off"}`);
+// Swarms (docs/plans/SWARMS.md): off unless features.swarms is true, which only a mainnet instance's state file can say
+// (network_overrides.features, with network_overrides.swarm for the settings); the devnet line above leaves it out, so off.
+console.log(`network.json: features swarms ${net.features?.swarms === true ? `on (largest swarm ${net.swarm?.max_members ?? "default"})` : "off"}`);
 
 const capsPath = join(OUT, "caps.json");
 if (!existsSync(capsPath) || argv.includes("--refresh-caps")) {

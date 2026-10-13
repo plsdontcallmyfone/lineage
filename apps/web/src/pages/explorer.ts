@@ -2,6 +2,7 @@ import { repoLabel } from "../fmt.ts";
 import { html, raw, type Raw } from "../html.ts";
 import { NETWORK, QUOTE } from "../market.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../building.ts";
+import { seatPanelIO, swarmList, type SwarmListRow } from "../swarm.ts";
 import { drawThumb, thumbModel, type Palette, type ThumbModel } from "../../../../packages/embed/src/thumb.ts";
 import type { Page } from "./types.ts";
 import { mount as mountLivePanel } from "../live-panel/index.ts";
@@ -390,7 +391,7 @@ function rgb(c: string, fb: [number, number, number]): [number, number, number] 
   const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : fb;
 }
-function palette(cs: CSSStyleDeclaration): Palette {
+export function palette(cs: CSSStyleDeclaration): Palette {
   const v = (k: string) => cs.getPropertyValue(k).trim();
   // resolve the custom properties through a probe so color-mix and named colours become rgb()
   const probe = (k: string, fb: [number, number, number]) => {
@@ -423,7 +424,28 @@ export async function explorerPage(): Promise<Page> {
     body: html`<div id="ex-root"></div>`,
     mount: (root) => {
       mounted?.destroy();
-      mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
+      // swarms (docs/plans/SWARMS.md 6): a card whose coin has several agents says how many, and its screen is the
+      // seat working now (else the lead). The list is empty while swarms are off, and then nothing here runs.
+      let swarms = new Map<string, SwarmListRow>();
+      const exRoot = root.querySelector<HTMLElement>("#ex-root")!;
+      const badge = () => {
+        for (const card of exRoot.querySelectorAll<HTMLElement>(".ex-card[data-agent]")) {
+          const sw = swarms.get(card.dataset.agent!);
+          const name = card.querySelector(".ex-name");
+          if (!sw || !name || name.querySelector(".ex-swarm")) continue;
+          const b = document.createElement("span");
+          b.className = "b outline ex-swarm";
+          b.textContent = `${sw.size} agents`;
+          name.appendChild(b);
+        }
+      };
+      void swarmList().then((m) => {
+        if (!m.size || !exRoot.isConnected) return;
+        swarms = m;
+        badge();
+        new MutationObserver(badge).observe(exRoot, { childList: true, subtree: true });
+      });
+      mounted = mountExplorer(exRoot, {
         doodles: true,
         // hovering a card: the agent's desktop (its session live, else its idle state: live only) in the machine frame
         hoverPanel: (wrap, agent) => {
@@ -432,7 +454,9 @@ export async function explorerPage(): Promise<Page> {
           box.className = "ex-livebox";
           wrap.appendChild(box);
           // the screen alone (no machine, no deck): the real desktop video or its state in words, scaled to the card's screen
-          const h = mountLivePanel(box, { agent, frame: "none", list: false, fps: 12, height: 266 });
+          const sw = swarms.get(agent);
+          const seat = sw ? (sw.working ?? sw.lead) : null;
+          const h = mountLivePanel(box, { agent, frame: "none", list: false, fps: 12, height: 266, ...(seat !== null ? { seat, io: seatPanelIO(agent, seat) } : {}) });
           const fit = () => {
             const W = wrap.clientWidth, H = wrap.clientHeight;
             const stage = box.querySelector<HTMLElement>(".lp-stage") ?? box;

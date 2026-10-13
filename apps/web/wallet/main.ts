@@ -118,6 +118,7 @@ import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
 import { applyLaunchPrefill, reportTweetLaunch } from "./tweet-ref.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
+import { loadSwarmCfg, onSwarmInput, swarmFields, swarmProblem, swarmReview, withSwarm } from "./swarm-step.ts";
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../src/building.ts";
@@ -602,7 +603,7 @@ async function soulGenerate() {
   const usd: number | null = null;
   if (soulBusy !== key || S.soul?.agent !== agent) return;
   soulBusy = null;
-  S.soul.doc = withModel(doc, modelChoice()); // plan M: the picked model is part of the signed profile
+  S.soul.doc = withSwarm(withModel(doc, modelChoice())); // plan M: the picked model is part of the signed profile; a swarm's roster too (swarm-step.ts)
   S.soul.usd = usd;
   soulFor = key;
   renderSoul();
@@ -758,7 +759,7 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   // plan M: the picked model is recorded in the soul the agent key signs; without a soul the agent runs the default
   const choice = modelChoice();
   if (S.soul?.doc) {
-    S.soul.doc = withModel(S.soul.doc, choice);
+    S.soul.doc = withSwarm(withModel(S.soul.doc, choice));
     renderSoul();
   }
   const soul = S.soul?.doc ?? null;
@@ -2019,7 +2020,7 @@ function stepProblem(i: number): string | null {
       if (S.bannerFile && (!IMG_TYPES.includes(S.bannerFile.type) || S.bannerFile.size > 1024 * 1024)) return "Banner: PNG, JPEG or WebP, at most 1 MB.";
       if (!S.soul?.doc) return S.soul ? "The agent's soul is being written; it takes up to a minute." : "The agent's soul is written once the repository is checked (step 2).";
       if (M_ready() && !modelChoice()) return "Pick a model that can run.";
-      return null;
+      return swarmProblem(S.soul.doc.persona.name);
     }
     if (i === 3) return null;
     if (i === 4) {
@@ -2043,8 +2044,15 @@ function furthest(): number {
   return STEPS.length - 1;
 }
 
+/** The swarm fields of step "The agent" (swarm-step.ts): nothing while Core's swarms flag is off. */
+function renderSwarm() {
+  loadSwarmCfg(() => renderSwarm());
+  set("w-swarm", swarmFields(S.soul?.doc?.persona.name ?? val("l_name")));
+}
+
 function renderWizard() {
   if (S.page !== "launch" || !S.root) return;
+  if (!S.root.querySelector(".lz-swarm")) renderSwarm();
   // every step is open for browsing (owner 2026-10-10: "i cant cycle through any of them");
   // Next and Review show what is still missing, and only the launch itself requires every step
   const far = STEPS.length - 1;
@@ -2169,6 +2177,7 @@ function renderReview() {
       ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
       ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}
+      ${((sw) => (sw ? row("Swarm", sw, 2) : ""))(swarmReview(soul?.persona.name ?? val("l_name")))}
       ${row("Banner", S.bannerFile ? `${S.bannerFile.name}, ${Math.ceil(S.bannerFile.size / 1024)} KB` : html`<span class="faint">none</span>`, 2)}
       ${row("Runtime", hosted ? "hosted, bound to the hosted runtime after the launch" : "self-hosted, you run the worker", 2)}
       ${row("GitHub identity", identity === "purchased" ? html`<b>A units account</b>` : val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (add one from your Profile)", 3)}
@@ -2701,9 +2710,19 @@ function onInput(ev: Event) {
   if ((t.name === "l_provider" || t.name === "l_model") && onModelInput(t)) {
     set("w-models", modelsBody());
     if (S.soul?.doc) {
-      S.soul.doc = withModel(S.soul.doc, modelChoice());
+      S.soul.doc = withSwarm(withModel(S.soul.doc, modelChoice()));
       renderSoul();
     }
+    renderSwarm();
+  }
+  // a swarm's size, names, models and roles (swarm-step.ts; no such field exists while swarms are off)
+  if (onSwarmInput(t as HTMLInputElement, S.root)) {
+    if (S.soul?.doc) {
+      S.soul.doc = withSwarm(withModel(S.soul.doc, modelChoice()));
+      renderSoul();
+    }
+    if (!t.name.startsWith("l_sw_name_")) renderSwarm();
+    renderPrepay();
   }
   if ((t.name === "l_image" || t.name === "l_banner") && ev.type === "change") void pickImage(t);
   if (t.dataset?.meUp && ev.type === "change") void profileUpload(t);

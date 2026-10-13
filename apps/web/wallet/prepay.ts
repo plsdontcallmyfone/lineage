@@ -82,9 +82,24 @@ export function depositNote(typed: string): string {
   return fmtUsd(Number(depositUsd(typed)));
 }
 
+/**
+ * How many agents the launch declares (swarm-step.ts; 1 unless swarms are on and a larger size is
+ * picked). The credits minimum is Core's own minimum once per agent (docs/plans/SWARMS.md 4).
+ */
+export const SEATS = { n: 1 };
+
+/** Core's credits minimum for the launch as filled: prepay.min_usd times the number of agents, as an exact decimal. */
+export function minUsd(): string {
+  const min = P.cfg?.min_usd ?? "";
+  if (SEATS.n <= 1 || !/^\d+(\.\d+)?$/.test(min)) return min;
+  const [i, f = ""] = min.split(".");
+  const total = (BigInt(i! + f) * BigInt(SEATS.n)).toString().padStart(f.length + 1, "0");
+  return f.length ? `${total.slice(0, -f.length)}.${total.slice(-f.length)}`.replace(/\.?0+$/, "") : total;
+}
+
 /** The credits in USD as typed (empty: Core's minimum). The launcher may enter more than the minimum. */
 export function depositUsd(typed: string): string {
-  return typed.trim() || P.cfg?.min_usd || "";
+  return typed.trim() || (P.cfg ? minUsd() : "");
 }
 
 /** Validates the typed credits; returns the $UNITS base units the vault receives, or throws a message for the form. */
@@ -92,7 +107,7 @@ export function depositBase(typed: string, decimals: number): bigint {
   if (!P.cfg) throw new Error(`Model credits: Core's prepay config is not available (${P.err ?? "not loaded"}); a launch needs it for the minimum and the rate.`);
   const usd = depositUsd(typed);
   if (!/^\d+(\.\d{1,2})?$/.test(usd)) throw new Error("Model credits: a dollar amount such as 10 or 12.50.");
-  if (cmpDec(usd, P.cfg.min_usd) < 0) throw new Error(`Model credits: at least ${fmtUsd(Number(P.cfg.min_usd))}.`);
+  if (cmpDec(usd, minUsd()) < 0) throw new Error(`Model credits: at least ${fmtUsd(Number(minUsd()))}${SEATS.n > 1 ? ` (${fmtUsd(Number(P.cfg.min_usd))} for each of the ${SEATS.n} agents)` : ""}.`);
   // the configured rate, or (market rate) the live reading: refused with "Launch disabled: <why>." while there is no usable one
   return marketMode(P.cfg) ? creditsFor(P.cfg, usd, decimals, usym()).base : usdToBase(usd, P.cfg.line_per_usd, decimals);
 }
@@ -178,7 +193,7 @@ export function prepayHelp(typed: string, o: { decimals: number }): Raw {
     return html`<span class="mark warn">${(e as Error).message}</span>`;
   }
   const rate = rateNote(typed, o.decimals);
-  return html`At least ${fmtUsd(Number(P.cfg.min_usd))}; you can add more. Paid in SOL with the launch.${rate ? html`<br>${rate}.` : ""}`;
+  return html`At least ${fmtUsd(Number(minUsd()))}${SEATS.n > 1 ? ` (${fmtUsd(Number(P.cfg.min_usd))} for each of the ${SEATS.n} agents)` : ""}; you can add more. Paid in SOL with the launch.${rate ? html`<br>${rate}.` : ""}`;
 }
 
 /** After a launch: waits for Core's chain sync to record the deposit, then shows Core's check and its awake flag. */

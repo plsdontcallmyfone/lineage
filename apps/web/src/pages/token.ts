@@ -41,6 +41,8 @@ import { empty, icon, panel, stat } from "../ui.ts";
 import { unreachable } from "./tokens.ts";
 import type { Page } from "./types.ts";
 import { walletPanel } from "./wallet-panel.ts";
+import { swarmOf } from "../swarm.ts";
+import { mountSwarmPane, swarmBuilding, swarmPane, type SwarmPaneHandle } from "./token-swarm.ts";
 
 // One agent token (plan L3; APP-CONSOLIDATION.md amendment 2026-10-10 (2)). A head card with the
 // name, the mint and the figures (market cap, price, 24 h volume, 24 h change, holders), then three
@@ -143,7 +145,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
   const t = d.t;
   const dt = t as unknown as DirToken;
   injectBuildingStyle();
-  const genesis = await loadGenesis(t.agent);
+  // a swarm (docs/plans/SWARMS.md 6): null for a solo coin and while swarms are off, and then nothing below changes
+  const [genesis, sw] = await Promise.all([loadGenesis(t.agent), swarmOf(t.agent)]);
   const body = html`
     <section class="panel tk-head mk-statspanel">
       <div class="tk-id">
@@ -166,18 +169,18 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
     ${hiddenNote(dt.hidden)}
     <div class="tk-grid">
       <div class="tk-left">
-        ${panel("What the agent is building", html`<div id="mk-building">${buildingBody(t)}</div>`, { cls: "mk-buildpanel", aside: html`<a class="link" href="/agents/${t.agent}/profile">Profile</a>` })}
+        ${panel(sw ? "What the swarm is building" : "What the agent is building", html`${sw ? html`<div class="panel-b" style="padding-bottom:0">${swarmBuilding(sw)}</div>` : ""}<div id="mk-building">${buildingBody(t)}</div>`, { cls: "mk-buildpanel", aside: html`<a class="link" href="/agents/${t.agent}/profile">Profile</a>` })}
         <div id="mk-feed" class="tk-feed"></div>
       </div>
       <div class="tk-center">
         <section class="panel mk-pricepanel tk-chartpanel" data-view="chart">
           <div class="panel-h">
-            <div class="seg tk-view" role="group" aria-label="Show"><button type="button" data-view-b="chart" aria-pressed="true">Chart</button><button type="button" data-view-b="computer" aria-pressed="false">Computer</button></div>
+            <div class="seg tk-view" role="group" aria-label="Show"><button type="button" data-view-b="chart" aria-pressed="true">Chart</button><button type="button" data-view-b="computer" aria-pressed="false">${sw ? "Computers" : "Computer"}</button></div>
             <div class="aside"><span class="faint hide-xs tk-unit">US dollars per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div><a class="link tk-agentlink" href="/agents/${t.agent}">Agent page</a></div>
           </div>
           <div class="tk-pane" data-pane-v="chart" id="mk-chart"></div>
           <div class="panel-note tk-usdnote" data-pane-v="chart" id="mk-usdnote">${usdBasisNote(d.usd?.basis ?? null, d.candles.length > 0)}</div>
-          <div class="tk-pane mk-livepanel" data-pane-v="computer" hidden><div id="mk-live" class="mk-live"></div></div>
+          <div class="tk-pane mk-livepanel" data-pane-v="computer" hidden>${sw ? swarmPane(sw) : html`<div id="mk-live" class="mk-live"></div>`}</div>
         </section>
         <section class="panel tk-book" data-book="holders">
           <div class="panel-h">
@@ -203,14 +206,16 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       let cur = d;
       let tradeBox: { update?: (t: TokenDetail) => void; destroy?: () => void } | null = null;
       const chartEl = root.querySelector<HTMLElement>("#mk-chart")!;
-      const liveEl = root.querySelector<HTMLElement>("#mk-live")!;
+      const liveEl = root.querySelector<HTMLElement>("#mk-live");
+      const swarm: SwarmPaneHandle | null = sw ? mountSwarmPane(root, sw, { agent: t.agent, label: t.name ?? t.symbol ?? undefined }) : null;
+      const seatBy = sw ? (gen: string) => sw.record.find((r) => r.gen_id === gen) ?? null : null;
       const chart = mountTokenChart(chartEl);
       const label = (x: Data) => `${sym(x.t)} · ${x.tf}`;
       chart.set(d.usd?.candles ?? [], d.usd?.start ?? null, label(d), d.usd === null && d.candles.length > 0);
       // the agent chat feed in the left column (plan F), refreshed while the page is open
       const feedEl = root.querySelector<HTMLElement>("#mk-feed");
       // the agent's commits to its own GitHub fork, live (identity service + GitHub)
-      mountCommits(root.querySelector<HTMLElement>("#mk-commits")!, { agent: t.agent, repoUrl: t.repo_url ?? null });
+      mountCommits(root.querySelector<HTMLElement>("#mk-commits")!, { agent: t.agent, repoUrl: t.repo_url ?? null, ...(seatBy ? { by: (gen: string) => ((r) => (r ? `${r.name ?? `agent ${r.seat}`}${r.model ? ` (${r.model})` : ""}` : null))(seatBy(gen)) } : {}) });
       // About the token, under the trade box: counted from the indexer's trades
       const about = mountAbout(root.querySelector<HTMLElement>("#mk-about")!, t, dt.tagline ?? null);
       // the agent's GitHub fee route and repository pool (fee-route-line.ts): nothing while the features are off
@@ -290,7 +295,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         chartPanel.dataset.view = v;
         for (const x of chartPanel.querySelectorAll<HTMLElement>("[data-view-b]")) x.setAttribute("aria-pressed", String(x.dataset.viewB === v));
         for (const p of chartPanel.querySelectorAll<HTMLElement>("[data-pane-v]")) p.hidden = p.dataset.paneV !== v;
-        if (v === "computer" && !live) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none", caption: false });
+        if (v === "computer" && swarm) swarm.show();
+        else if (v === "computer" && !live && liveEl) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none", caption: false });
       });
 
       // the trade box (wallet bundle)
@@ -315,6 +321,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
           clearInterval(timer);
           chart.destroy();
           live?.destroy();
+          swarm?.destroy();
           tradeBox?.destroy?.();
           return;
         }

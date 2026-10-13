@@ -383,6 +383,30 @@ export class Swarms {
     return out;
   }
 
+  /** The swarm's accepted changes, newest first, each with the seat and model its provenance record names (final candidates only). */
+  private record(agent: string, roster: SwarmSeat[], limit = 50) {
+    const rows = this.c.db
+      .query<{ record: string; commit_id: string; candidate_id: string | null; kind: string; target: string; lineage_id: string; finalized_at: number | null; gen_id: string | null; verdict: string | null }, [string, number]>(
+        `SELECT p.record, c.commit_id, c.candidate_id, c.kind, c.target, c.lineage_id, c.finalized_at, c.gen_id, c.verdict
+         FROM provenance p JOIN candidates c ON c.commit_id = p.commit_id WHERE p.agent = ? AND c.status = 'accepted' ORDER BY c.finalized_at DESC LIMIT ?`,
+      )
+      .all(agent, limit);
+    return rows.map((r) => {
+      const rec = JSON.parse(r.record) as { seat?: number; models?: string[]; route?: { model?: { provider?: string; id?: string } } };
+      const seat = typeof rec.seat === "number" && Number.isInteger(rec.seat) ? rec.seat : 1;
+      let ratio: number | null = null;
+      let target: unknown = r.target;
+      try {
+        const e = r.verdict ? (JSON.parse(r.verdict) as { effect?: { ratio?: unknown } }).effect : null;
+        ratio = e && typeof e.ratio === "number" && Number.isFinite(e.ratio) ? e.ratio : null;
+        target = JSON.parse(r.target);
+      } catch {
+        /* as stored */
+      }
+      return { commit_id: r.commit_id, candidate_id: r.candidate_id, gen_id: r.gen_id, lineage_id: r.lineage_id, kind: r.kind, target, finalized_at: r.finalized_at, ratio, seat, name: roster.find((m) => m.seat === seat)?.name ?? null, model: rec.route?.model?.id ?? rec.models?.[0] ?? null };
+    });
+  }
+
   /**
    * GET /v1/agents/:id/swarm: the coin page's seat list. `seats` is null for a solo agent. Per seat:
    * what the soul declares (name, role, model), the runtime's last statement about it, its live
@@ -412,6 +436,7 @@ export class Swarms {
       agent,
       size: roster.length,
       lead: roster.find((m) => m.role === "lead")?.seat ?? 1,
+      record: this.record(agent, roster),
       seats: roster.map((m) => {
         const st = states.get(m.seat);
         const hb = beats.get(m.seat);

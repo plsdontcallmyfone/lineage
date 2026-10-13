@@ -643,6 +643,8 @@ export class Worker {
         Bun.spawnSync(["git", "add", "-A"], { cwd: dir });
         Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "-m", "prepare outputs"], { cwd: dir });
       }
+      // the repository as the recipe pins it, before any generation's patch: a seat's change is re-based from here (below)
+      const rootRef = sp ? Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir }).stdout.toString().trim() : "";
       for (const p of parentPatches) if (!applyPatch(dir, p)) throw new Error("parent series does not apply locally");
       // the pending candidate no longer applies to the tip (another generation landed on the lines it
       // edits, so it is stale itself): author on the tip instead of failing the attempt (agent efficiency lane;
@@ -816,6 +818,7 @@ export class Worker {
       });
       if (sp && this.opts.seat) {
         // commits of a swarm are serialized per unit and stacked on what is open there at this moment
+        let seatChange = "";
         const res = await this.opts.seat.commit(view.lineage_id, async (io) => {
           for (let round = 0; round < 3; round++) {
             const readAt = Date.now();
@@ -827,22 +830,25 @@ export class Worker {
               // another seat committed on this unit, or a change under this one became final, while it was written:
               // the change must apply on the tip plus the stack as they are now, and is re-cut there
               const tip = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
-              const dir2 = join(work, `restack-${round}`);
-              materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, dir2);
-              if (existsSync(outputs)) {
-                Bun.spawnSync(["cp", "-R", `${outputs}/.`, dir2]);
-                Bun.spawnSync(["git", "add", "-A"], { cwd: dir2 });
-                Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "-m", "prepare outputs"], { cwd: dir2 });
+              // in the attempt's own repository: the change becomes a commit, the new base is built on a branch from
+              // the pinned tree (the tip's patches, then the stack), and the change is cherry-picked onto it, so git
+              // merges it with its real ancestor instead of matching context lines only
+              const git = (...a: string[]) => Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", ...a], { cwd: dir });
+              if (round === 0) {
+                git("add", "-A");
+                git("commit", "-q", "--no-gpg-sign", "-m", "seat change");
               }
-              let base = true;
-              for (const p of [...tip.patches.map((x: { patch: string }) => x.patch), ...(now?.patches ?? [])]) base = base && applyPatch(dir2, p);
-              const pf = join(dir2, ".git", "seat.patch");
-              writeFileSync(pf, patch);
-              if (!base || Bun.spawnSync(["git", "apply", "--whitespace=nowarn", pf], { cwd: dir2 }).exitCode !== 0) {
+              const change = round === 0 ? git("rev-parse", "HEAD").stdout.toString().trim() : seatChange;
+              seatChange = change;
+              let base = !!rootRef && git("checkout", "-q", "-B", `restack-${round}`, rootRef).exitCode === 0;
+              for (const p of [...tip.patches.map((x: { patch: string }) => x.patch), ...(now?.patches ?? [])]) base = base && applyPatch(dir, p);
+              if (!base || git("cherry-pick", "--no-commit", change).exitCode !== 0) {
+                git("cherry-pick", "--abort");
                 this.log("seat: the change no longer applies after another change of the swarm on this unit; not submitted");
                 outcome("no candidate: the change no longer applied once another change of the group on this unit was in place");
                 return null;
               }
+              const dir2 = dir;
               finalPatch = canonicalizeDiff(diffWorkingTree(dir2));
               parent = tip.gen_id as string;
               this.log(`seat: re-cut on ${now ? `${now.patches.length} open change(s) of the swarm` : "the tip"} as they are now`);

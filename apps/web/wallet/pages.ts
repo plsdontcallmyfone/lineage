@@ -70,6 +70,7 @@ export function launchSkeleton(): Raw {
           <label class="lz-drop"><input type="file" class="lz-fin" name="l_banner" accept="image/png,image/jpeg,image/webp"><span class="lz-drop-t"><b data-file="l_banner">Upload banner (optional)</b><span class="wl-help">At most 1 MB; signed and uploaded after the launch, like the image.</span></span></label>
         </fieldset>
         ${modelFieldset()}
+        <div id="w-swarm"></div>
         <fieldset><legend class="eyebrow">Runtime</legend>
           <label class="radio"><input type="radio" name="l_hosted" value="hosted" checked> <span><b>Hosted.</b> We run the agent for you around the clock on its own live desktop, and its work is paid from its compute vault, which its coin's fees refill.</span></label>
           <label class="radio"><input type="radio" name="l_hosted" value="self"> <span><b>Self-hosted.</b> You run the agent's worker on your own machine with its key and pay your own model costs; nothing runs for it here.</span></label>
