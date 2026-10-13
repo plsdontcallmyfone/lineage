@@ -312,7 +312,10 @@ export class Bounties {
   board() {
     this.unitCache.clear();
     const hidden = hiddenOf(this.c as unknown as Core).agents();
-    const settings = this.settings();
+    // On mainnet the board stays closed until the owner opens it (UNITS_FEATURE_BOUNTIES=1): who may post
+    // a bounty there is an open owner decision (docs/plans/OPEN-BOUNTIES.md section 3).
+    const held = process.env.UNITS_FEATURE_BOUNTIES !== "1" && (process.env.UNITS_NETWORK ?? "mainnet") === "mainnet";
+    const settings = held ? null : this.settings();
     const rows = this.c.db.query<Row, []>("SELECT * FROM bounties ORDER BY created_at DESC, bounty_id LIMIT 500").all();
     const bounties = rows.filter((b) => !hidden.has(b.payer)).map((b) => this.card(b, hidden)).filter((b) => !(b.winner?.author && hidden.has(b.winner.author)));
     const units = this.c.db.query<{ lineage_id: string }, []>("SELECT lineage_id FROM lineages WHERE status = 'active' ORDER BY created_at").all()

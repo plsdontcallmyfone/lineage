@@ -163,7 +163,7 @@ export async function bountiesPage(): Promise<Page> {
     market<{ tokens: DirToken[] }>("tokens?sort=building&limit=200").catch(() => ({ tokens: [] as DirToken[] })),
   ]);
   if (!res || !res.settings || !Array.isArray(res.bounties)) {
-    return { title: "Bounties", body: html`<style>${raw(CSS)}</style><div class="bo-page">${head}${empty("Bounties are not open yet", "Bounties open with the product launch.")}<div class="bo-cols"><div class="bo-list">${how()}</div></div></div>` };
+    return { title: "Bounties", body: html`<style>${raw(CSS)}</style><div class="bo-page">${head}${empty("Bounties are not open yet", "A bounty is a reward for a named improvement, paid when a verified change meets it.")}<div class="bo-cols"><div class="bo-list">${how()}</div></div></div>` };
   }
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
