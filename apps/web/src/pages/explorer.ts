@@ -81,7 +81,7 @@ export function cardHtml(t: DirToken, rank: number, href: string, sessionHref?: 
     <a class="ex-cardlink" href="${href}" aria-label="${agentTitle(t)} ${t.symbol ? `$${t.symbol}` : ""}">
     <div class="ex-screen" data-screen="${t.session?.id ?? ""}" data-lineage="${t.lineage_id ?? ""}"><canvas aria-hidden="true"></canvas>
       <span class="ex-rank">#${String(rank).padStart(2, "0")}</span>
-      ${st ? html`<span class="ex-state ${st}">${st === "working" ? html`<i></i>` : ""}${BADGE[st]}</span>` : ""}
+      ${st && BADGE[st] ? html`<span class="ex-state ${st}">${st === "working" ? html`<i></i>` : ""}${BADGE[st]}</span>` : ""}
     </div>
     <div class="ex-body">
       <div class="ex-name">${agentAvatar(t.agent, t.avatar, 22, "ex-av")}<span class="ex-n">${agentTitle(t)}</span><span class="ex-tick">${t.symbol ? `$${t.symbol}` : ""}</span></div>
@@ -257,7 +257,13 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const cs = getComputedStyle(screen);
     const pal = palette(cs);
     drawThumb(ctx, m, w, h, pal, cs.fontFamily || "sans-serif");
-    if (!m.lines.length) pattern(ctx, card.dataset.mint ?? "", w, h, pal);
+    if (!m.lines.length) {
+      // a screen with no file to show carries the coin's own image when its launcher uploaded one;
+      // the generated pattern stays for a coin without one, and while the image loads or if it fails
+      const logo = tok?.avatar ? await coinImage(tok.avatar) : null;
+      if (logo && screen.isConnected) coinScreen(ctx, logo, m.title, m.caption, card.dataset.mint ?? "", w, h, pal, cs.fontFamily || "sans-serif");
+      else pattern(ctx, card.dataset.mint ?? "", w, h, pal);
+    }
   }
 
   // ---- events
@@ -366,6 +372,67 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
 }
 
 /** A screen with no session: a pattern generated from the mint (a 12 x 6 field of cells), screened over the frame. */
+const coinImages = new Map<string, Promise<HTMLImageElement | null>>();
+/** The coin's uploaded image (the same file as its avatar), loaded once; null when it cannot be read. */
+function coinImage(url: string): Promise<HTMLImageElement | null> {
+  const src = `/api${url.replace(/^\/v1/, "")}`;
+  let p = coinImages.get(src);
+  if (!p) {
+    p = new Promise((res) => {
+      const im = new Image();
+      im.decoding = "async";
+      im.onload = () => res(im.naturalWidth > 0 ? im : null);
+      im.onerror = () => res(null);
+      im.src = src;
+    });
+    coinImages.set(src, p);
+  }
+  return p;
+}
+
+/** The coin's own image as a logo over the generated pattern, with its ticker and state line under it (drawn sharp at the logo's size, never stretched over the screen). */
+function coinScreen(ctx: CanvasRenderingContext2D, im: HTMLImageElement, title: string | undefined, caption: string, seed: string, w: number, h: number, p: Palette, font: string) {
+  const top = 22, ah = h - top;
+  const rgb = (c: [number, number, number]) => `rgb(${c[0]},${c[1]},${c[2]})`;
+  ctx.save();
+  ctx.fillStyle = rgb(p.bg);
+  ctx.fillRect(0, top, w, ah);
+  pattern(ctx, seed, w, h, p);
+  const size = Math.round(Math.min(ah * 0.44, 76));
+  const x = Math.round((w - size) / 2), y = Math.round(top + ah * 0.07);
+  const r = Math.round(size * 0.24);
+  ctx.beginPath();
+  ctx.roundRect(x, y, size, size, r);
+  ctx.closePath();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = "#f2f1ee";
+  ctx.fillRect(x, y, size, size);
+  const k = Math.max(size / im.naturalWidth, size / im.naturalHeight);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(im, x + (size - im.naturalWidth * k) / 2, y + (size - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k);
+  ctx.restore();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.stroke();
+  ctx.textAlign = "center";
+  const fit = (text: string, max: number) => {
+    let t = text;
+    while (t.length > 4 && ctx.measureText(t).width > max) t = `${t.slice(0, -2).trimEnd()}\u2026`;
+    return t;
+  };
+  if (title) {
+    ctx.font = `800 ${Math.round(h / 10)}px ${font}`;
+    ctx.fillStyle = "#f2f1ee";
+    ctx.fillText(fit(title, w - 24), w / 2, y + size + Math.round(h / 8.6));
+  }
+  ctx.font = `500 10px ${font}`;
+  ctx.fillStyle = "rgba(242,241,238,.62)";
+  ctx.fillText(fit(caption, w - 150), w / 2, y + size + Math.round(h / 8.6) + 13);
+  ctx.textAlign = "left";
+  ctx.restore();
+}
+
 function pattern(ctx: CanvasRenderingContext2D, seed: string, w: number, h: number, p: Palette) {
   let x = 2166136261;
   for (const ch of seed) x = Math.imul(x ^ ch.charCodeAt(0), 16777619) >>> 0;
