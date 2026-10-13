@@ -222,7 +222,7 @@ export class IdentityService {
   private async paymentOk(l: AgentLaunch, s: AgentState): Promise<boolean> {
     const p = this.o.payment;
     if (!p || Number(l.createdAt) < p.since || s.status === "ready" || s.paid) return true;
-    if (s.status === "unpaid" && this.now().getTime() - Date.parse(s.first_seen_at) > (p.windowS ?? 1800) * 1000) return false;
+    if (s.status === "unpaid" && this.now().getTime() - Date.parse(s.first_seen_at) > (p.windowS ?? 86_400) * 1000) return false;
     let why: string;
     try {
       const t = await p.terms();

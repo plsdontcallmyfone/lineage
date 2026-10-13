@@ -140,7 +140,7 @@ const svc = new IdentityService({
   payment: {
     since: paymentSince,
     terms: paymentTerms,
-    paid: async (l, recipient) => identityPaymentIn(await launchBundleTxs(reader.rpc, { mint: l.mint, launcher: l.launcher }), { payer: l.launcher, recipient }),
+    paid: async (l, recipient) => identityPaymentIn(await launchBundleTxs(reader.rpc, { mint: l.mint, launcher: l.launcher, siblings: true }), { payer: l.launcher, recipient }),
   },
   org: arg("org", "UNITS_GITHUB_ORG", DEFAULT_ORG),
   poolLowWater: (() => {

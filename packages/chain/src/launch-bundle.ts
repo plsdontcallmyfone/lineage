@@ -162,17 +162,36 @@ interface TxJson {
   meta: { err: unknown; postTokenBalances?: { accountIndex: number; mint: string; owner?: string; uiTokenAmount: { amount: string } }[]; loadedAddresses?: { writable: string[]; readonly: string[] } } | null;
 }
 
+/** How many slots after a launch's last transaction one of the same approval may still land (about 20 seconds). */
+export const SIBLING_SLOTS = 50;
+
 /**
  * The launch's transactions: the oldest successful transactions naming its AgentLaunch account, paid
  * by the launcher, at most `max` (a launch is sent as up to five transactions in one approval). Oldest
  * first, with the raw JSON for callers that read token balances.
  */
-export async function launchBundleTxs(rpc: Rpc, o: { mint: Address; launcher: Address; max?: number }): Promise<(LaunchTxView & { json: TxJson })[]> {
-  const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [launchPdas.agentLaunch(o.mint), { limit: 1000, commitment: "confirmed" }]);
+export async function launchBundleTxs(rpc: Rpc, o: { mint: Address; launcher: Address; max?: number; siblings?: boolean }): Promise<(LaunchTxView & { json: TxJson })[]> {
+  const sigs = await rpc.call<{ signature: string; err: unknown; slot?: number }[]>("getSignaturesForAddress", [launchPdas.agentLaunch(o.mint), { limit: 1000, commitment: "confirmed" }]);
   const ok = sigs.filter((s) => !s.err).reverse().slice(0, o.max ?? 5);
+  // siblings: the transactions of the same approval that do not name the AgentLaunch account. With no
+  // initial buy the units account payment and the tip travel in a transaction of their own (System
+  // transfers only), which the list above cannot contain. They are the launcher's other successful
+  // transactions landed with the launch: from two slots before its first transaction to SIBLING_SLOTS
+  // after its last (a bundle lands in one slot; ordered sends follow within seconds).
+  if (o.siblings && ok.length && ok.every((s) => typeof s.slot === "number")) {
+    const lo = Math.min(...ok.map((s) => s.slot!)) - 2, hi = Math.max(...ok.map((s) => s.slot!)) + SIBLING_SLOTS;
+    const mine = await rpc.call<{ signature: string; err: unknown; slot?: number }[]>("getSignaturesForAddress", [o.launcher, { limit: 1000, commitment: "confirmed" }]);
+    const have = new Set(ok.map((s) => s.signature));
+    for (const s of mine.reverse()) if (!s.err && typeof s.slot === "number" && s.slot >= lo && s.slot <= hi && !have.has(s.signature)) ok.push(s);
+  }
   const out: (LaunchTxView & { json: TxJson })[] = [];
   for (const s of ok) {
-    const t = await rpc.call<TxJson | null>("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
+    // the page sends legacy and v0 transactions; a sibling of a newer version is somebody else's kind of
+    // transaction (the RPC refuses it at this version) and is passed over, never an error of the launch
+    const t = await rpc.call<TxJson | null>("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch((e) => {
+      if (o.siblings && /version/i.test(String((e as Error)?.message ?? e))) return null;
+      throw e;
+    });
     if (!t?.meta || t.meta.err) continue;
     const keys = [...t.transaction.message.accountKeys, ...(t.meta.loadedAddresses?.writable ?? []), ...(t.meta.loadedAddresses?.readonly ?? [])];
     if (keys[0] !== o.launcher) continue;
