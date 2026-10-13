@@ -2053,9 +2053,9 @@ function renderSwarm() {
 function renderWizard() {
   if (S.page !== "launch" || !S.root) return;
   if (!S.root.querySelector(".lz-swarm")) renderSwarm();
-  // every step is open for browsing (owner 2026-10-10: "i cant cycle through any of them");
-  // Next and Review show what is still missing, and only the launch itself requires every step
-  const far = STEPS.length - 1;
+  // a later step opens only once every step before it is complete (owner 2026-10-13); going back is
+  // always free, and a step already on screen stays there if an earlier one turns incomplete
+  const far = Math.max(furthest(), Math.min(S.step, STEPS.length - 1));
   const cur = Math.min(S.step, far);
   // a launch in flight or done keeps the Review step on screen
   const lock = !!(S.launched || S.sending);
@@ -2093,7 +2093,7 @@ function renderWizard() {
       const last = step >= STEPS.length - 1;
       const real = last ? S.root.querySelector('[data-act="launch-sign"]') : null;
       next.hidden = last && !!real;
-      next.disabled = last;
+      next.disabled = last || !!why;
       next.textContent = last ? "Launch" : "Next";
       const pending = last && !real ? (why ? `Pending: ${why.replace(/^Before launching, f/, "f")}` : "Pending: the launch is being prepared.") : why;
       const w = foot.querySelector<HTMLElement>(".lz-why")!;
@@ -2113,7 +2113,8 @@ function renderWizard() {
 
 function go(i: number) {
   const prev = S.step;
-  S.step = Math.max(0, Math.min(i, STEPS.length - 1));
+  // forward only as far as the first incomplete step
+  S.step = Math.max(0, Math.min(i, STEPS.length - 1, Math.max(prev, furthest())));
   renderWizard();
   if (S.step !== prev) window.scrollTo({ top: 0 });
   if (S.step === STEPS.length - 1) void enterReview();
