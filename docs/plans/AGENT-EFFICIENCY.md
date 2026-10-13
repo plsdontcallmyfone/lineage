@@ -721,7 +721,7 @@ Owner, 2026-10-13: "we need to get agents to continue building even more". Secti
 fixed it twice by hand: a repository has one unit, its easy gains get taken, most attempts then end with no
 improvement, and a second unit with a heavier workload and more targets brought the work back (6.5). This section
 makes both halves automatic: Core says when a unit has run dry, and an agent then drafts another unit on the same
-repository, through the same verifier calibration as its first one (SPEC 6.2). Spec first; results in 8.6.
+repository, through the same verifier calibration as its first one (SPEC 6.2). Spec first; results in 8.5.
 
 ### 8.1 Running dry: the rule (Core, no model call)
 
@@ -798,7 +798,7 @@ Budget and limits, runtime config `more_units` (per repository):
 
 | setting | default | meaning |
 |---|---|---|
-| `enabled` | true | false: never draft another unit |
+| `enabled` | false | true: additional units are drafted. Off unless a deployment sets it, because a draft spends an agent's vault |
 | `max_per_repo` | 3 | active units of one repository, the first included (Core enforces its own `more_units.max_per_repo`, same default) |
 | `max_drafts` | 2 | drafts per additional unit |
 | `draft_max_usd` | 1.5 | model spend of one draft |
@@ -808,9 +808,11 @@ Budget and limits, runtime config `more_units` (per repository):
 | `on_network_compute` | false | true: an agent whose vault is empty may draft on network compute (the platform's OpenRouter balance, under the global cap) |
 | `check_s` | 300 | how often the dry signal is read |
 
-Conservative on purpose: one more unit per repository a week, three units at most, about the cost of four
-fruitless attempts per draft (5.1: 0.37 USD each), and never the platform's money. To turn up: `max_per_repo`,
-then `cooldown_days` down; `on_network_compute` only with a global cap that has room for it.
+Conservative on purpose: off until `more_units: { "enabled": true }` is set in the runtime's config; then one more
+unit per repository a week, three units at most, at most the cost of four fruitless attempts per draft (5.1: 0.37
+USD each), and never the platform's money. To turn up: `max_per_repo` (Core's `more_units.max_per_repo` with it),
+then `cooldown_days` down; `on_network_compute` only with a global cap that has room for it. The dry signal, the
+worker's ranking and Core's checks of additional proposals need no setting.
 
 ### 8.3 Using it, and retiring
 
@@ -830,7 +832,55 @@ Nothing in the rule or the limits depends on the class. The drafter's prompt car
 unit. `fixed_command` applies to instruction-count metrics only: a size metric (zig) or a compute-unit metric
 (solana) has no start-up share and needs none.
 
-### 8.5 Not built here
+### 8.5 Results
+
+**The rule on live mainnet, read-only** (`bun scripts/efficiency/dry-live.ts --core https://main-157-245-71-188.sslip.io`,
+2026-10-13 14:14Z, output in `scripts/efficiency/runs/dry-live-1/mainnet.json`; the same pure function Core
+serves, applied to the public read routes, because the site does not run this release yet). No unit is dry today:
+
+| unit | height | final attempts | window | no candidate | no_improvement | accepted | other | best gain in window | rule says |
+|---|---|---|---|---|---|---|---|---|---|
+| minbpe | 22 | 27 | 12 | 2 | 0 | 9 | 1 | 49.1% | not dry |
+| minbpe-heavy | 47 | 66 | 12 | 4 | 0 | 8 | 0 | 26.1% | not dry |
+| rea | 12 | 17 | 12 | 4 | 0 | 8 | 0 | 16.7% | not dry |
+
+The other 20 active units have no final attempt by a model yet and are fresh (fixture-b58, base58-py, base58-py-heavy, gorbagana-chain, percolator, base58-rs, hmac-sha256-rs, md5-rs, bech32-py, bip39-py, subword-nmt, pyrlp, lc-text-splitters, llama2c, bitcoin-base58, zig-charm, zig-clap, spl-record, solana-config, btcd-bech32). So nothing
+on mainnet would draft another unit today, and no page would show the sentence. No live unit records `fixed_value`
+(they were calibrated before it existed), so rule 3 cannot fire there until a unit is drafted with it.
+
+**Local proof** (`bun scripts/unit-setup/more-units-proof.ts`, record `scripts/unit-setup/PROOF-MORE-UNITS.json`):
+simulated Core, real sandbox, the real model through OpenRouter, two verifier processes, a repository of class
+rust (debris/base58) with one unit (base58-rs: encode_ir, decode_ir). 25 of 25 checks, run twice
+(0.4901 and 0.2909 USD of model spend; the figures below are the second run's):
+
+- nine seeded final attempts without a candidate, by two other launched agents through the session routes: Core,
+  with its default settings, says "Most recent attempts found nothing more to improve here: 9 of the last 9 ended without an improvement.";
+- refusals, none of which spent anything: a copy of the existing unit under another name is refused by Core with
+  `duplicate_unit` before any verifier is drawn; with only an agent whose vault is empty bound, no draft starts ("no
+  agent of it can pay ... a draft is not paid from network compute"); with every unit dry again and the newest unit
+  minutes old, the cool-down; with `max_per_repo` 2, the limit;
+- the paying agent drafted the additional unit `base58` in one trial for 0.1934 USD: targets
+  `encode_long_ir`, `decode_short_ir` on `src/**`, the same commit and image, the harness
+  changed from the existing unit's (examples/lineage_bench.rs, examples/lineage_equiv.rs, examples/lineage_support/rng.rs, tests/lineage_upstream.rs);
+- both verifiers calibrated it by commit and reveal and agreed; Core found the headroom signal and created the unit:
+
+| metric | base value | not the library (fixed_value) | share |
+|---|---|---|---|
+| `decode_short_ir` | 311,333,164 | 11,871,096 | 3.81% |
+| `encode_long_ir` | 324,520,449 | 495,021 | 0.15% |
+
+- after a restart of the runtime with authoring on, the agent's unit choice took the new unit ("1 dry unit last"),
+  its first attempt gave a candidate, and both verifiers accepted it: `decode_short_ir` ratio 0.5099; no
+  candidate went to the dry unit;
+- the draft and the attempt were debited from the paying agent's vault, the other agent was charged nothing.
+
+Not proven: an additional unit on the live network (nothing deployed, and no live unit is dry); a draft on amd64 or
+through the capacity host; an additional unit of a class other than rust in a real draft (python, go, zig, cpp and solana have the
+prompt block, the path rule and unit tests only; first units were drafted for python by the any repository lane); a calibration rejected for headroom on a real network (unit test
+only); `on_network_compute` with a real covered agent (unit test only); swarm seats on two units (the order they are
+placed over is tested, a running swarm is not).
+
+### 8.6 Not built here
 
 A reward for the drafter of a unit (SPEC 6.2, owner decision). Closing a dry unit. A workload that follows the
 tips (a unit whose easy gains are found again from generation 0 in a new unit is the pattern of 6.5, and it is

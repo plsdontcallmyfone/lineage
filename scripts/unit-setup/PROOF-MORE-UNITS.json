@@ -1,0 +1,342 @@
+{
+  "at": "2026-10-13T14:27:45.354Z",
+  "repo": "https://github.com/debris/base58",
+  "class": "rust",
+  "model_usd": 0.2908662429999999,
+  "draft_usd": 0.19340365499999998,
+  "drafts": [
+    "FrgCNa unit draft done: 0.1934 USD model spend, 16 sandbox s, cost 983020000 base units"
+  ],
+  "existing_unit": {
+    "name": "base58-rs",
+    "unit": "c0a614b9738d5840020a996acfe3ff46ebf8c3d4fc9023702471accb30520de9",
+    "targets": [
+      "encode_ir",
+      "decode_ir"
+    ],
+    "dry": {
+      "rule": "fruitless",
+      "line": "Most recent attempts found nothing more to improve here: 9 of the last 9 ended without an improvement.",
+      "facts": {
+        "attempts": 9,
+        "no_candidate": 9,
+        "no_improvement": 0,
+        "accepted": 0,
+        "other": 0,
+        "fruitless": 9,
+        "fruitless_share": 1,
+        "best_gain_pct": null,
+        "last_accepted_at": null,
+        "quiet_hours": 0.013925,
+        "attempts_since_accepted": 9,
+        "fixed": {}
+      },
+      "settings": {
+        "window": 12,
+        "min_attempts": 8,
+        "fruitless_share": 0.6,
+        "small_gain_pct": 3,
+        "quiet_hours": 24,
+        "fixed_share": 0.5
+      }
+    }
+  },
+  "given_to_the_drafter": "\n\nTHIS IS AN ADDITIONAL UNIT. The repository already has a unit, and agents have taken the easy gains there: most recent attempts found nothing more to improve. Existing units, with what was achieved on each target:\n- unit base58-rs (0 accepted generations); a patch may change: src/**; tests: `cargo test --release --locked --offline --no-fail-fast 2>&1`\n  - encode_ir (perf): `valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench encode \"$LINEAGE_SEED\"`; calibrated 250433520; no accepted change yet\n  - decode_ir (perf): `valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench decode \"$LINEAGE_SEED\"`; calibrated 93421131; no accepted change yet\n  recent work: of its last 9 final attempts 9 ended without an improvement and 0 were accepted\n\nYour unit must add headroom those units do not have. Choose one or more, by reading the code:\n(a) another part of the code: a module, package or crate the existing units do not let a patch change, which has tests of its own; allow only that part;\n(b) a heavier or more realistic workload on the same code, as NEW targets with their own names (for example encode_long_ir, decode_batch_ir): larger and more varied inputs, the calls real users make, so that the library's own work is nearly all of each count;\n(c) more targets: operations of the library that no existing target measures, and binary size where this class measures it.\nKeep the prepare, build and test commands of the format reference (it is this repository's own unit) unless the new part of the code needs others.\n\nTwo rules are checked for an additional unit:\n1. No duplicate. A draft whose allowed paths overlap an existing unit's and that has no target that unit lacks (the same kind and name, or the same command, is the same target) is refused when you write the recipe. Name every new target for what it measures.\n2. Headroom. Every cachegrind metric must declare fixed_command: the metric's command with a flag (--inputs-only) that makes the benchmark do everything except call the library (start, imports, building the seeded inputs) and exit 0. The trial measures it, and fails unless it is at most 10% of the metric. So make each workload heavy enough (more and larger inputs, more repetitions of the library calls), build inputs cheaply, and still keep one cachegrind run under about a minute.\nIn recipe.yml a metric then reads:\n  - name: encode_long_ir\n    ...\n    command: <the cachegrind command> encode_long $LINEAGE_SEED\n    fixed_command: <the same command> --inputs-only\nIf the repository has nothing more to measure (one small module, already covered), call give_up with impossible true and say so.",
+  "proposal": {
+    "proposal_id": "1ea16d89e259abdf001b33845aa4851acdef8c9d3712eed47745c6a57bdd4287",
+    "name": "base58",
+    "recipe_id": "b2d50d70fbad7b184205123004744eecbaa86b7d99e233be5a2c66c1cde0959e",
+    "unit": "2ac0db36c24385445189960959a2e88b6a2f78420fffa51a1144b30b9803b686",
+    "note": "Additional unit for debris/base58 with two new workloads on the single codec module, which the existing unit does not measure. encode_long_ir encodes 300 to 2048-byte blobs, where the quadratic byte-at-a-time encoder (one divide by 58 per inner step) is nearly all of the count, so limb-wise or batched conversion has large headroom. decode_short_ir runs 80k decodes of short strings (6 to 44 digits, some with leading '1's). The decoder always walks its full 33-limb accumulator for every digit and makes a copy on each call, so per-call and per-digit overhead dominates. Inputs are built without calling the library. The fixed part is 0.2% and 3.8% of the two counts. The equivalence harness adds long encodes and many short decodes to the earlier edge cases. Upstream tests also run from a protected verbatim copy.",
+    "recipe": {
+      "build": {
+        "artifacts": [
+          "target/release/libbase58.rlib"
+        ],
+        "commands": [
+          "cargo build --release --locked --offline --all-targets"
+        ],
+        "reproducible": true
+      },
+      "class": "rust",
+      "commit": "72795451f9261c8b543bb6ce59117ba069497fdb",
+      "equivalence": {
+        "command": "target/release/examples/lineage_equiv \"$LINEAGE_SEED\"",
+        "output": "stdout-digest"
+      },
+      "image": "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
+      "limits": {
+        "cpus": 2,
+        "disk_mb": 4096,
+        "memory_mb": 2048,
+        "pids": 256,
+        "wall_s": 900
+      },
+      "metrics": [
+        {
+          "command": "valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench encode_long \"$LINEAGE_SEED\"",
+          "deterministic": true,
+          "direction": "lower",
+          "fixed_command": "valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench encode_long \"$LINEAGE_SEED\" --inputs-only",
+          "holdout": true,
+          "kind": "perf",
+          "min_effect": 0.01,
+          "name": "encode_long_ir",
+          "parser": "cachegrind-ir"
+        },
+        {
+          "command": "valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench decode_short \"$LINEAGE_SEED\"",
+          "deterministic": true,
+          "direction": "lower",
+          "fixed_command": "valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench decode_short \"$LINEAGE_SEED\" --inputs-only",
+          "holdout": true,
+          "kind": "perf",
+          "min_effect": 0.01,
+          "name": "decode_short_ir",
+          "parser": "cachegrind-ir"
+        }
+      ],
+      "name": "base58",
+      "overlay_digest": "41b48655b601615adbb78b736bcff6a27d3d26002015f8e079f3256d489f10eb",
+      "patch": {
+        "allowed_paths": [
+          "src/**"
+        ],
+        "max_files": 5,
+        "max_lines": 200,
+        "protected_blocks": [
+          {
+            "glob": "src/**/*.rs",
+            "start": "^\\s*#\\[cfg\\(test\\)\\]"
+          }
+        ],
+        "protected_paths": [
+          "**/*.yml",
+          "**/lineage_*",
+          ".github/**",
+          ".travis.yml",
+          "Cargo.lock",
+          "Cargo.toml",
+          "benches/**",
+          "build.rs",
+          "examples/**",
+          "examples/lineage_bench.rs",
+          "examples/lineage_equiv.rs",
+          "examples/lineage_support/rng.rs",
+          "tests/**",
+          "tests/lineage_upstream.rs"
+        ]
+      },
+      "prepare": [
+        "cargo generate-lockfile --offline"
+      ],
+      "prepare_outputs": [
+        "Cargo.lock"
+      ],
+      "repo": "https://github.com/debris/base58",
+      "requires": {
+        "arch": "arm64"
+      },
+      "test": {
+        "command": "cargo test --release --locked --offline --no-fail-fast 2>&1",
+        "exclude": [],
+        "parser": "libtest",
+        "timeout_s": 300
+      },
+      "workdir": "/work/src"
+    },
+    "overlay_files": [
+      "examples/lineage_bench.rs",
+      "examples/lineage_equiv.rs",
+      "examples/lineage_support/rng.rs",
+      "tests/lineage_upstream.rs"
+    ],
+    "calibration": {
+      "decode_short_ir": {
+        "base_value": 311333164,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 11871096
+      },
+      "encode_long_ir": {
+        "base_value": 324520449,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 495021
+      }
+    },
+    "stable_tests": 10,
+    "median_eval_seconds": 11
+  },
+  "first_accepted": {
+    "gen_id": "5ff4e9b2c4cafe284f7794d2ca426e72a593e5c9b5fcdddde3ba872560715398",
+    "effect": {
+      "metric": "decode_short_ir",
+      "ratio": 0.5098956378628922,
+      "ci_low": 0.5098956378628922,
+      "ci_high": 0.5098956378628922,
+      "per_replay": [
+        {
+          "replay_id": "450d45710e5741b34ca31ff4b64252e4f37a5482f7504f1f1952ee33aa2b7818",
+          "ratio": 0.5098956378628922,
+          "ci_low": 0.5098956378628922,
+          "ci_high": 0.5098956378628922,
+          "pass": true
+        },
+        {
+          "replay_id": "bb6a7e63752099ca9d962e14376ea7e3c4d1752617ed3c85c8c0ae9ceb96fc1e",
+          "ratio": 0.5098956378628922,
+          "ci_low": 0.5098956378628922,
+          "ci_high": 0.5098956378628922,
+          "pass": true
+        }
+      ]
+    }
+  },
+  "unit_choice": "2ac0db36c2 of 2 units of this repository (2 of 2 targets without another agent, 0 own fruitless on its tip, 0 published misses on it; 1 dry unit last)",
+  "refusals": {
+    "duplicate": "proposal: HTTP 409 {\"error\":\"duplicate_unit\",\"message\":\"the draft duplicates an existing unit: it measures nothing the unit base58-rs does not already measure on the same paths (encode_ir, decode_ir on src/**): add targets with their own names and workloads, or allow another part of the code\"}",
+    "vault": "more units for debris/base58: every unit of debris/base58 has run dry, but no agent of it can pay for the draft of an additional unit now (asleep); a draft is not paid from network compute (more_units.on_network_compute is off)",
+    "cooldown": "more units for debris/base58: every unit of debris/base58 has run dry, but its newest unit is 0.0 days old; another is drafted 7 days after it (more_units.cooldown_days), from 2026-10-20 14:26 UTC",
+    "limit": "more units for debris/base58: every unit of debris/base58 has run dry, and it has 2 units, the most a repository may have (more_units.max_per_repo 2); no additional unit is drafted"
+  },
+  "more_units_state": {
+    "drafts": 0,
+    "usd": 0,
+    "errors": 0,
+    "next_at": 0,
+    "done_at": null,
+    "last_reason": null,
+    "proposal_id": null,
+    "rejected": [],
+    "created": 1,
+    "proposed_at": 1791901552916
+  },
+  "results": [
+    {
+      "check": "the repository has one unit of class rust, with two bonded verifiers qualified on it",
+      "ok": true,
+      "detail": "base58-rs c0a614b9738d on debris/base58; targets encode_ir, decode_ir"
+    },
+    {
+      "check": "a unit nobody attempted is fresh, not dry",
+      "ok": true,
+      "detail": "0 final attempts"
+    },
+    {
+      "check": "nine final attempts by two agents that ended without a candidate: Core says the unit has run dry, with its default settings",
+      "ok": true,
+      "detail": "Most recent attempts found nothing more to improve here: 9 of the last 9 ended without an improvement. (rule fruitless; window 9, fruitless share 1)"
+    },
+    {
+      "check": "the dry unit is not closed: still active, its generations kept",
+      "ok": true,
+      "detail": "status active"
+    },
+    {
+      "check": "refusal: a draft with the existing unit's targets on its paths is refused by Core before any verifier is drawn",
+      "ok": true,
+      "detail": "HTTP 409 {\"error\":\"duplicate_unit\",\"message\":\"the draft duplicates an existing unit: it measures nothing the unit base58-rs does not already measure on the same paths (encode_ir, decode_ir on src/**): add targets with their own names and workloads, or allow an"
+    },
+    {
+      "check": "refusal: with only an agent whose vault is empty bound, no draft starts; network compute is not spent on drafting (the default)",
+      "ok": true,
+      "detail": "more units for debris/base58: every unit of debris/base58 has run dry, but no agent of it can pay for the draft of an additional unit now (asleep); a draft is not paid from network compute (more_units.on_network_compute is off)"
+    },
+    {
+      "check": "nothing was spent so far",
+      "ok": true,
+      "detail": "0 USD"
+    },
+    {
+      "check": "with the paying agent bound, it drafts an additional unit because every unit of the repository has run dry",
+      "ok": true,
+      "detail": "more units for debris/base58: agent FrgCNa is drafting an additional unit for debris/base58 (draft 1 of 2, cap 1.2000 USD): every one of its 1 unit has run dry"
+    },
+    {
+      "check": "a model drafted a recipe that passed its trial calibration and the agent proposed it",
+      "ok": true,
+      "detail": "base58 b2d50d70fbad by FrgCNa"
+    },
+    {
+      "check": "the draft adds headroom: targets the existing unit does not have, on the same commit and image",
+      "ok": true,
+      "detail": "new targets encode_long_ir, decode_short_ir; allowed paths src/**"
+    },
+    {
+      "check": "every instruction-count metric of the draft declares fixed_command",
+      "ok": true,
+      "detail": "encode_long_ir, decode_short_ir"
+    },
+    {
+      "check": "both verifiers calibrated the proposal by commit and reveal and agreed: Core created the unit",
+      "ok": true,
+      "detail": "unit 2ac0db36c243, replays 6Fp8Bp revealed, 6qhiuq revealed"
+    },
+    {
+      "check": "the merged calibration shows the headroom signal: the part that is not the library is recorded and at most 10% of every instruction-count metric",
+      "ok": true,
+      "detail": "decode_short_ir 3.81%, encode_long_ir 0.15%"
+    },
+    {
+      "check": "both verifiers qualified on the new unit with the recipe they read from Core",
+      "ok": true,
+      "detail": "2ac0db36c243"
+    },
+    {
+      "check": "the worker's unit choice takes the fresh unit and puts the dry one last",
+      "ok": true,
+      "detail": "2ac0db36c2 of 2 units of this repository (2 of 2 targets without another agent, 0 own fruitless on its tip, 0 published misses on it; 1 dry unit last)"
+    },
+    {
+      "check": "the agent's attempt on the additional unit gave a candidate",
+      "ok": true,
+      "detail": "FrgCNa attempt done: 0.0955 USD model spend, 14 sandbox s, cost 491630000 base units, candidate c83ba5fb87cb"
+    },
+    {
+      "check": "a first accepted change on the additional unit, replayed by both verifiers",
+      "ok": true,
+      "detail": "c83ba5fb87 accepted; decode_short_ir ratio 0.5099"
+    },
+    {
+      "check": "no candidate went to the dry unit",
+      "ok": true,
+      "detail": "0 candidates on the first unit"
+    },
+    {
+      "check": "twelve more attempts without a candidate make the new unit dry too (its accepted change is out of the window)",
+      "ok": true,
+      "detail": "Most recent attempts found nothing more to improve here: 12 of the last 12 ended without an improvement."
+    },
+    {
+      "check": "refusal: every unit dry again, but the newest unit is inside the cool-down: no draft",
+      "ok": true,
+      "detail": "more units for debris/base58: every unit of debris/base58 has run dry, but its newest unit is 0.0 days old; another is drafted 7 days after it (more_units.cooldown_days), from 2026-10-20 14:26 UTC"
+    },
+    {
+      "check": "refusal: at max_per_repo units no additional unit is drafted",
+      "ok": true,
+      "detail": "more units for debris/base58: every unit of debris/base58 has run dry, and it has 2 units, the most a repository may have (more_units.max_per_repo 2); no additional unit is drafted"
+    },
+    {
+      "check": "exactly one proposal was ever admitted for calibration",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "check": "the draft and the attempt were metered to the paying agent's vault",
+      "ok": true,
+      "detail": "vault 30000000000 -> 28515665000, debited 1484335000; model spend 0.2909 USD (drafting 0.1934)"
+    },
+    {
+      "check": "the agent with the empty vault was charged nothing",
+      "ok": true,
+      "detail": "0 usage records"
+    },
+    {
+      "check": "no secrets in the runtime's output",
+      "ok": true,
+      "detail": "72 lines"
+    }
+  ]
+}

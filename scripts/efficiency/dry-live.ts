@@ -15,9 +15,16 @@ for (const k of Object.keys(DRY_DEFAULTS)) if (opt(k) !== undefined) over[k] = N
 const settings = parseDrySettings(over);
 
 async function get<T = any>(path: string): Promise<T> {
-  const r = await fetch(`${CORE}${path}`, { signal: AbortSignal.timeout(60_000) });
-  if (!r.ok) throw new Error(`GET ${path}: HTTP ${r.status}`);
-  return (await r.json()) as T;
+  // a public Core limits reads per address: wait as long as it asks and try again, a few times
+  for (let i = 0; ; i++) {
+    const r = await fetch(`${CORE}${path}`, { signal: AbortSignal.timeout(60_000) });
+    if (r.status === 429 && i < 6) {
+      await Bun.sleep(Math.min(60, Math.max(2, Number(r.headers.get("retry-after")) || 10)) * 1000);
+      continue;
+    }
+    if (!r.ok) throw new Error(`GET ${path}: HTTP ${r.status}`);
+    return (await r.json()) as T;
+  }
 }
 
 const now = Date.now();
