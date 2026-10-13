@@ -32,3 +32,4 @@ export * from "./firewall.ts";
 export * from "./firewall-chain.ts";
 export * from "./claims.ts";
 export * from "./pools.ts";
+export * from "./crank-tx.ts";
