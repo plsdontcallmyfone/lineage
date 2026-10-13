@@ -239,6 +239,7 @@ export function unitSetupWork(o: { core: string; state_dir: string; model?: stri
         target: { name, repo: job.repo, commit: job.commit, class: job.class, arch, image: withFiles[0]!.recipe.image },
         example: { recipe_yml: readFileSync(join(ex.dir, "recipe.yml"), "utf8"), overlay },
         more,
+        seedOverlay: more ? ex.overlayDir : null,
         maxTrials: o.max_trials ?? UNIT_SETUP_DEFAULTS.max_trials,
         onSandbox: (s) => job.meter.sandbox(s),
         log: job.log,

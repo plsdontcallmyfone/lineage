@@ -96,6 +96,12 @@ describe("profiles (SPEC 12.8)", () => {
       expect(overlayPathOk("ref/python/lineage_bench.py", tree)).toBeNull();
       expect(overlayPathOk("lineage_bench.py", tree)).toContain("already has");
       expect(overlayPathOk("bench.py", tree)).toContain("lineage_");
+      // a many-file harness: a Go main package, a Cargo harness crate, C++ sources under lineage/
+      expect(overlayPathOk("lineage/bench/main.go", tree)).toBeNull();
+      expect(overlayPathOk("lineage_harness/Cargo.toml", tree)).toBeNull();
+      expect(overlayPathOk("examples/lineage_support/rng.rs", tree)).toBeNull();
+      expect(overlayPathOk("src/bench.rs", tree)).toContain("lineage_");
+      expect(overlayPathOk("lineagex/main.go", tree)).toContain("lineage_");
       expect(overlayPathOk("../lineage_x.py", tree)).toContain("outside");
       expect(overlayPathOk(".git/lineage_x", tree)).toContain("outside");
     } finally {

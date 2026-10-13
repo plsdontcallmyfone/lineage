@@ -7,7 +7,7 @@ import type { Recipe } from "@units/protocol";
 import { loadRecipe } from "@units/sandbox";
 import type { CoreClient } from "../../core/src/client.ts";
 import type { SpendLedger } from "../src/discovery.ts";
-import { RecipeDrafter, describeUnits, moreSection, type ExistingUnit } from "../src/recipe-proposer.ts";
+import { CLASS_NOTES, RecipeDrafter, classNotes, describeUnits, moreSection, type ExistingUnit } from "../src/recipe-proposer.ts";
 import { REPO_ROOT } from "../src/recipes.ts";
 
 // The drafter of an ADDITIONAL unit (docs/plans/AGENT-EFFICIENCY.md 8.2): what it is told about the
@@ -103,4 +103,35 @@ test("describeUnits reads the recipe, the calibrated values, the accepted change
   expect(u!.metrics[0]!.ratio).toBeCloseTo(0.4, 12);
   expect(u!.metrics[1]).toMatchObject({ accepted: 0, ratio: 1, fixed_share: null });
   expect(u!.recent).toBe("of its last 12 final attempts 9 ended without an improvement and 2 were accepted (largest gain 1.2%)");
+});
+
+describe("class conventions in the drafter's prompt", () => {
+  test("every class with a toolchain image a draft can use has its block: python, rust, go, zig, cpp, solana", () => {
+    for (const cls of ["python", "rust", "go", "zig", "cpp", "solana"]) {
+      expect(classNotes(cls)).toContain(`Conventions of class ${cls}`);
+      expect(CLASS_NOTES[cls]).not.toContain(String.fromCharCode(0x2014));
+    }
+    expect(classNotes("cuda")).toBe("");
+  });
+  test("each block names the class's own test parser and where its harness lives", () => {
+    expect(CLASS_NOTES.rust).toContain("parser libtest");
+    expect(CLASS_NOTES.rust).toContain("examples/lineage_bench.rs");
+    expect(CLASS_NOTES.go).toContain("gotap");
+    expect(CLASS_NOTES.go).toContain("GOMAXPROCS=1 GOGC=off");
+    expect(CLASS_NOTES.zig).toContain("parser bytes");
+    expect(CLASS_NOTES.cpp).toContain("parser tap");
+    expect(CLASS_NOTES.solana).toContain("compute units");
+    expect(CLASS_NOTES.solana).toContain("no fixed_command");
+    expect(CLASS_NOTES.python).toContain("--junitxml=/out/junit.xml");
+  });
+  test("the conventions match the recipes of each class in this tree", () => {
+    const of = (name: string) => loadRecipe(join(REPO_ROOT, "recipes", name)).recipe;
+    expect(of("base58-rs").test.parser).toBe("libtest");
+    expect(of("bip39-go").test.command).toContain("gotap");
+    expect(of("bip39-go").metrics[0]!.command).toContain("GOMAXPROCS=1 GOGC=off");
+    expect(of("zig-clap").metrics[0]!.parser).toBe("bytes");
+    expect(of("bitcoin-base58").test.parser).toBe("tap");
+    expect(of("spl-record").metrics[0]!.parser).toBe("number");
+    expect(of("base58-py").test.command).toContain("--junitxml=/out/junit.xml");
+  });
 });

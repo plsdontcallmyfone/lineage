@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import { H, sha256Hex, type Calibration, type Recipe } from "@units/protocol";
 import { UNITS_HOME, calibrate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree, RecipeError, type LoadedRecipe } from "@units/sandbox";
@@ -150,7 +150,7 @@ const DRAFT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "write_overlay_file",
     description:
-      "Create or replace one overlay (harness) file. Overlay files are copied onto the repository root before the build and are always protected. Paths must start with lineage_ (for example lineage_bench.py) and must not exist in the repository.",
+      "Create or replace one overlay (harness) file. Overlay files are copied onto the repository root before the build and are always protected. The file must be named lineage_* (for example lineage_bench.py, examples/lineage_bench.rs) or lie under a directory named lineage or lineage_* (for example lineage_harness/Cargo.toml, lineage/bench/main.go), and must not exist in the repository.",
     input_schema: { type: "object", properties: { path: { type: "string" }, contents: { type: "string" } }, required: ["path", "contents"], additionalProperties: false },
   },
   {
@@ -177,13 +177,40 @@ const DRAFT_TOOLS: Anthropic.Beta.BetaTool[] = [
   },
 ];
 
-/** Overlay paths the drafter may write: lineage_* at any depth, never .git, never an existing repo file. */
+/** Overlay paths the drafter may write: a file named lineage_* at any depth or any file under a lineage or lineage_* directory; never .git, never an existing repo file. */
 export function overlayPathOk(rel: string, repoTree: string): string | null {
   const p = normalize(rel).replace(/^\.\//, "");
   if (!p || p.startsWith("..") || p.startsWith("/") || p.split("/").includes(".git")) return "path outside the overlay";
-  if (!/(^|\/)lineage_[\w.-]+$/.test(p)) return "overlay file names must start with lineage_";
+  // a harness is often several files (a Go main package, a Cargo harness crate, C++ sources with a Makefile):
+  // the file itself, or a directory above it, carries the lineage name
+  if (!p.split("/").some((seg) => seg === "lineage" || /^lineage_[\w.-]+$/.test(seg))) return "overlay paths must be a file named lineage_* or lie under a directory named lineage or lineage_*";
   if (existsSync(join(repoTree, p))) return "the repository already has this file; harness files must be new";
   return null;
+}
+
+/**
+ * What a recipe of each class looks like, in a few lines (SPEC 6.1; the format reference shows it in
+ * full). The drafter's requirements are otherwise written once for every class.
+ */
+export const CLASS_NOTES: Record<string, string> = {
+  python:
+    "Tests: the repository's own, run with pytest --junitxml=/out/junit.xml (parser junit; it runs unittest suites too). Harness: lineage_bench.py and lineage_equiv.py at the root, the benchmark run as `python lineage_bench.py <mode> $LINEAGE_SEED` under valgrind. Interpreter start and imports are part of every count: import only what the benchmark needs.",
+  rust:
+    "Tests: `cargo test --release --locked --offline --no-fail-fast 2>&1` with parser libtest. Harness: examples/lineage_bench.rs and examples/lineage_equiv.rs, built by `cargo build --release --locked --offline --all-targets` and run from target/release/examples/; they may use only the crate and std (no new dependency, a small seeded generator written in the file). prepare makes the lockfile when the repository commits none (`cargo generate-lockfile`, prepare_outputs [Cargo.lock]) and fetches. In a workspace, build, test and allow only the member crate you measure (-p <crate>, its src/**).",
+  go:
+    "Tests: `go test -json -count=1 -p 1 <packages> | gotap` with parser tap, GOCACHE under /work/src as in the reference. Harness: main packages in their own directories (lineage/<name>/main.go), built in build.commands into lineage_bin/. The benchmark runs with GOMAXPROCS=1 GOGC=off and callgrind's --toggle-collect on the one function that does the work, exactly as the reference's metric commands do, so the Go runtime's start is not counted and counts are deterministic.",
+  zig:
+    "The primary metric is the size in bytes of the ReleaseSmall artifacts (parser bytes, kind slim, min_effect as in the reference); an instruction count of a seeded workload (parser cachegrind-ir) is the second kind of target. Tests run through a TAP test runner in the overlay (parser tap). Use the reference's -target and -mcpu flags for every compile.",
+  cpp:
+    "Build the library's sources and the harness with the reference's compiler flags (a Makefile or CMake file in the overlay, output under lineage_out/). Tests print TAP (parser tap): the repository's own test file compiled against a small TAP main. Harness sources live under lineage/ or are named lineage_*.",
+  solana:
+    "Metrics are compute units, measured in process by a harness crate on seeded instruction data (parser number, deterministic; they are exact, so no cachegrind and no fixed_command), and the size of the program's .so (parser bytes, kind slim). The program is built with cargo-build-sbf as in the reference; the harness crate lives in lineage_harness/ and is built in prepare into /deps/bin. Tests are the program's own, with parser libtest.",
+};
+
+/** The class block of the drafter's prompt. */
+export function classNotes(cls: string): string {
+  const n = CLASS_NOTES[cls];
+  return n ? `\nConventions of class ${cls} (the format reference shows them in full): ${n}\n` : "";
 }
 
 /** The model a recipe is drafted with when the caller names none (a registry id; routed like every Claude call). */
@@ -203,6 +230,8 @@ export class RecipeDrafter {
       example: { recipe_yml: string; overlay: Record<string, string> };
       /** set when the repository already has units: the draft is an additional unit (plan AGENT-EFFICIENCY 8.2) */
       more?: MoreContext;
+      /** a harness directory the draft's overlay starts as a copy of (an additional unit: the repository's own unit's overlay), so a many-file harness is changed, not retyped */
+      seedOverlay?: string | null;
       maxTrials?: number;
       /** seconds of sandbox time each trial calibration took (the hosted runtime meters them to the agent's vault) */
       onSandbox?: (seconds: number) => void;
@@ -284,6 +313,7 @@ export class RecipeDrafter {
     const repoTree = join(newWorkDir("draft-repo"), "src");
     materialize(t.repo, t.commit, null, repoTree);
     mkdirSync(join(this.o.dir, "overlay"), { recursive: true });
+    const seeded = this.o.seedOverlay && existsSync(this.o.seedOverlay) ? (cpSync(this.o.seedOverlay, join(this.o.dir, "overlay"), { recursive: true }), Bun.spawnSync(["find", join(this.o.dir, "overlay"), "-type", "f"]).stdout.toString().split("\n").filter(Boolean).map((f) => relative(join(this.o.dir, "overlay"), f)).sort()) : [];
     const box = new ToolBox({ tree: repoTree } as unknown as ProposeContext, 0);
     const maxTrials = this.o.maxTrials ?? 4;
     let trials = 0;
@@ -304,12 +334,13 @@ A recipe makes one repository measurable. Draft a recipe for:
 Sandbox facts: workdir /work/src holds the repository plus your overlay files at the root. prepare commands run once WITH network and may only write under /deps (the repository tree is discarded afterwards); every other step runs with NO network, a read-only /deps, a read-only root filesystem, /tmp as tmpfs, as a non-root user. LINEAGE_SEED is the only nondeterministic input. junit output goes to /out/junit.xml. Commands run under sh -c with cwd /work/src.
 
 Requirements:
-- Tests: the repository's own tests, run so the parser recognises every test id (junit via pytest --junitxml=/out/junit.xml works for unittest suites too). Never edit or skip upstream tests.
-- Metrics: at least one deterministic perf metric: cachegrind instruction count (parser cachegrind-ir, same valgrind invocation as the example) of an overlay benchmark (lineage_bench.*) whose workload is generated only from the seed argument, exercising the library's real hot path the way it is used in practice, printing a checksum so work cannot be skipped. min_effect 0.01, holdout true.
+- Tests: the repository's own tests, run so the parser recognises every test id (see the class conventions below). Never edit or skip upstream tests.
+- Metrics: at least one deterministic metric of the class's kind. For an instruction count: parser cachegrind-ir, the same valgrind invocation as the example, of an overlay benchmark (lineage_bench.*) whose workload is generated only from the seed argument, exercising the library's real hot path the way it is used in practice, printing a checksum so work cannot be skipped. min_effect 0.01, holdout true.
+- A benchmark should take --inputs-only as a last argument: it then does everything except call the library (start, imports, building the seeded inputs) and exits 0. Declare it on the metric as fixed_command (the metric's command plus --inputs-only): calibration records how much of the count is not the library's own work.
 - Equivalence: an overlay program (lineage_equiv.*) that prints the library's outputs for many seeded random inputs (including edge cases and invalid inputs where the API defines behaviour) so any behaviour change alters the digest.
 - patch.allowed_paths: only the library source a patch should change; protected_paths: tests, packaging, CI files and every overlay file (lineage_*).
 - Keep limits modest like the example. ${this.o.more ? "The workload is sized by the headroom rule below." : "Bound the workload so one cachegrind run takes a few seconds."}
-
+${classNotes(t.class)}
 Format reference, an accepted recipe of the same class (${this.o.more ? "a unit this repository already has" : "another repository"}):
 --- recipe.yml ---
 ${ex.recipe_yml}
@@ -319,7 +350,7 @@ ${Object.entries(ex.overlay)
 
 If the repository cannot have a recipe as it stands, do not force one: call give_up with impossible true. That is the case when it has no tests of its own that run offline on a CPU, when its code needs a GPU or other hardware, or when nothing it computes is deterministic. Never write tests for it yourself and never fake a metric.
 
-Work efficiently: read only what you need (the library module and its tests), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials.${this.o.more ? moreSection(this.o.more) : ""}`;
+Work efficiently: read only what you need (the library module and its tests), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials.${this.o.more ? moreSection(this.o.more) : ""}${seeded.length ? `\n\nYour overlay already holds a copy of the format reference's harness files (${seeded.join(", ")}): keep the ones your recipe uses, and replace or add files with write_overlay_file. Every file in the overlay is part of your recipe.` : ""}`;
     const res = await toolLoop({
       client: this.o.client,
       model: this.o.model ?? DRAFT_MODEL,
