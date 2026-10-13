@@ -1,5 +1,6 @@
 import type { Server } from "bun";
 import { bountiesOf } from "./bounties.ts";
+import { openBountiesOf } from "./open-bounties.ts";
 import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { findingsOf } from "./findings.ts";
@@ -421,12 +422,13 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/challenges/:id", "none", (c) => challengesOf(core).one(c.params.id!)),
     route("POST", "/v1/challenges", "agent", (c) => challengesOf(core).open(c.agent!, c.json())),
     route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
-    route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
-    route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),
-    route("PUT", "/v1/bounties/:id/terms", "none", (c) => bountiesOf(core).setTerms(c.params.id!, c.json())),
-    route("GET", "/v1/lineages/:id/bounties", "none", (c) => bountiesOf(core).hints(c.params.id!)),
     route("GET", "/v1/bounties/board", "none", () => bountiesOf(core).board()), // the Bounties page (docs/plans/OPEN-BOUNTIES.md)
     route("GET", "/v1/bounties/:id/view", "none", (c) => bountiesOf(core).detail(c.params.id!)),
+    route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
+    route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),
+    route("GET", "/v1/bounties/:id/claim", "none", (c) => openBountiesOf(core).claim(c.params.id!)), // the escrow program's claim proof (open-bounties.ts)
+    route("PUT", "/v1/bounties/:id/terms", "none", (c) => bountiesOf(core).setTerms(c.params.id!, c.json())),
+    route("GET", "/v1/lineages/:id/bounties", "none", (c) => bountiesOf(core).hints(c.params.id!)),
     route("GET", "/v1/epochs", "none", (c) => core.listEpochs({ retired: q(c, "retired") === "1", limit: int(c, "limit"), before: int(c, "before") })),
     route("GET", "/v1/epochs/current", "none", () => core.epochView(core.currentEpoch().n)),
     route("GET", "/v1/epochs/:n", "none", (c) => core.epochView(epochN(c))),

@@ -77,8 +77,8 @@ export const RULES: Record<string, Rule> = {
   candidates: "rows", candidate_deferrals: "rows", generations: "rows", gen_github: "rows", provenance: "rows", series: "rows",
   splits: "rows", split_reports: "rows", teams: "rows", team_members: "rows", ports: "rows",
   replays: "rows", audits: "rows", disputes: "rows", assignment_rounds: "rows", beacon_uses: "rows", slot_beacons: "rows",
-  canary_queue: "rows", units: "rows", usage: "rows", records: "rows", record_marks: "rows", contributions: "rows",
-  upstream_prs: "rows", upstream_merges: "rows", challenges: "rows", bounties: "rows",
+  canary_queue: "rows", units: "rows", usage: "rows", records: "rows", record_marks: "rows", contributions: "rows", bounty_results: "rows",
+  upstream_prs: "rows", upstream_merges: "rows", challenges: "rows", bounties: "rows", open_bounties: "rows",
   findings: "rows", hotspot_claims: "rows", profile_replays: "rows",
   // what it did and said
   sessions: "rows", session_events: "rows", activity: "rows", heartbeat_log: "rows", intents: "rows", journal: "rows",

@@ -2,8 +2,9 @@ import type { BountyAccount } from "@units/chain";
 import type { Core } from "./core.ts";
 import { ApiError, notFound } from "./errors.ts";
 import { hiddenOf } from "./hidden.ts";
+import { openBountiesOf } from "./open-bounties.ts";
 import { canonicalJson, hashJson, merkleProof } from "./protocol.ts";
-import type { Contribution } from "./records.ts";
+import { improvementBps, type Contribution } from "./records.ts";
 
 // Bounties (identity plan C6, SPEC 14.7). The escrow lives on chain in `units_launch`; Core
 // mirrors every Bounty account (ChainBridge, each sync), stores the terms whose sha256 the account
@@ -44,8 +45,7 @@ export interface BountyGen {
   /** the agent the reward goes to (never the paying agent); null when nobody credited can be paid */
   payee: string | null;
 }
-/** Improvement in basis points from a verdict's worst-case ratio (ci_high; the ratio on a deterministic metric). */
-export const improvementBps = (ciHigh: number) => Math.floor(Math.round((1 - ciHigh) * 1e8) / 1e4);
+export { improvementBps };
 const minBps = (minEffect: number) => Math.round(minEffect * 10_000);
 
 export const BOUNTIES_SCHEMA = `
@@ -316,36 +316,48 @@ export class Bounties {
     // a bounty there is an open owner decision (docs/plans/OPEN-BOUNTIES.md section 3).
     const held = process.env.UNITS_FEATURE_BOUNTIES !== "1" && (process.env.UNITS_NETWORK ?? "mainnet") === "mainnet";
     const settings = held ? null : this.settings();
+    // the escrow program (docs/plans/OPEN-BOUNTIES.md option A, open-bounties.ts): any wallet posts where it is configured
+    const open = openBountiesOf(this.c as unknown as Core);
+    const escrow = held ? null : open.settings();
     const rows = this.c.db.query<Row, []>("SELECT * FROM bounties ORDER BY created_at DESC, bounty_id LIMIT 500").all();
-    const bounties = rows.filter((b) => !hidden.has(b.payer)).map((b) => this.card(b, hidden)).filter((b) => !(b.winner?.author && hidden.has(b.winner.author)));
+    const own = rows.filter((b) => !hidden.has(b.payer)).map((b) => ({ kind: "agent" as const, ...this.card(b, hidden) })).filter((b) => !(b.winner?.author && hidden.has(b.winner.author)));
+    const bounties = [...own, ...open.cards(hidden)].sort((x, y) => y.created_at - x.created_at || (x.bounty_id < y.bounty_id ? -1 : 1));
     const units = this.c.db.query<{ lineage_id: string }, []>("SELECT lineage_id FROM lineages WHERE status = 'active' ORDER BY created_at").all()
       .map((l) => this.unit(l.lineage_id)).filter((u): u is Unit => !!u && u.metrics.length > 0);
-    return { settings, posting: { agent_owner: !!settings && settings.paused !== true, any_wallet: false }, bounties, units };
+    return { settings, escrow, posting: { agent_owner: !!settings && settings.paused !== true, any_wallet: !!escrow && escrow.paused !== true }, bounties, units };
   }
 
   /** GET /v1/bounties/:id/view: one bounty as the page shows it, with every accepted generation on its target since it opened. */
   detail(id: string) {
     this.unitCache.clear();
+    const open = openBountiesOf(this.c as unknown as Core);
+    if (open.has(id)) return open.detail(id, hiddenOf(this.c as unknown as Core).agents());
     const b = this.get(id);
     const hidden = hiddenOf(this.c as unknown as Core).agents();
-    return { bounty: this.card(b, hidden), generations: this.decide(b).generations, settings: this.settings() };
+    return { bounty: { kind: "agent" as const, ...this.card(b, hidden) }, generations: this.decide(b).generations, settings: this.settings() };
   }
 
   /** GET /v1/bounties/:id. */
   one(id: string) {
+    const open = openBountiesOf(this.c as unknown as Core);
+    if (open.has(id)) return open.one(id);
     return this.view(this.get(id));
   }
 
   /** GET /v1/lineages/:id/bounties: the open bounties of a lineage, as workboard hints. */
   hints(lineageId: string) {
     const nowS = Math.floor(this.c.now() / 1000);
-    return this.list({ lineage: lineageId }).filter((b) => b.deadline > nowS).map((b) => ({
+    const own = this.list({ lineage: lineageId }).filter((b) => b.deadline > nowS).map((b) => ({
       bounty_id: b.bounty_id, payer: b.payer, payee: b.payee, amount: b.amount, condition: b.condition, deadline: b.deadline, terms: b.terms,
     }));
+    // bounties any wallet funded (the escrow program) are hints too: they name the metric and the improvement that is paid
+    return [...own, ...openBountiesOf(this.c as unknown as Core).hints(lineageId)];
   }
 
   /** PUT /v1/bounties/:id/terms: anyone may supply the terms; they are kept only if sha256 matches the onchain digest. */
   setTerms(id: string, terms: unknown) {
+    const open = openBountiesOf(this.c as unknown as Core);
+    if (open.has(id)) return open.setTerms(id, terms);
     const r = this.get(id);
     if (terms === undefined || terms === null) throw new ApiError(400, "invalid_terms", "terms required");
     if (hashJson(terms) !== r.terms_digest) throw new ApiError(409, "terms_digest", "sha256 of the canonical terms is not the onchain terms_digest");
@@ -355,10 +367,8 @@ export class Bounties {
 
   /** Every leaf of epoch n in root order (records.ts builds the root from the same rows). */
   private epochLeaves(n: number): string[] {
-    const db = this.c.db;
-    const r = db.query<{ leaf: string }, [number]>("SELECT leaf FROM records WHERE epoch = ?").all(n).map((x) => x.leaf);
-    const c = db.query<{ leaf: string }, [number]>("SELECT leaf FROM contributions WHERE epoch = ?").all(n).map((x) => x.leaf);
-    return [...r, ...c].sort();
+    const of = (table: string) => this.c.db.query<{ leaf: string }, [number]>(`SELECT leaf FROM ${table} WHERE epoch = ?`).all(n).map((x) => x.leaf);
+    return [...of("records"), ...of("contributions"), ...of("bounty_results")].sort();
   }
 
   /**
