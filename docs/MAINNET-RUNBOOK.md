@@ -444,6 +444,93 @@ units). Read only on mainnet the same day: the version 0 form with the table sim
 live agents that have fees waiting, the live pool member among them, with the keeper's payer address.
 Not proven: a version 0 crank landing on mainnet itself (no agent coin has graduated).
 
+## Graduation keeper
+
+An agent coin is a pump.fun coin quoted in `$UNITS`. When the last coins of its curve are bought the
+curve is complete, and three things follow, each a separate transaction:
+
+    state                        what trades            who moves it on
+    on its curve                 the curve              a buyer
+    curve complete, no pool      nothing (pump.fun      pump.fun's `migrate_v2`: permissionless, sent by
+                                 refuses every trade)   pump.fun's own keeper within seconds
+    pool exists, not recorded    the PumpSwap pool      `record_pump_graduation`: permissionless, sent by
+                                                        nobody but us
+    recorded                     the PumpSwap pool      done
+
+What was checked about pump.fun (2026-10-13). Its docs and IDL: `migrate` is "permisionless, so anyone
+can migrate a completed bonding curve", and `migrate_v2` takes one signer, `user`, who pays. On mainnet,
+read only: of 4,000 transactions on Pump's withdraw authority (22 hours), 29 were `migrate_v2` of a coin
+quoted in another pump.fun coin; 26 of them were sent by one account, `9C4nRvhh...DoYv5`, which also sent
+510 of the 1,066 SOL-quoted ones, and 3 by other accounts. For the 25 whose completing buy was found the
+migration landed 2 to 14 slots after it (0 to 3 seconds). Some of those coins have mints that do not end
+in `pump`, that is, they were created by somebody else's transaction, as ours are. Nothing in pump.fun's
+documents promises this service, so we do not depend on it.
+
+What the record is for. `record_pump_graduation` sets `AgentLaunch.graduated` and `pump_pool` and emits
+`PumpGraduated`. The site does not wait for it: the indexer, the trade box, the fee crank and the pools
+keeper all go by whether the pool exists. What depends on the record: `FeesCranked.pool_fees` (the fee
+history names a crank's source as curve only until it is set), the `graduated` event of the coin's
+history, and anyone who reads our program instead of pump.fun's. It can be sent at any time after the
+migration; nothing is lost while it is missing.
+
+`scripts/mainnet/graduate.ts` does both steps:
+
+    bun scripts/mainnet/graduate.ts --key <payer keypair.json> [--mint <mint>] [--migrate-after 120] [--no-migrate] [--max-migrate-sol 0.05] [--table <address>] [--send]
+
+It is a dry run without `--send`. It lists the launch records the program has not marked graduated,
+reads each one's curve and pool, and takes at most the one step the state calls for. A complete curve
+with no pool is left to pump.fun for `--migrate-after` seconds from the completion (the block time of
+pump.fun's `CompleteEvent` against the newest block's, so the server's clock does not matter); after
+that the keeper sends `migrate_v2` with `record_pump_graduation` in the same transaction. A coin whose
+pool exists gets the record alone. It keeps no state: a run that stops anywhere is resumed by the next,
+and a step somebody else sent first is found done. Each step is simulated first and the line says what
+it would cost. The payer is the only signer. A coin whose accounts are not what the launch program will
+accept (not pump.fun's curve of the mint, a pool that is not the canonical one) is left alone and
+named, and the run ends with status 1, as it does when a step that should have been sent was not.
+
+Cost to the payer (fork of mainnet, at mainnet rent, fee at the fork's floor price):
+
+    a run that finds nothing            0 (two RPC reads: one getProgramAccounts, one getMultipleAccounts)
+    the record alone                    5,001 lamports (361 bytes, 26,384 compute units)
+    migration and record                22,519,682 lamports: pump.fun's migration fee 15,000,001, the rent
+                                        of the pool's accounts, the fee (1,169 bytes, 405,722 compute units)
+
+A migration is not sent when its simulation says the payer would pay more than `--max-migrate-sol`,
+and never with `--no-migrate`.
+
+On the server it runs every 2 minutes as `units-main-graduation.timer`, as the instance's own account,
+paid by the hosted runtime's authority key (the fee crank keeper's payer). One command, as root:
+
+    INSTANCE=mainnet /opt/units-main/current/scripts/deploy/graduation-setup.sh
+
+`MIGRATE=0` makes it record only. Keep at least 0.03 SOL on the payer so a migration it has to send
+can be paid; `journalctl -u units-main-graduation.service -n 20` shows the last runs.
+
+The site in between. The indexer serves `awaiting_migration` for a coin whose curve is complete and
+whose pool does not exist, and prices it where its pool will open (the coins left in the curve's
+account against the raise), so the price does not step when the migration lands. The coin's page shows
+"Curve complete, pool opening" and its trade box says "This coin's curve is complete. Trading moves to
+its pool shortly." with no trade form; the box looks at the chain every 5 seconds and offers the pool
+as soon as it exists. Once the pool exists the coin counts as graduated everywhere (badge, the
+explorer's count and filter), recorded or not. The fee crank cranks on the curve until the pool exists,
+then on both. The pools keeper buys a member's coin on its curve, or on its pool once that exists, and
+skips it in between.
+
+Proof (2026-10-13, `scripts/mainnet/graduation-fork.ts`, results in `GRADUATION-FORK-LAST.json`, 52 of
+52): on a fork of mainnet with the live launch program, pump.fun's own builds and the live accounts, a
+live pool member's coin completed its curve; the keeper waited; a key that is not ours migrated it; the
+keeper recorded it. A second live coin completed, the keeper waited out a 20 second head start on the
+chain's clock and sent the migration and the record itself. In each state the chain, a local indexer
+and the pages (headless Chromium) were read. The series of trades and one-minute dollar candles is
+continuous across the move, the routed fee crank after graduation is exact (version 0, 1,108 bytes),
+and Core's pools keeper bought the graduated coin on its PumpSwap pool, for a cross holding and for a
+buyback. The fork is not mainnet in three ways the result file states: the trader's `$UNITS` were
+written into the fork, the pool member's owner and the pool keeper are stand-in keys, and the
+indexer's clock followed the fork's.
+
+Not proven: any of it on mainnet (no agent coin has graduated), and that pump.fun's keeper will migrate
+an agent coin as it migrates the coins sampled above.
+
 ## Launch from a tweet
 
 Owner, 2026-10-12: reply to a GitHub link with `@unitsdotgg launch` and get a link to the launch page
