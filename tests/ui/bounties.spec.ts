@@ -132,3 +132,33 @@ test("Eco links to Bounties", async ({ page }) => {
   await page.locator(".eco-links").waitFor({ timeout: 60_000 });
   await expect(page.locator('.eco-links a[href="/bounties"]')).toContainText("Bounties");
 });
+
+// The navigation names Bounties only where the board is open: the header link and the footer link are
+// added after one read of the board, and a site whose board is closed shows neither.
+test("the header and the footer link to Bounties only where the board is open", async ({ page, request }) => {
+  const board = await (await request.get("/api/bounties/board")).json().catch(() => null);
+  const open = !!board && (!!board.settings || !!board.escrow);
+  await page.goto("/");
+  await page.locator("header.top nav.nav a").first().waitFor({ timeout: 60_000 });
+  const head = page.locator('header.top nav.nav a[href="/bounties"]');
+  const foot = page.locator('#footer a.sf-col-link[href="/bounties"]');
+  if (!open) {
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await expect(head).toHaveCount(0);
+    await expect(foot).toHaveCount(0);
+    return;
+  }
+  await expect(head).toHaveText("Bounties", { timeout: 60_000 });
+  await expect(foot).toHaveText("Bounties");
+  expect(await monoChrome(page), "monospace on UI chrome").toEqual([]);
+  // the header stays on one row with the link in it
+  const tops = await page.locator("header.top nav.nav a").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
+  if (await head.isVisible()) {
+    await head.click();
+    await page.waitForURL("**/bounties");
+    await expect(page.locator(".bo-page h1")).toHaveText("Bounties");
+    await expect(page.locator('header.top nav.nav a[href="/bounties"]')).toHaveAttribute("aria-current", "page");
+  }
+  await cleanPage(page);
+});

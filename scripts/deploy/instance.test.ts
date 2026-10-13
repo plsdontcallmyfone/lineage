@@ -208,7 +208,7 @@ describe("identity service flag", () => {
     expect(REMOTE).toContain('[ "$WITH_IDENTITY" = 1 ] && PUBLIC_UNITS=("$P-core" "$P-indexer" "$IDU" "$P-web" "$P-gate")');
     expect(REMOTE).toContain('"$IDU") echo "http://127.0.0.1:$PORT_ID/identity/health" ;;');
     // the heredoc of site.env gains its line only with the flag on
-    expect(LOCAL).toContain("WITH_RUNTIME=${with_rt:-0}${id_line:+$nl$id_line}\nEOF");
+    expect(LOCAL).toContain("WITH_RUNTIME=${with_rt:-0}${id_line:+$nl$id_line}$feat\nEOF");
     expect(LOCAL).toContain('if [ "${with_id:-0}" = 1 ]; then id_line="WITH_IDENTITY=1"; fi');
     // the pool: never named in the kit's shell files; the only sender is the identity-pool mode, behind IDENTITY_POOL_SEND=yes
     for (const t of [LOCAL, REMOTE]) expect(t).not.toMatch(/github-pool\.json/);
@@ -230,6 +230,48 @@ describe("identity service flag", () => {
     expect(usage.stdout).toContain("archive-state <label>");
     expect(usage.stdout).toContain("WITH_IDENTITY=1");
     expect(usage.stdout).not.toContain("set -euo pipefail");
+  });
+});
+
+// Core's bounty switches (UNITS_FEATURE_OPEN_BOUNTIES, UNITS_FEATURE_BOUNTIES) reach the mainnet Core
+// through the instance's site.env: the block of instance.sh between its markers, run by bash.
+describe("feature switches in site.env", () => {
+  const LOCAL = readFileSync(join(import.meta.dir, "instance.sh"), "utf8");
+  const block = LOCAL.slice(LOCAL.indexOf("# >>> feature-lines"), LOCAL.indexOf("# <<< feature-lines"));
+  const run = (env: Record<string, string>, cur: string, call = 'printf "[%s]" "$(feature_lines "$CUR")"') =>
+    spawnSync("bash", ["-c", `set -euo pipefail\n${block}\n${call}`], { encoding: "utf8", env: { PATH: process.env.PATH ?? "", CUR: cur, ...env } });
+  const BOTH = "\nUNITS_FEATURE_OPEN_BOUNTIES=1\nUNITS_FEATURE_BOUNTIES=1";
+  test("off by default: site.env gains nothing", () => {
+    expect(block.length).toBeGreaterThan(100);
+    expect(run({}, "UNITS_NETWORK=mainnet\nWITH_RUNTIME=1").stdout).toBe("[]");
+  });
+  test("given as 1 they are written; a later deploy without them keeps the server's lines", () => {
+    expect(run({ UNITS_FEATURE_OPEN_BOUNTIES: "1", UNITS_FEATURE_BOUNTIES: "1" }, "WITH_RUNTIME=1").stdout).toBe(`[${BOTH}]`);
+    expect(run({}, `WITH_RUNTIME=1${BOTH}`).stdout).toBe(`[${BOTH}]`);
+    // one given now, the other kept
+    expect(run({ UNITS_FEATURE_BOUNTIES: "1" }, "WITH_RUNTIME=1\nUNITS_FEATURE_OPEN_BOUNTIES=1").stdout).toBe(`[${BOTH}]`);
+  });
+  test("0 turns one off and leaves the other; anything else is refused", () => {
+    expect(run({ UNITS_FEATURE_BOUNTIES: "0" }, `WITH_RUNTIME=1${BOTH}`).stdout).toBe("[\nUNITS_FEATURE_OPEN_BOUNTIES=1]");
+    const bad = run({ UNITS_FEATURE_BOUNTIES: "yes" }, "", 'feat="$(feature_lines "$CUR")" || exit 2');
+    expect(bad.status).not.toBe(0);
+    expect(bad.stderr).toContain("UNITS_FEATURE_BOUNTIES must be 1 or 0");
+  });
+  test("go writes site.env again when a switch is given, and only then", () => {
+    expect(run({ UNITS_FEATURE_BOUNTIES: "1" }, "", "feature_given && echo yes").stdout.trim()).toBe("yes");
+    expect(run({}, "UNITS_FEATURE_BOUNTIES=1", "feature_given || echo no").stdout.trim()).toBe("no");
+    expect(LOCAL).toContain('${UNITS_RECIPES:-}" ] || feature_given; then write_env;');
+    expect(LOCAL).toContain('feat="$(feature_lines "$(r "cat /etc/$P/site.env 2>/dev/null" || true)")" || exit 2');
+  });
+  test("the mainnet Core unit reads that site.env, and Core reads exactly these names", () => {
+    const L = instanceLayout("mainnet");
+    const core = renderUnit("units-core.service", readFileSync(join(SYSTEMD, "units-core.service"), "utf8"), L).text;
+    expect(core).toContain(`EnvironmentFile=-${L.etc}/site.env`);
+    const src = (f: string) => readFileSync(join(import.meta.dir, "../../packages/core/src", f), "utf8");
+    expect(src("bounties.ts")).toContain('process.env.UNITS_FEATURE_BOUNTIES !== "1"');
+    expect(src("features.ts")).toContain("UNITS_FEATURE_${name.toUpperCase()}");
+    expect(src("features.ts")).toContain('"open_bounties"');
+    for (const n of ["UNITS_FEATURE_OPEN_BOUNTIES", "UNITS_FEATURE_BOUNTIES"]) expect(block).toContain(n);
   });
 });
 

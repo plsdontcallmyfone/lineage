@@ -10,6 +10,7 @@ import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage } from "./pages/agents.ts";
 import { directoryPage } from "./pages/directory.ts";
 import { ecoPage } from "./pages/eco.ts";
+import { wireBountiesLinks } from "./bounties-nav.ts";
 import { agentProfilePage } from "./pages/agent-profile.ts";
 import { feedPage, followingPage } from "./pages/feed.ts";
 import { leaderboardPage } from "./pages/leaderboard.ts";
@@ -55,8 +56,8 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/profile$/, profilePage, ""],
   [/^\/claim$/, claimPage, "/eco"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
   [/^\/pools$/, poolsPage, "/eco"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
-  [/^\/bounties$/, bountiesPage, "/eco"], // bounties (docs/plans/OPEN-BOUNTIES.md); says "not open yet" when Core serves no bounty settings
-  [/^\/bounties\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, bountyPage, "/eco"],
+  [/^\/bounties$/, bountiesPage, "/bounties"], // bounties (docs/plans/OPEN-BOUNTIES.md); says "not open yet" when Core serves no bounty settings
+  [/^\/bounties\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, bountyPage, "/bounties"],
   [/^\/units\/([0-9a-f]{64})$/, lineagePage, "/"],
   [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"], // pre-rebrand links keep working
   [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
@@ -390,6 +391,7 @@ window.addEventListener("resize", () => {
 // ------------------------------------------------------------------------------------------------
 
 shell();
+void wireBountiesLinks(); // the Bounties link, only where the board is open
 smoothScroll();
 glide();
 pickers();
