@@ -23,8 +23,8 @@
 //                             the social class; bodies capped at 8 KB
 //   POST /api/tweet-launches   the launch page hands in the launch a reply bot's link led to (launch from a tweet);
 //                             same origin only; the social class
-//   GET  /api/tweet-links/:id (and under /v1)   "Started from a tweet": the tweet an open
-//                             launch link answers; a plain read in the api
+//   GET  /api/tweet-links/:id, /api/agents/:id/tweet-origin (and under /v1)   "Started from a tweet": the tweet an open
+//                             launch link answers and the tweet an agent's launch started from; plain reads in the api
 //                             and v1 classes. The reply bot's signed POST /v1/tweet-links is refused here (405): the bot
 //                             talks to Core on the machine itself
 //   GET, POST /runtime/bind/:agent   the hosted runtime's bind endpoint (packages/runtime/src/bind.ts):

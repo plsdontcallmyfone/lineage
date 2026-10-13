@@ -442,7 +442,7 @@ describe("the link round trip", () => {
 // Where a launch started (owner 2026-10-13): the bot tells Core, signed with its own key, which tweet
 // each link answers, before the reply goes out.
 describe("the tweet a link answers", () => {
-  test("with a key Core knows: the asking tweet, its author and the author above it are registered; the launch page can resolve the id", async () => {
+  test("with a key Core knows: the asking tweet, its author and the author above it are registered; the launch page can resolve the id, and the launch carries it", async () => {
     const e = bare();
     closers.push(() => e.close());
     const key = generateAgentKey();
@@ -467,6 +467,12 @@ describe("the tweet a link answers", () => {
     expect(await expectOk<any>(e.anon.get(`/v1/tweet-links/${r2}`))).toEqual({ origin: { repo: "keis/base58", handle: "ann", tweet_url: `https://x.com/ann/status/${m2}`, under_handle: null } });
     // the link in the reply still says nothing about the author or the tweet
     expect(w.x.posted[0]!.text).toContain(`/launch?repo=karpathy/minbpe&tl=${r1}`);
+    // a launch on that repository handed in with the id carries the tweet
+    e.clock.advance(60_000);
+    const a = { agent: generateAgentKey().id, mint: generateAgentKey().id };
+    await expectOk(e.admin.c.post("/v1/admin/launches", { ...a, launcher: generateAgentKey().id, target_repo: "https://github.com/karpathy/minbpe", hosted: true, identity_mode: "app" }));
+    await expectOk(e.anon.post("/v1/tweet-launches", { ref: r1, ...a }));
+    expect((await expectOk<any>(e.anon.get(`/v1/agents/${a.agent}/tweet-origin`))).origin).toMatchObject({ handle: "ann", tweet_url: `https://x.com/ann/status/${m1}` });
   });
 
   test("without a key, with a key Core does not know, or with Core away: the link is still given, nothing is registered", async () => {

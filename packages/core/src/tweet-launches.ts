@@ -17,8 +17,10 @@ import { ApiError, bad, conflict, forbidden } from "./errors.ts";
 // key, which tweet each link answers (the tweet that asked, its author, the author of the tweet it
 // replied to, the repository). Only a key Core was started with (UNITS_TWEET_LAUNCH_KEYS, or the admin
 // key) may write that, so "started from a tweet" is never something a visitor, a link or a launch page
-// can make up. One public read serves it and nothing else: the launch page resolves a link's id while the link
-// is open.
+// can make up. Two public reads serve it and nothing else: the launch page resolves a link's id while
+// the link is open, and an agent's pages read the tweet its launch started from. That second read
+// answers only for a launch handed in with a registered id, on the link's repository, registered by
+// Core while the link was open.
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS tweet_launches (
@@ -145,6 +147,21 @@ export class TweetLaunches {
     if (!TWEET_REF.test(ref)) throw bad("bad_ref", "ref is the 22 character id of a launch link");
     const l = this.c.db.query<Link, [string]>("SELECT * FROM tweet_links WHERE ref = ?").get(ref);
     if (!l || this.c.now() >= l.expires_at || this.c.db.query("SELECT 1 FROM tweet_launches WHERE ref = ?").get(ref)) return { origin: null };
+    return { origin: this.origin(l) };
+  }
+
+  /**
+   * GET /v1/agents/:id/tweet-origin: the tweet this agent's launch started from, or null. Only for a launch handed in with a
+   * registered id, on the link's repository, that Core registered while the link was open.
+   */
+  originOf(agent: string): { origin: TweetOrigin | null } {
+    if (!B58.test(agent)) throw bad("bad_agent", "agent is a base58 address");
+    const l = this.c.db
+      .query<Link & { target_repo: string | null; registered_at: number | null }, [string]>(
+        "SELECT l.*, a.target_repo, a.registered_at FROM tweet_launches t JOIN tweet_links l ON l.ref = t.ref JOIN agents a ON a.agent_id = t.agent WHERE t.agent = ? AND a.kind = 'launched' AND a.shadow = 0",
+      )
+      .get(agent);
+    if (!l || !l.target_repo || repoKey(l.target_repo) !== l.repo || l.registered_at === null || l.registered_at < l.created_at || l.registered_at > l.expires_at) return { origin: null };
     return { origin: this.origin(l) };
   }
 

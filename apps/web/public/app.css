@@ -121,6 +121,7 @@ strong, b { font-weight: 500; }
 .num { font-variant-numeric: tabular-nums; }
 .dim { color: var(--ts); }
 .faint { color: var(--tt-aa); }
+[data-coin-links]:not(:empty) + [data-tweet-origin]:not(:empty)::before { content: "·"; color: var(--tt-aa); margin: 0 .3em; }
 .unit { color: var(--tt); font-weight: 400; margin-left: 3px; }
 .nowrap { white-space: nowrap; }
 .right { text-align: right; }

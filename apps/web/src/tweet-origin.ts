@@ -1,8 +1,9 @@
 // "Started from a tweet": a launch opened from the reply bot's link (docs/plans/TWEET-LAUNCH.md 9).
 // The fact never comes from an address: Core serves it, from the statement the bot signed when it made
-// the link (GET /v1/tweet-links/:id while the link is open). This module checks what Core answered once more
-// before anything is shown, and holds the two places it is shown: the line on the launch page and its
-// row in Review.
+// the link (GET /v1/tweet-links/:id while the link is open; GET /v1/agents/:id/tweet-origin for a launch
+// that handed the link's id in, on the link's repository, while it was open). This module checks what
+// Core answered once more before anything is shown, and holds the three places it is shown: the line on
+// the launch page, its row in Review, and the link beside the coin's links on the agent's pages.
 import { html, type Raw } from "./html.ts";
 
 export interface TweetOrigin {
@@ -43,6 +44,9 @@ export const originLine = (o: TweetOrigin): Raw => html`<p class="wl-fine" data-
 /** The same fact as a row of the Review step (it has nothing to edit, so no Edit button). */
 export const originReviewRow = (o: TweetOrigin): Raw => html`<div class="lz-rr" data-tweet-origin="review"><span class="eyebrow">Started from</span><span class="lz-rv">${tweetLink(o, `A tweet by @${o.handle}`)}${under(o)}</span></div>`;
 
+/** The link beside the coin's links on the agent's profile and the coin's page. */
+export const originLink = (o: TweetOrigin): Raw => html`<a class="link" href="${o.tweet_url}" target="_blank" rel="noopener nofollow ugc" title="A tweet by @${o.handle}${under(o)}" data-tweet-origin-link>Started from a tweet</a>`;
+
 /** GET /api/tweet-links/<id>: the tweet an open link answers, or null (Core says null for an id it does not know, one past its time and a used one; or Core is away). */
 export async function resolveTweetLink(ref: string, f: typeof fetch = fetch): Promise<TweetOrigin | null> {
   if (!/^[A-Za-z0-9_-]{22}$/.test(ref)) return null;
@@ -52,4 +56,32 @@ export async function resolveTweetLink(ref: string, f: typeof fetch = fetch): Pr
   } catch {
     return null;
   }
+}
+
+const answers = new Map<string, TweetOrigin | null | Promise<TweetOrigin | null>>();
+
+/** A slot for an agent's "Started from a tweet" link, filled once Core answers; empty for every launch that did not start from one. */
+export function tweetOriginSlot(agent: string | null | undefined, f: typeof fetch = fetch): Raw {
+  if (!agent || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent)) return html``;
+  const have = answers.get(agent);
+  if (have !== undefined && !(have instanceof Promise)) return html`<span data-tweet-origin="${agent}">${have ? originLink(have) : ""}</span>`;
+  const p = have ?? f(`/api/agents/${agent}/tweet-origin`, { headers: { accept: "application/json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => readOrigin((j as { origin?: unknown } | null)?.origin))
+    .catch(() => null);
+  if (have === undefined) answers.set(agent, p);
+  void p.then((o) => {
+    answers.set(agent, o);
+    const fill = () => {
+      if (typeof document === "undefined") return;
+      for (const el of document.querySelectorAll<HTMLElement>(`[data-tweet-origin="${agent}"][data-pending]`)) {
+        el.removeAttribute("data-pending");
+        el.innerHTML = o ? originLink(o).s : "";
+      }
+    };
+    fill();
+    // the slot may reach the page well after this answer on a slow first paint
+    for (const ms of [50, 250, 1000, 3000, 8000, 20000]) setTimeout(fill, ms);
+  });
+  return html`<span data-tweet-origin="${agent}" data-pending="1"></span>`;
 }

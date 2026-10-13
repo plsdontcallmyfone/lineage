@@ -1,6 +1,7 @@
 import { ApiError } from "../api.ts";
 import { repoPairSlot } from "../agent-repo.ts";
 import { coinLinksSlot } from "../coin-links.ts";
+import { tweetOriginSlot } from "../tweet-origin.ts";
 import { repoLink, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
@@ -125,7 +126,7 @@ function holdersTable(d: Data): Raw {
 /** What the agent is building: its live status or last verified improvement, the repository and the session link. */
 function buildingBody(t: TokenDetail): Raw {
   // the upstream it improves and its own repository, labelled (agent-repo.ts)
-  return html`<div class="panel-b mk-building">${buildingLine(t as unknown as DirToken, { full: true })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", t.agent, (t as any).building?.repo ?? (t as any).repo_url ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(t.mint)}</div></div>`;
+  return html`<div class="panel-b mk-building">${buildingLine(t as unknown as DirToken, { full: true })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", t.agent, (t as any).building?.repo ?? (t as any).repo_url ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(t.mint)}${tweetOriginSlot(t.agent)}</div></div>`;
 }
 
 // ------------------------------------------------------------------------------------------------

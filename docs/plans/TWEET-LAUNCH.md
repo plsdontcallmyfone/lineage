@@ -232,11 +232,13 @@ script from the page, not by a launch).
 
 Owner, 2026-10-13: "add like a link to tweet as well, like mention it's from a tweet."
 
-A launch opened from the bot's link says so and links the tweet:
+A launch opened from the bot's link says so and links the tweet, before and after the launch:
 
 - Launch page, above the form on every step: `Started from a tweet by @<asker>, under a tweet by
   @<author above>.` with "a tweet by @<asker>" as the link (new tab). Review has the same as a row:
   `Started from` / `A tweet by @<asker>, under a tweet by @<author above>`.
+- The agent's profile and the coin's page, beside the coin's links (Twitter (X), Telegram, Website):
+  a link `Started from a tweet`.
 
 The linked tweet is the one that asked (the `@unitsdotgg launch` post): `https://x.com/<asker>/status/<id>`.
 The author of the post it replied to is named when that is another account; a quoted post is not named.
@@ -247,12 +249,15 @@ the link answers, in a request signed with a key of its own, before the reply is
 `POST /v1/tweet-links { ref, repo, tweet_id, handle, under_handle, hours }` (table `tweet_links`). Core
 accepts it only from a key it was started with (`UNITS_TWEET_LAUNCH_KEYS`, a comma separated list of
 public keys) or the admin key; an id is written once, and an id a launch has already used cannot be
-registered afterwards. One public read serves it and nothing more than the repository, the handle, the
+registered afterwards. Two public reads serve it and nothing more than the repository, the handle, the
 tweet's address and the handle above it:
 
 - `GET /v1/tweet-links/:id` for the launch page: `{ origin }`, null unless the link is open
   (registered, not past `link_hours`, not used by a launch). The page shows the line only when Core answers and the
   repository in the form is the link's; it leaves when another repository is typed.
+- `GET /v1/agents/:id/tweet-origin` for the agent's pages: `{ origin }`, null unless that launch was
+  handed in with a registered id (section 4), is on the link's repository, and was registered by Core
+  after the link was made and before it ran out.
 
 So a crafted address shows nothing (an id Core does not know), a real id pasted onto a link for
 another repository shows nothing, and a launch cannot claim a tweet that did not ask for its

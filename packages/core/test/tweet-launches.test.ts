@@ -120,4 +120,60 @@ describe("the tweet a launch started from", () => {
     await expectOk(e.anon.post("/v1/tweet-launches", { ref: REF_B, ...a }));
     expect(await open(REF_B)).toBeNull();
   });
+
+  test("an agent's origin: only a launch handed in with a registered id, on the link's repository, while the link was open", async () => {
+    const e = bare();
+    env = e;
+    const origin = async (agent: string) => (await expectOk<any>(e.anon.get(`/v1/agents/${agent}/tweet-origin`))).origin;
+    // launched before the link existed: not from this link
+    const early = await launch(e, "https://github.com/keis/base58");
+    e.clock.advance(1000);
+    await expectOk(e.admin.c.post("/v1/tweet-links", LINK));
+    await expectOk(e.admin.c.post("/v1/tweet-links", { ...LINK, ref: REF_B, tweet_id: "1977000000000000002", handle: "second", under_handle: null }));
+    e.clock.advance(1000);
+    const good = await launch(e, "https://github.com/Keis/base58.git");
+    const elsewhere = await launch(e, "https://github.com/other/repo");
+    const plain = await launch(e, "https://github.com/keis/base58");
+    expect(await origin(good.agent)).toBeNull();
+    // the id handed in for a launch on another repository: the row is kept (the bot reads it), the origin is not served
+    await expectOk(e.anon.post("/v1/tweet-launches", { ref: REF_B, ...elsewhere }));
+    expect(await origin(elsewhere.agent)).toBeNull();
+    await expectOk(e.anon.post("/v1/tweet-launches", { ref: REF_A, ...good }));
+    const got = await origin(good.agent);
+    expect(got).toEqual(ORIGIN);
+    expect(Object.keys(got).sort()).toEqual(["handle", "repo", "tweet_url", "under_handle"]);
+    // the whole answer names nothing but the origin: no id of the link, no wallet, no time
+    const whole = await expectOk<any>(e.anon.get(`/v1/agents/${good.agent}/tweet-origin`));
+    expect(Object.keys(whole)).toEqual(["origin"]);
+    expect(JSON.stringify(whole)).not.toContain(REF_A);
+    // a launch that handed in nothing, one older than the link, an id nobody registered, and an unknown agent
+    expect(await origin(plain.agent)).toBeNull();
+    const made = "DDDDDDDDDDDDDDDDDDDDDD";
+    await expectOk(e.anon.post("/v1/tweet-launches", { ref: made, ...plain }));
+    expect(await origin(plain.agent)).toBeNull();
+    // registering an id after a launch used it is refused: nobody can attach a tweet to a launch afterwards
+    const after = await e.admin.c.post("/v1/tweet-links", { ...LINK, ref: made });
+    expect([after.status, after.body.error]).toEqual([409, "ref_used"]);
+    expect(await origin(early.agent)).toBeNull();
+    expect(await origin(generateAgentKey().id)).toBeNull();
+    expect((await e.anon.get("/v1/agents/nope/tweet-origin")).status).toBe(400);
+    // the answer stays after the link's time: the launch did start there
+    e.clock.advance(100 * HOUR);
+    expect(await origin(good.agent)).toEqual(ORIGIN);
+  });
+
+  test("a launch Core registered after the link's time, or before the link, has no origin", async () => {
+    const e = bare();
+    env = e;
+    const old = await launch(e, "https://github.com/keis/base58");
+    e.clock.advance(1000);
+    await expectOk(e.admin.c.post("/v1/tweet-links", { ...LINK, hours: 1 }));
+    await expectOk(e.anon.post("/v1/tweet-launches", { ref: REF_A, ...old }));
+    expect((await expectOk<any>(e.anon.get(`/v1/agents/${old.agent}/tweet-origin`))).origin).toBeNull();
+    await expectOk(e.admin.c.post("/v1/tweet-links", { ...LINK, ref: REF_B, hours: 1 }));
+    e.clock.advance(HOUR + 1000);
+    const late = await launch(e, "https://github.com/keis/base58");
+    await expectOk(e.anon.post("/v1/tweet-launches", { ref: REF_B, ...late }));
+    expect((await expectOk<any>(e.anon.get(`/v1/agents/${late.agent}/tweet-origin`))).origin).toBeNull();
+  });
 });

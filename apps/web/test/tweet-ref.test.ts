@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { applyLaunchPrefill, readPrefill, reportTweetLaunch, showTweetOrigin, tweetOriginRow } from "../wallet/tweet-ref.ts";
-import { originFor, originLine, readOrigin, resolveTweetLink } from "../src/tweet-origin.ts";
+import { originFor, originLine, originLink, readOrigin, resolveTweetLink, tweetOriginSlot } from "../src/tweet-origin.ts";
 
 // Launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): what the launch page takes from a reply bot's
 // link, and the one request it makes after its launch landed.
@@ -115,10 +115,11 @@ describe("the tweet a launch link answers", () => {
     expect(readOrigin({ ...ORIGIN, under_handle: "<img>" })).toEqual({ ...ORIGIN, under_handle: null });
   });
 
-  test("the copy: the line above the form", () => {
+  test("the copy: the line, the Review row and the link on the agent's pages", () => {
     expect(originLine(ORIGIN).s).toBe('<p class="wl-fine" data-tweet-origin="line" style="margin:0 0 12px">Started from <a class="link" href="https://x.com/ann/status/1977000000000000001" target="_blank" rel="noopener nofollow ugc" data-tweet-origin-link>a tweet by @ann</a>, under a tweet by @bob.</p>');
     expect(originLine({ ...ORIGIN, under_handle: null }).s).toContain("a tweet by @ann</a>.</p>");
-    for (const s of [originLine(ORIGIN).s]) expect(s).not.toMatch(/\u2014|devnet|test|mono/i);
+    expect(originLink(ORIGIN).s).toBe('<a class="link" href="https://x.com/ann/status/1977000000000000001" target="_blank" rel="noopener nofollow ugc" title="A tweet by @ann, under a tweet by @bob" data-tweet-origin-link>Started from a tweet</a>');
+    for (const s of [originLine(ORIGIN).s, originLink(ORIGIN).s]) expect(s).not.toMatch(/\u2014|devnet|test|mono/i);
   });
 
   test("a confirmed id on the form's repository shows the line and the Review row; the line follows the repository field", async () => {
@@ -159,5 +160,26 @@ describe("the tweet a launch link answers", () => {
     const p = page("https://github.com/karpathy/minbpe");
     applyLaunchPrefill(form().root, `?repo=karpathy/minbpe&tl=${REF}&handle=elonmusk&tweet=https://x.com/elonmusk/status/1`);
     expect(tweetOriginRow(p.root).s).toBe("");
+  });
+
+  test("an agent's pages: the link only when Core serves an origin for that agent", async () => {
+    const AGENT = "So11111111111111111111111111111111111111112";
+    const OTHER = "So11111111111111111111111111111111111111113";
+    const filled: Record<string, string> = {};
+    (globalThis as any).document = { querySelectorAll: (sel: string) => [{ removeAttribute() {}, set innerHTML(v: string) { filled[sel] = v; } }] };
+    try {
+      const { f } = core({ [`/api/agents/${AGENT}/tweet-origin`]: { status: 200, body: { origin: ORIGIN } }, [`/api/agents/${OTHER}/tweet-origin`]: { status: 200, body: { origin: null } } });
+      expect(tweetOriginSlot(AGENT, f).s).toBe(`<span data-tweet-origin="${AGENT}" data-pending="1"></span>`);
+      expect(tweetOriginSlot(OTHER, f).s).toContain("data-pending");
+      expect(tweetOriginSlot("nope", f).s).toBe("");
+      await new Promise((r) => setTimeout(r, 20));
+      expect(filled[`[data-tweet-origin="${AGENT}"][data-pending]`]).toBe(originLink(ORIGIN).s);
+      expect(filled[`[data-tweet-origin="${OTHER}"][data-pending]`]).toBe("");
+      // a repaint shows the kept answer at once
+      expect(tweetOriginSlot(AGENT, f).s).toBe(`<span data-tweet-origin="${AGENT}">${originLink(ORIGIN).s}</span>`);
+      expect(tweetOriginSlot(OTHER, f).s).toBe(`<span data-tweet-origin="${OTHER}"></span>`);
+    } finally {
+      delete (globalThis as any).document;
+    }
   });
 });

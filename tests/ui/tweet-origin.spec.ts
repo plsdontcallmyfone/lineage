@@ -132,3 +132,24 @@ test("an id Core does not confirm shows nothing; the prefill still works", async
   }
   await shot(page, "bad-id", w);
 });
+
+test("an agent's profile: the link only for a launch that started from a tweet", async ({ page }, info) => {
+  const w = width(info);
+  // the seeded launches exist only on the local Core: the site's market indexer does not list their coins, answered here as no coin
+  for (const mint of [S.mint, S.plain_mint]) await page.route(`**/market/tokens/${mint}`, (r) => r.fulfill({ json: null }));
+  const origin = page.waitForResponse((r) => r.url().includes(`/api/agents/${S.agent}/tweet-origin`), { timeout: 60_000 });
+  await page.goto(`/agents/${S.agent}/profile`);
+  await origin;
+  const slot = page.locator(`[data-tweet-origin="${S.agent}"]`).first();
+  await expect(slot.locator("a")).toHaveText("Started from a tweet", { timeout: 30_000 });
+  await isTweetLink(page, `.pf-building [data-tweet-origin="${S.agent}"]`);
+  await slot.scrollIntoViewIfNeeded();
+  await shot(page, "profile", w);
+  // a launch on the same repository that handed in no link
+  const none = page.waitForResponse((r) => r.url().includes(`/api/agents/${S.plain}/tweet-origin`), { timeout: 60_000 });
+  await page.goto(`/agents/${S.plain}/profile`);
+  await none;
+  await expect(page.locator(".pf-building")).toBeVisible();
+  await expect(page.locator("a[data-tweet-origin-link]")).toHaveCount(0);
+  await expect(page.locator(".pf-page, main").first()).not.toContainText("Started from a tweet");
+});
