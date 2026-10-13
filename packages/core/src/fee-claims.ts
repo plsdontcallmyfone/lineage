@@ -134,6 +134,11 @@ interface Session {
   wallet: string | null;
   /** REPOSITORY ids this account was shown to have admin on when the session was issued (the only ids `attest` signs for) */
   repos: number[];
+  /**
+   * REPOSITORY ids GitHub said this account has admin on at the sign-in, routed or not (public only). Never an
+   * escrow key and never signed for by `attest`: it is what the owner mark of a bounty reads (bounty-owners.ts).
+   */
+  admin?: number[];
   exp: number;
 }
 
@@ -613,7 +618,10 @@ export class FeeClaims {
     const page = new URL(this.opts.claimPage);
     if (returnTo) {
       const want = new URL(returnTo, page);
-      if (want.origin !== page.origin || want.pathname !== page.pathname) throw bad("bad_return_to", "return_to must be the claim page");
+      // the claim page, or the Bounties pages (an owner proving a repository for the mark on a bounty: bounty-owners.ts)
+      const bounties = /^\/bounties(\/[1-9A-HJ-NP-Za-km-z]{32,44})?$/.test(want.pathname);
+      if (want.origin !== page.origin || (want.pathname !== page.pathname && !bounties)) throw bad("bad_return_to", "return_to must be the claim page or a Bounties page");
+      page.pathname = want.pathname;
       page.search = want.search;
     }
     if (repo) {
@@ -662,14 +670,15 @@ export class FeeClaims {
       u = null;
     }
     let repos: number[] = [];
+    let admin: number[] = [];
     try {
-      if (u) repos = await this.adminRepos(token, new URL(row.return_to).searchParams.get("repo"));
+      if (u) ({ repos, admin } = await this.adminRepos(token, new URL(row.return_to).searchParams.get("repo")));
     } finally {
       token = undefined; // used inside this callback only, never stored, never in the session
     }
     if (!u) throw new ApiError(502, "github_unreachable", "GitHub did not name the signed-in user");
     this.remember(u);
-    const session = this.issue({ github_id: u.id, login: u.login, method: o.name === "mock" ? "mock" : "oauth", wallet: null, repos });
+    const session = this.issue({ github_id: u.id, login: u.login, method: o.name === "mock" ? "mock" : "oauth", wallet: null, repos, admin });
     const back = new URL(row.return_to);
     back.hash = `session=${session.session}`;
     return { redirect: back.toString(), session };
@@ -681,14 +690,16 @@ export class FeeClaims {
    * and on an organisation repository alike. A small routed set is asked about one by one; a large one is
    * matched against the user's own repository list, plus the one repository named at the sign-in.
    */
-  private async adminRepos(token: string, hint: string | null): Promise<number[]> {
+  private async adminRepos(token: string, hint: string | null): Promise<{ repos: number[]; admin: number[] }> {
     const routed = new Set(await this.routedRepos());
     const out = new Set<number>();
+    const admin = new Set<number>();
     const check = async (path: string) => {
       const r = await this.gh(path, token).catch(() => null);
       const repo = r?.status === 200 ? this.parseRepo(r.json) : null;
       if (!repo || repo.private) return;
       this.rememberRepo(repo);
+      if (repo.admin === true) admin.add(repo.id);
       if (repo.admin === true && (routed.has(repo.id) || (await this.bound(repo.id)))) out.add(repo.id);
     };
     if (hint && /^[^/]+\/[^/]+$/.test(hint)) await check(`/repos/${hint.split("/").map(encodeURIComponent).join("/")}`);
@@ -704,12 +715,36 @@ export class FeeClaims {
           if (repo && !repo.private && repo.admin === true && routed.has(repo.id)) {
             this.rememberRepo(repo);
             out.add(repo.id);
+            admin.add(repo.id);
           }
         }
         if (list.length < 100) break;
       }
     }
-    return [...out].slice(0, 100);
+    return { repos: [...out].slice(0, 100), admin: [...admin].slice(0, 100) };
+  }
+
+  /**
+   * What a session proves, for the owner mark of a bounty (bounty-owners.ts): the account, the wallet it bound, and
+   * the repository ids GitHub said it has admin on when it signed in. Throws like every session read.
+   */
+  adminSession(token: unknown): { github_id: number; login: string; method: Session["method"]; wallet: string | null; admin: number[] } {
+    this.on();
+    const s = this.read(token);
+    const admin = [...new Set([...(Array.isArray(s.admin) ? s.admin : []), ...s.repos])].filter((r) => Number.isSafeInteger(r) && r > 0);
+    return { github_id: s.github_id, login: s.login, method: s.method, wallet: s.wallet, admin };
+  }
+  /** The repository id GitHub resolved `owner/name` to, from what Core has already seen (no request is made). */
+  knownRepoId(fullName: string): number | null {
+    return this.c.db.query<{ repo_id: number }, [string]>("SELECT repo_id FROM fee_claim_repo_names WHERE name = ? ORDER BY seen_at DESC LIMIT 1").get(fullName.toLowerCase())?.repo_id ?? null;
+  }
+  /** owner/name of a repository id Core has seen, as GitHub last spelled it. */
+  knownRepoName(id: number): string | null {
+    return this.cachedRepo(id)?.full_name ?? null;
+  }
+  /** The newest attestation Core signed for this repository's escrow and wallet (a claim), or null. */
+  lastAttestation(repoId: number, wallet: string): { created_at: number } | null {
+    return this.c.db.query<{ created_at: number }, [number, string]>("SELECT created_at FROM fee_claim_attestations WHERE github_id = ? AND wallet = ? ORDER BY created_at DESC LIMIT 1").get(repoId, wallet) ?? null;
   }
 
   /** POST /v1/fee-claims/wallet { statement, sig } with an OAuth session: binds the wallet. */
@@ -718,7 +753,7 @@ export class FeeClaims {
     const s = this.read(token);
     const b = (body ?? {}) as { statement?: unknown; sig?: unknown };
     const st = this.checkStatement(b.statement, b.sig, s.login);
-    return this.issue({ github_id: s.github_id, login: s.login, method: s.method, wallet: st.wallet, repos: s.repos });
+    return this.issue({ github_id: s.github_id, login: s.login, method: s.method, wallet: st.wallet, repos: s.repos, admin: s.admin });
   }
 
   /**

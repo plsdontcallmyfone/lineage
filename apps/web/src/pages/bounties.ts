@@ -30,6 +30,8 @@ export interface BountyRow {
   required: { bps: number; source: "terms" | "unit" | "chain" } | null; note: string | null; working: string[];
   winner: { gen_id: string; author: string | null; height: number; epoch: number | null; improvement_bps: number | null; accepted_at: number | null } | null;
   released_to: string | null; released_epoch: number | null; closed_at: number | null; chain_sig: string | null;
+  /** Core holds a proof that the poster's wallet belongs to an admin of the repository (docs/plans/OPEN-BOUNTIES.md 9); the login only when that person agreed to show it */
+  posted_by_owner?: { verified: true; repository: string; login: string | null } | null;
 }
 export interface BountySettings { max_bounty_out_bps: number; self_hosted_in_cap: string; window_s: number; min_ttl_s: number; max_ttl_s: number; refund_grace_s: number; min_amount: string; paused: boolean }
 /** The escrow program's settings (Core reads them from chain). */
@@ -97,6 +99,15 @@ a.bo-name:hover{text-decoration:underline}
 .bo-post .seg button{flex:1 1 auto;font:500 13px/1.4 var(--sans);white-space:nowrap}
 .bo-post .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .bo-post .wl-help b{font-weight:500;color:var(--tp)}
+.bo-owned{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:12.5px;color:var(--tp);font-weight:500}
+.bo-owned svg{flex:none;color:var(--accent)}
+.bo-card[hidden]{display:none}
+.bo-filter{align-self:start;background:var(--bg3)}
+.bo-filter button{font:500 13px/1.4 var(--sans)}
+.bo-owner{display:grid;gap:6px;border-left:2px solid var(--border);padding:1px 0 1px 10px}
+.bo-owner-ok{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;color:var(--tp);line-height:1.45}
+.bo-owner-ok svg{flex:none;margin-top:2px;color:var(--accent)}
+.bo-post label.bo-owner-tick{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ts)}
 .bo-explain{border-left:2px solid var(--border);padding:1px 0 1px 10px;display:grid;gap:4px}
 .bo-explain p{margin:0;font-size:12.5px;color:var(--ts);line-height:1.45}
 .bo-explain b{font-weight:500;color:var(--tp);font-variant-numeric:tabular-nums}
@@ -124,16 +135,39 @@ function deadlineCell(b: BountyRow, nowS: number): Raw {
   return html`<b>${day(b.deadline)}</b><i>${b.closed_at ? `closed ${day(b.closed_at)}` : b.deadline > nowS ? `${span(b.deadline - nowS)} away` : "passed"}</i>`;
 }
 
+const CHECK = raw('<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.6 8.2l2.2 2.2 4.6-4.8" fill="none" stroke="var(--bg2)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+const LOGIN = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
+/** "Posted by an owner of owner/repo": only from Core's `posted_by_owner`, never from the bounty's own text. */
+function ownerMark(b: BountyRow): Raw {
+  const o = b.posted_by_owner;
+  if (!o || o.verified !== true || !o.repository) return html``;
+  return html`<div class="bo-owned" data-bounty-owner title="GitHub said this wallet's owner has admin on ${o.repository}">${CHECK}<span>Posted by an owner of ${o.repository}${o.login && LOGIN.test(o.login)
+    ? html`, <a class="link" href="https://github.com/${o.login}" target="_blank" rel="noopener" data-owner-login>${o.login}</a>` : ""}</span></div>`;
+}
+const owned = (b: BountyRow) => b.posted_by_owner?.verified === true;
+/** Within one repository and state, an owner's bounties come first; every other position is left as it was. */
+export function ownersFirst<T extends BountyRow>(rows: T[]): T[] {
+  const out = [...rows];
+  const groups = new Map<string, number[]>();
+  rows.forEach((b, i) => { const k = `${b.state} ${b.repo ?? b.lineage_id}`; groups.set(k, [...(groups.get(k) ?? []), i]); });
+  for (const idx of groups.values()) {
+    const sorted = [...idx.filter((i) => owned(rows[i]!)), ...idx.filter((i) => !owned(rows[i]!))];
+    idx.forEach((slot, n) => { out[slot] = rows[sorted[n]!]!; });
+  }
+  return out;
+}
+
 export function bountyCard(b: BountyRow, byAgent: Map<string, DirToken>, nowS = Math.floor(Date.now() / 1000), opts: { link?: boolean } = {}): Raw {
   b = known(b);
   const [label, tip0] = STATE[b.state];
   // an escrow's reward comes from a wallet and returns to it
   const tip = isEscrow(b) ? tip0.replace("the paying agent", "the wallet that funded it").replace("after its epoch's challenge window", "once its contest time is over") : tip0;
   const title = targetWords(b);
-  return html`<article class="bo-card" data-bounty="${b.bounty_id}" data-state="${b.state}">
+  return html`<article class="bo-card" data-bounty="${b.bounty_id}" data-state="${b.state}"${owned(b) ? raw(" data-owned") : ""}>
     <header class="bo-h">
       <div class="min0">${b.repo ? html`<a class="bo-repo" href="${b.repo}" target="_blank" rel="noopener">${repoLabel(b.repo)}</a>` : html`<span class="bo-repo">Unit ${b.lineage_id.slice(0, 8)}</span>`}${b.recipe_name ? html`<span class="bo-repo">, <a class="bo-repo" href="/units/${b.lineage_id}">${b.recipe_name}</a></span>` : ""}
         ${opts.link === false ? html`<span class="bo-name">${title}</span>` : html`<a class="bo-name" href="/bounties/${b.bounty_id}">${title}</a>`}
+        ${ownerMark(b)}
         ${b.note ? html`<div class="bo-note">${b.note}</div>` : ""}</div>
       <span class="bo-state${b.state === "open" ? " on" : ""}" title="${tip}">${label}</span>
     </header>
@@ -206,7 +240,8 @@ export async function bountiesPage(): Promise<Page> {
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
   // a bounty on a unit whose repository is not a public one (a test fixture) is not listed
-  const rows = res.bounties.map(known).filter((b) => !b.repo || publicRepo(b.repo)).sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || (a.state === "open" ? a.deadline - b.deadline : b.created_at - a.created_at));
+  const rows = ownersFirst(res.bounties.map(known).filter((b) => !b.repo || publicRepo(b.repo)).sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || (a.state === "open" ? a.deadline - b.deadline : b.created_at - a.created_at)));
+  const anyOwned = rows.some(owned);
   const open = rows.filter((b) => b.state === "open");
   const paid = rows.filter((b) => b.state === "paid");
   return {
@@ -220,11 +255,22 @@ export async function bountiesPage(): Promise<Page> {
         ${stat("Repositories", String(new Set(open.map((b) => b.repo ?? b.lineage_id)).size), "with an open bounty")}
       </div>${res.escrow ? escrowRules(res.escrow) : ""}${res.settings && !res.escrow ? rules(res.settings) : ""}</div>
       <div class="bo-cols">
-        <div class="bo-list">${rows.length ? rows.map((b) => bountyCard(b, byAgent, nowS)) : empty("No bounty yet", "The first bounty posted shows here with its reward and its deadline.")}</div>
+        <div class="bo-list">${anyOwned ? html`<div class="seg bo-filter" role="group" aria-label="Which bounties to show" data-bounty-filter>
+            <button type="button" data-bo-filter="all" aria-pressed="true">All</button><button type="button" data-bo-filter="owned" aria-pressed="false">Posted by an owner</button></div>` : ""}${rows.length ? rows.map((b) => bountyCard(b, byAgent, nowS)) : empty("No bounty yet", "The first bounty posted shows here with its reward and its deadline.")}</div>
         <aside class="bo-side"><div id="bo-post" class="bo-post"></div>${how()}</aside>
       </div>
     </div>`,
-    mount: (root) => mountPost(root),
+    mount: (root) => {
+      // the filter hides the other cards in place; the list is drawn again by the page's own polling with "All" selected
+      root.querySelector("[data-bounty-filter]")?.addEventListener("click", (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLElement>("[data-bo-filter]");
+        if (!b) return;
+        const only = b.dataset.boFilter === "owned";
+        for (const x of root.querySelectorAll<HTMLElement>("[data-bo-filter]")) x.setAttribute("aria-pressed", String(x === b));
+        for (const card of root.querySelectorAll<HTMLElement>(".bo-list > article.bo-card")) card.hidden = only && !card.hasAttribute("data-owned");
+      });
+      return mountPost(root);
+    },
   };
 }
 
@@ -283,7 +329,7 @@ export async function bountyPage(params: string[]): Promise<Page> {
           <section class="bo-sec"><h2>Accepted generations since it opened</h2>${gens}</section>
         </div>
         <aside class="bo-side">
-          ${esc && b.status === "open" ? html`<div id="bo-post" class="bo-post" data-bounty-id="${b.bounty_id}"></div>` : ""}
+          ${esc && b.status === "open" ? html`<div id="bo-post" class="bo-post" data-bounty-id="${b.bounty_id}" data-repo="${b.repo ?? ""}"></div>` : ""}
           <section class="bo-how"><h2>How this bounty is decided</h2>${decided}</section>
           <section class="bo-how"><h2>On chain</h2><div class="kv">
             <div>Bounty account</div><div title="${b.bounty_id}">${short(b.bounty_id)}</div>

@@ -210,3 +210,17 @@ test("the header and the footer link to Bounties only where the board is open", 
   }
   await cleanPage(page);
 });
+
+// "Posted by an owner of owner/repo" (docs/plans/OPEN-BOUNTIES.md 9) shows on exactly the bounties Core
+// marks, with the repository Core names; the filter exists only when one bounty carries the mark.
+test("a bounty is marked as posted by an owner only where Core says so", async ({ page, request }) => {
+  const board = await (await request.get("/api/bounties/board")).json().catch(() => null);
+  test.skip(!board || (!board.settings && !board.escrow), "the board is not open on this site");
+  await page.goto("/bounties");
+  await page.locator(".bo-page .bo-how").first().waitFor({ timeout: 60_000 });
+  const owned = (board.bounties as any[]).filter((b) => b.posted_by_owner?.verified === true);
+  await expect(page.locator("[data-bounty-owner]")).toHaveCount(owned.filter((b) => !b.repo || /^https?:\/\//.test(b.repo)).length);
+  await expect(page.locator("[data-bounty-filter]")).toHaveCount(owned.length ? 1 : 0);
+  for (const b of owned.slice(0, 3)) await expect(page.locator(`article[data-bounty="${b.bounty_id}"] [data-bounty-owner]`)).toContainText(`Posted by an owner of ${b.posted_by_owner.repository}`);
+  await cleanPage(page);
+});

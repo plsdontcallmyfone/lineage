@@ -464,12 +464,13 @@ const server = Bun.serve({
     }
     // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md 5): the gist proof, the wallet statement and the attestation request are
     // POSTs Core verifies itself (a session token and a wallet signature); forwarded unchanged with a body cap
-    const feeClaim = /^\/api\/fee-claims\/(proofs\/gist|wallet|attest)$/.exec(p);
+    // the owner mark of a bounty's poster (docs/plans/OPEN-BOUNTIES.md 9) goes the same way: a session and a repository id, checked by Core
+    const feeClaim = /^\/api\/(fee-claims\/(?:proofs\/gist|wallet|attest)|bounties\/owner-proof(?:\/forget)?)$/.exec(p);
     if (feeClaim && req.method === "POST") {
       const body = await req.arrayBuffer();
       if (body.byteLength > 8 * 1024) return Response.json({ error: "too_large", message: "body too large" }, { status: 413 });
       try {
-        const res = await fetch(`${CORE}/v1/fee-claims/${feeClaim[1]}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        const res = await fetch(`${CORE}/v1/${feeClaim[1]}`, { method: "POST", headers: { "content-type": "application/json" }, body });
         return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
       } catch (e) {
         return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });

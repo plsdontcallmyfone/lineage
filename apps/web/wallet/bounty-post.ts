@@ -16,6 +16,7 @@ import { ata, bounty, bountyPdas, launch, launchPdas, openBounty, openBountyPdas
 import { repoLabel } from "../src/fmt.ts";
 import { html, raw, type Raw } from "../src/html.ts";
 import { bpsPct, span, targetWords } from "../src/bounty-words.ts";
+import { needOwnerMark, ownerBox, ownerRepo, wireOwnerBox } from "./bounty-owner.ts";
 import { daysLabel, deadlineChoices, improvementExample, metricValue, metricWords, publicRepo } from "../src/metric-words.ts";
 import { banner } from "../src/ui.ts";
 import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdReading } from "../src/usd.ts";
@@ -356,13 +357,16 @@ function formView(): Raw {
   const wallet = anyWallet();
   const fromWallet = wallet && (val("bo_payer") === WALLET || !val("bo_payer") || !mine.length);
   const lim = fromWallet ? B.ecfg!.settings : B.cfg!;
-  const unitId = val("bo_unit") || units[0]?.lineage_id || "";
+  // a repository named in the address (the way back from the GitHub sign-in of the owner mark) is selected first
+  const asked = new URLSearchParams(location.search).get("repo")?.toLowerCase();
+  const unitId = val("bo_unit") || (asked ? units.find((u) => ownerRepo(u.repo)?.toLowerCase() === asked)?.lineage_id : "") || units[0]?.lineage_id || "";
   const unit = units.find((u) => u.lineage_id === unitId) ?? units[0];
   const metricName = unit?.metrics.some((m) => m.name === val("bo_metric")) ? val("bo_metric") : unit?.metrics[0]?.name;
   const metric = unit?.metrics.find((m) => m.name === metricName);
   const priced = usdReading().ok;
   if (!unit || !metric) return box(html`<p>No repository has a unit with a metric a bounty can name yet.</p>`);
   void loadDetail(unit.lineage_id);
+  if (fromWallet) needOwnerMark(unit.repo);
   const back = fromWallet ? "your wallet" : "the agent's compute balance";
   const choices = deadlineChoices(lim.minTtlS, lim.maxTtlS);
   const picked = val("bo_deadline") === CUSTOM || choices.days.includes(Number(val("bo_deadline"))) ? val("bo_deadline") : choices.first === null ? CUSTOM : String(choices.first);
@@ -374,6 +378,7 @@ function formView(): Raw {
       ${mine.map((l) => html`<option value="${l.agent}"${!fromWallet && l.agent === val("bo_payer") ? raw(" selected") : ""}>Compute balance of ${short(l.agent)}, ${repoLabel(l.repoUrl)}</option>`)}</select>
       <span class="wl-help">${fromWallet ? "The reward leaves this wallet and is held on chain until the bounty closes." : "The reward leaves this agent's compute balance and is held on chain until the bounty closes."}</span></label>`}
     <label><span class="eyebrow">Repository</span><select name="bo_unit" data-bounty-change>${units.map((u) => html`<option value="${u.lineage_id}"${u.lineage_id === unit.lineage_id ? raw(" selected") : ""}>${unitName(u)}</option>`)}</select></label>
+    ${fromWallet ? ownerBox(unit.repo) : ""}
     <label><span class="eyebrow">What should improve</span><select name="bo_metric" data-bounty-change>${unit.metrics.map((m) => html`<option value="${m.name}"${m.name === metric.name ? raw(" selected") : ""}>${metricWords(m).label}</option>`)}</select></label>
     <div class="bo-explain" data-metric-explain aria-live="polite">${metricExplain(unit, metric, val("bo_pct"))}</div>
     <div class="bo-field">
@@ -522,6 +527,7 @@ export async function mountBountyPost(root: HTMLElement) {
     const n = (e.target as HTMLInputElement).name;
     if (n === "bo_pct" || n === "bo_days_custom") refreshLines();
   });
+  wireOwnerBox(root, render);
   startDiscovery();
   restoreSession();
   onSession(() => {
@@ -652,12 +658,13 @@ function renderNext() {
   } else {
     const nx = v.next;
     const mine = !!w && w === b.funder && !b.claim;
+    if (w && w === b.funder) needOwnerMark(el.dataset.repo);
     const line: Raw = nx.action === "claim" ? html`<p>A generation meets this bounty's terms${b.claim ? " and is earlier than the one named so far" : ""}. Anyone can name it on chain; the chain checks the proof.</p><div class="wl-row">${button("claim")}</div>`
       : nx.action === "pay" ? html`<p>The winner is named and its contest time is over. Anyone can send the payout: <b>${usdOf(amount - fee)}</b> as ${coins(amount - fee)} into the winning agent's compute balance.</p><div class="wl-row">${button("pay")}</div>`
       : nx.action === "refund" ? html`<p>The bounty ended with no winner. Anyone can return <b>${usdOf(amount)}</b> as ${coins(amount)} to the wallet that funded it, ${short(b.funder)}.</p><div class="wl-row">${button("refund")}</div>`
       : nx.action === "wait" ? html`<p>${b.claim ? "The winner is named. The payout can be sent" : "A generation meets the terms. It can be named"} from ${nx.at ? when(nx.at) : "the next step"}.</p>`
       : html`<p>${nx.at ? `Nothing has met the terms. The reward can be returned to its funder from ${when(nx.at)}.` : "Nothing to send yet: no generation has met the terms."}</p>`;
-    body = html`${line}${mine ? html`<p style="margin-top:10px" data-bounty-funder-note>You funded this bounty. The reward stays in escrow until it is won. With no winner it can be returned to this wallet from ${when(b.refund_after)}, and not before.</p>` : ""}${st}`;
+    body = html`${line}${mine ? html`<p style="margin-top:10px" data-bounty-funder-note>You funded this bounty. The reward stays in escrow until it is won. With no winner it can be returned to this wallet from ${when(b.refund_after)}, and not before.</p>` : ""}${w && w === b.funder ? ownerBox(el.dataset.repo) : ""}${st}`;
   }
   el.innerHTML = nextBox(body).s;
 }
@@ -665,6 +672,7 @@ const nextBox = (body: Raw): Raw => html`<section class="bo-how" data-bounty-nex
 
 async function mountBountyNext(root: HTMLElement, id: string) {
   Object.assign(N, { root, id, v: null, busy: null, err: null, ready: null, done: null });
+  wireOwnerBox(root, renderNext);
   root.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-next-act]");
     if (!b || (b as HTMLButtonElement).disabled) return;

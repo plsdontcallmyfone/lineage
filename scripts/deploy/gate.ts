@@ -23,6 +23,8 @@
 //                             the social class; bodies capped at 8 KB
 //   GET  /api/fee-claims/waiting (and under /v1), /claim/<owner>/<name>   the fees waiting for a repository's owners: a public
 //                             read in the api and v1 classes, and the page of one repository in the page class
+//   POST /api/bounties/owner-proof, /api/bounties/owner-proof/forget   "Posted by an owner" on a bounty: a fee-claim
+//                             session and a repository id; Core checks both; same origin only; the social class
 //   POST /api/tweet-launches   the launch page hands in the launch a reply bot's link led to (launch from a tweet);
 //                             same origin only; the social class
 //   GET  /api/tweet-links/:id, /api/agents/:id/tweet-origin (and under /v1)   "Started from a tweet": the tweet an open
@@ -164,6 +166,9 @@ export function classify(method: string, path: string): Route | { refuse: number
     // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md 5): the gist proof, the wallet statement and the attestation request.
     // Core verifies each (the gist's owner, the wallet's signature, the session); small JSON bodies; same origin only
     if (/^\/api\/fee-claims\/(proofs\/gist|wallet|attest)$/.test(path)) return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    // the owner mark of a bounty's poster (docs/plans/OPEN-BOUNTIES.md 9): the page hands Core a fee-claim session and a repository
+    // id; Core verifies the session and reads the admin answer GitHub gave at that sign-in; same origin only
+    if (path === "/api/bounties/owner-proof" || path === "/api/bounties/owner-proof/forget") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
     // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a reply bot's link led to; Core
     // stores it only for a launch it has read from the chain; same origin only
     if (path === "/api/tweet-launches") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };

@@ -300,3 +300,69 @@ Checked: `onchain/tests/tests/open_bounty.rs` `a_posted_reward_cannot_be_taken_b
 (the old `cancel` bytes are refused at the open, at the refund time and while paused; a refund is
 refused up to and at the refund time and passes one second later, also while paused), the mutation
 run, and the devnet proof on the upgraded program (onchain/DEVNET.md).
+
+## 9. Posted by the repository's owner (owner, 2026-10-13: "add the posted by owner")
+
+A bounty whose funder wallet belongs to someone GitHub says has admin on the bounty's repository
+carries a mark: "Posted by an owner of owner/repo". It changes nothing about who wins or how the
+escrow works; `units_bounty` is not touched.
+
+### 9.1 Where the proof comes from
+
+There is one proof of ownership in units, the one fee claims use (docs/plans/GITHUB-FEE-CLAIMS.md
+11.3): a GitHub sign-in with no scope, at whose callback Core asks GitHub, with the visitor's own
+token, whether that account has `permissions.admin` on the repository, and a statement the wallet
+signs that ties the account to the wallet. Core drops the token when the callback returns. The mark
+is read from that proof in two ways and from nothing else:
+
+1. **A claim.** A wallet Core has attested for a repository's fee escrow (`fee_claim_attestations`:
+   repository id, wallet) is an owner wallet for bounties on that repository, with no further step.
+2. **The direct proof**, for a funder who claims nothing. On the post form or on the bounty's page:
+   "Sign in with GitHub" (the same sign-in, with the repository named, so Core asks about it by
+   name), then the wallet signs the same statement (a message: no transaction, no cost), then
+   `POST /v1/bounties/owner-proof { session, repo_id, show_login }`. Core checks that the session
+   carries the wallet and that the repository is one the session's account was shown to administer,
+   and stores `(repository id, wallet, account id, login, show_login, proved_at, expires_at)`.
+
+Nothing the poster types is ever a source: the note, the terms and the form carry no field that can
+set the mark, and the board computes it from Core's own records at read time.
+
+What the sign-in session gained for this: besides the routed repositories it could already claim
+for, a session lists the repositories the account was shown to administer at the sign-in (the one
+named, public only). `attest` still signs only for routed repositories. The sign-in may return to
+`/bounties` or a bounty's page as well as to `/claim`.
+
+### 9.2 Expiry and recheck
+
+Admin rights change, and Core keeps no GitHub token, so it cannot ask GitHub again by itself. A
+proof is therefore valid for `owner_mark_ttl_s` (default 2,592,000 s, 30 days; admin setting,
+`POST /v1/admin/bounty-owners/config`) from the moment GitHub answered, and the mark is computed at
+every read: an expired proof shows no mark on any bounty, old or new. The owner renews it by
+proving again; each proof asks GitHub afresh. A claim counts for the same length of time from its
+attestation. The recheck is on proof and on read (expiry), not on a timer and not when a bounty is
+opened.
+
+### 9.3 What is public
+
+`GET /v1/bounties/owners?repo=owner/name&wallet=<address>`: `{ verified, repository, login,
+proved_at, expires_at }`. `login` is null unless the person ticked "Show my GitHub name"; a mark
+that comes from a claim never names a login. The board and a bounty's view carry the same object as
+`posted_by_owner` (null when there is none). The account id is not served.
+
+### 9.4 The pages
+
+- Card and bounty page: a check mark and "Posted by an owner of owner/repo", followed by the linked
+  GitHub login when shown.
+- The list: within a repository an owner's bounties come first; a control "All / Posted by an owner"
+  appears once one such bounty exists.
+- Post form and the funder's view of its own bounty: "Own this repository? Show it on your bounty"
+  with the sign-in, the wallet signature and the tick for the name.
+- Share previews: the app serves no per-page preview for a bounty today (no Open Graph tags for
+  `/bounties/<id>`), so there is none to carry the mark; when one is added it reads `posted_by_owner`.
+
+### 9.5 Limits
+
+The feature needs fee claims on (`github_fee_claims`) and the GitHub OAuth app; without them the
+proof controls are not offered and no mark exists. An organisation that has not approved the units
+app may not report a member's admin role (GITHUB-FEE-CLAIMS.md 11.3): no mark, the page says why.
+The gist proof is not offered for the mark.

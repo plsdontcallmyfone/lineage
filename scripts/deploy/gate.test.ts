@@ -197,6 +197,10 @@ describe("social writes", () => {
     expect(classify("POST", "/api/fee-claims/waiting")).toEqual({ refuse: 405, why: "method" });
     expect(classify("GET", "/claim/octocat/Hello-World")).toEqual({ klass: "page", upstream: "web", cors: false, stream: false, sameOrigin: false });
     expect(classify("POST", "/claim/octocat/Hello-World")).toEqual({ refuse: 405, why: "method" });
+    // the owner mark of a bounty's poster: two same-origin writes through the web server; the public reads are plain reads
+    for (const p of ["/api/bounties/owner-proof", "/api/bounties/owner-proof/forget"]) expect(classify("POST", p)).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
+    for (const p of ["/v1/bounties/owner-proof", "/api/bounties/owners", "/api/admin/bounty-owners/config", "/v1/admin/bounty-owners/config"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    for (const p of ["/api/bounties/owners", "/api/bounties/owner-proof", "/v1/bounties/owners"]) expect(classify("GET", p)).toMatchObject({ upstream: p.startsWith("/v1/") ? "core" : "web" });
     // launch from a tweet: the launch page's one write
     expect(classify("POST", "/api/tweet-launches")).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
     expect(classify("POST", "/api/tweet-launches/AAAAAAAAAAAAAAAAAAAAAA")).toEqual({ refuse: 405, why: "method" });

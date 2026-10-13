@@ -36,6 +36,7 @@ import { unitsFees } from "./units-fees.ts";
 import { tweetLaunchesOf } from "./tweet-launches.ts";
 import { repoCheckOf } from "./repo-check.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
+import { bountyOwnersOf } from "./bounty-owners.ts";
 import { poolsOf } from "./pools.ts";
 import { purgeOf } from "./purge.ts";
 import { swarmsOf } from "./swarms.ts";
@@ -431,6 +432,12 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/challenges", "agent", (c) => challengesOf(core).open(c.agent!, c.json())),
     route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
     route("GET", "/v1/bounties/board", "none", () => bountiesOf(core).board()), // the Bounties page (docs/plans/OPEN-BOUNTIES.md)
+    // "Posted by an owner of owner/repo" (bounty-owners.ts, docs/plans/OPEN-BOUNTIES.md 9): the proof is the fee claims' sign-in and wallet statement
+    route("GET", "/v1/bounties/owners", "none", (c) => bountyOwnersOf(core).view(q(c, "repo"), q(c, "wallet"))),
+    route("GET", "/v1/bounties/owner-proof", "none", () => bountyOwnersOf(core).offer()),
+    route("POST", "/v1/bounties/owner-proof", "none", (c) => bountyOwnersOf(core).prove(c.json())),
+    route("POST", "/v1/bounties/owner-proof/forget", "none", (c) => bountyOwnersOf(core).forget(c.json())),
+    route("POST", "/v1/admin/bounty-owners/config", "admin", (c) => bountyOwnersOf(core).setConfig(c.json())),
     route("GET", "/v1/bounties/:id/view", "none", (c) => bountiesOf(core).detail(c.params.id!)),
     route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
     route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),

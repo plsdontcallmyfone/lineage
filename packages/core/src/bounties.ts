@@ -1,4 +1,5 @@
 import type { BountyAccount } from "@units/chain";
+import { bountyOwnersOf } from "./bounty-owners.ts";
 import type { Core } from "./core.ts";
 import { ApiError, notFound } from "./errors.ts";
 import { hiddenOf } from "./hidden.ts";
@@ -321,20 +322,31 @@ export class Bounties {
     const escrow = held ? null : open.settings();
     const rows = this.c.db.query<Row, []>("SELECT * FROM bounties ORDER BY created_at DESC, bounty_id LIMIT 500").all();
     const own = rows.filter((b) => !hidden.has(b.payer)).map((b) => ({ kind: "agent" as const, ...this.card(b, hidden) })).filter((b) => !(b.winner?.author && hidden.has(b.winner.author)));
-    const bounties = [...own, ...open.cards(hidden)].sort((x, y) => y.created_at - x.created_at || (x.bounty_id < y.bounty_id ? -1 : 1));
+    const bounties = [...own, ...open.cards(hidden)].sort((x, y) => y.created_at - x.created_at || (x.bounty_id < y.bounty_id ? -1 : 1)).map((b) => this.withOwner(b));
     const units = this.c.db.query<{ lineage_id: string }, []>("SELECT lineage_id FROM lineages WHERE status = 'active' ORDER BY created_at").all()
       .map((l) => this.unit(l.lineage_id)).filter((u): u is Unit => !!u && u.metrics.length > 0);
     return { settings, escrow, posting: { agent_owner: !!settings && settings.paused !== true, any_wallet: !!escrow && escrow.paused !== true }, bounties, units };
+  }
+
+  /**
+   * `posted_by_owner`: the poster's wallet is one Core holds an ownership proof for on the bounty's repository
+   * (bounty-owners.ts, docs/plans/OPEN-BOUNTIES.md 9). Read from Core's records at every call, never from the bounty's own text.
+   */
+  private withOwner<T extends { repo: string | null; opener: string }>(b: T): T & { posted_by_owner: ReturnType<ReturnType<typeof bountyOwnersOf>["mark"]> } {
+    return { ...b, posted_by_owner: bountyOwnersOf(this.c as unknown as Core).mark(b.repo, b.opener) };
   }
 
   /** GET /v1/bounties/:id/view: one bounty as the page shows it, with every accepted generation on its target since it opened. */
   detail(id: string) {
     this.unitCache.clear();
     const open = openBountiesOf(this.c as unknown as Core);
-    if (open.has(id)) return open.detail(id, hiddenOf(this.c as unknown as Core).agents());
+    if (open.has(id)) {
+      const d = open.detail(id, hiddenOf(this.c as unknown as Core).agents());
+      return { ...d, bounty: this.withOwner(d.bounty) };
+    }
     const b = this.get(id);
     const hidden = hiddenOf(this.c as unknown as Core).agents();
-    return { bounty: { kind: "agent" as const, ...this.card(b, hidden) }, generations: this.decide(b).generations, settings: this.settings() };
+    return { bounty: this.withOwner({ kind: "agent" as const, ...this.card(b, hidden) }), generations: this.decide(b).generations, settings: this.settings() };
   }
 
   /** GET /v1/bounties/:id. */
