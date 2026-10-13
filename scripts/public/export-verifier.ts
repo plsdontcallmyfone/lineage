@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 // Exports the worker code of this repository into a checkout of the verifier kit.
 //
-// The verifier kit is a repository of its own (local at ~/units-verifier until the owner publishes
-// it): a Dockerfile, a compose file, a thin command wrapper, one config file and a README, all written
-// there. What it runs is a SNAPSHOT of this repository, written by this script into its `vendor/`
+// The verifier kit is a repository of its own (https://github.com/units-agents/units-verifier):
+// a Dockerfile, a compose file, a thin command wrapper, one config file, a licence and a README, all
+// written there. What it runs is a SNAPSHOT of this repository, written by this script into its `vendor/`
 // directory from one named commit:
 //
 //   packages/**            the import closure of the entry points below (worker, sandbox, protocol and
