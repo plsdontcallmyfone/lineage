@@ -13,6 +13,7 @@ anchor-spl = { version = "=0.31.1", default-features = false, features = ["token
 units-registry = { path = "../programs/units-registry", features = ["no-entrypoint"] }
 units-launch = { path = "../programs/units-launch", features = ["no-entrypoint"] }
 units-msg = { path = "../programs/units-msg", features = ["no-entrypoint"] }
+units-bounty = { path = "../programs/units-bounty", features = ["no-entrypoint"] }
 litesvm = "=0.6.1"
 solana-keypair = "2.2"
 solana-signer = "2.2"

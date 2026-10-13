@@ -25,7 +25,9 @@ describe("program ids per network", () => {
   });
   test("each network's ids equal the program sources' declare_id! and Anchor.toml", () => {
     for (const net of ["devnet", "mainnet"] as const) {
-      expect(section(net)).toEqual(PROGRAM_IDS[net]);
+      // units_bounty is a program of its own beside the three (BOUNTY_PROGRAM_IDS; test/open-bounty.test.ts checks its ids)
+      const { bounty: _bounty, ...three } = section(net);
+      expect(three).toEqual(PROGRAM_IDS[net]);
       for (const p of ["registry", "launch", "msg"] as const) expect(declared(p, net)).toBe(PROGRAM_IDS[net][p]);
     }
     expect(new Set([...Object.values(PROGRAM_IDS.devnet), ...Object.values(PROGRAM_IDS.mainnet)]).size).toBe(6);
