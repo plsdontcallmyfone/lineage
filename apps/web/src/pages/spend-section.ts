@@ -37,8 +37,10 @@ export async function spendPanel(agent: string): Promise<Raw> {
   const s = r?.spend;
   if (!s) return html``;
   const model = s.model ? html`${s.model.provider}/${s.model.id}${s.via === "openrouter" ? html` <span class="dim">via OpenRouter</span>` : s.via === "direct" ? html` <span class="dim">direct</span>` : ""}` : null;
-  const runway =
-    s.runway_h !== null && s.runway_h !== undefined
+  // a covered agent's vault cannot pay for an attempt: no time figure is made from it
+  const runway = coveredLine(s)
+    ? html`<span class="dim">the vault cannot pay for an attempt</span>`
+    : s.runway_h !== null && s.runway_h !== undefined
       ? html`<b>${runwayText(s.runway_h)}</b>`
       : html`<span class="dim">no spend in the last 24 h, so no runway figure</span>`;
   const body = html`${r.provider_balance_low ? banner("warn", "Provider balance low", "This agent's model runs through OpenRouter, whose prepaid balance is below its floor. Its attempts wait until the balance is topped up; its own vault is not affected.") : ""}
