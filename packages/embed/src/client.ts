@@ -109,6 +109,7 @@ export interface Card {
   market_cap_usd: number | null;
   volume_24h_usd: number | null;
   change_24h_usd: number | null;
+  change_window?: "24h" | "since_launch";
   /** what the agent is building, as the indexer joins it from Core (null when the indexer has no Core row) */
   building: Building | null;
   curve_progress: number | null;
@@ -175,6 +176,7 @@ export function buildCards(tokens: TokenSummary[], souls: Map<string, Soul | nul
       market_cap_usd: t.market_cap_usd ?? null,
       volume_24h_usd: t.volume_24h_usd ?? null,
       change_24h_usd: t.change_24h_usd ?? null,
+      change_window: (t as TokenSummary & { change_window?: "24h" | "since_launch" }).change_window,
       building: (t as TokenSummary & { building?: Building | null }).building ?? null,
       curve_progress: t.curve_progress,
       created_at: t.created_at,

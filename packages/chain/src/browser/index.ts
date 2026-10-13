@@ -13,6 +13,7 @@ export * from "../jito.ts";
 export * from "../coin-metadata.ts";
 export * from "../swap.ts";
 export * from "../bounty.ts";
+export * from "../open-bounty.ts";
 export * from "../leaves.ts";
 export { compileMessage, computeBudget, PACKET_LIMIT, COMPUTE_BUDGET_PROGRAM, type CompiledMessage } from "../tx.ts";
 export * from "../rpc.ts";

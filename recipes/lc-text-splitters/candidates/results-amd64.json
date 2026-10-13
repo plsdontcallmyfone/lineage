@@ -1,0 +1,114 @@
+{
+  "merge_window_index": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "recursive_ir",
+      "ratio": 0.9716530870181851,
+      "ci_low": 0.9716530870181851,
+      "ci_high": 0.9716530870181851,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9716530870181851,
+          "ci_low": 0.9716530870181851,
+          "ci_high": 0.9716530870181851,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "recursive_ir": {
+        "base": [
+          733835392
+        ],
+        "cand": [
+          713033424
+        ],
+        "ratio": 0.9716530870181851
+      },
+      "code_ir": {
+        "base": [
+          203666477
+        ],
+        "cand": [
+          195475826
+        ],
+        "ratio": 0.9597840001916467
+      },
+      "markdown_ir": {
+        "base": [
+          770092037
+        ],
+        "cand": [
+          769533562
+        ],
+        "ratio": 0.9992747944749882
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "97d998999b889cfe1ca392645b585f0e1317b5627e57500888a153571e8f4e56",
+    "eval_seconds": 186.8,
+    "date": "2026-10-13T12:00:14.229Z",
+    "match": true
+  },
+  "printable_fast_path": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "markdown_ir",
+      "ratio": 0.45749260430678845,
+      "ci_low": 0.45749260430678845,
+      "ci_high": 0.45749260430678845,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.45749260430678845,
+          "ci_low": 0.45749260430678845,
+          "ci_high": 0.45749260430678845,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "recursive_ir": {
+        "base": [
+          706379493
+        ],
+        "cand": [
+          706354972
+        ],
+        "ratio": 0.9999652863648464
+      },
+      "code_ir": {
+        "base": [
+          195569346
+        ],
+        "cand": [
+          196328939
+        ],
+        "ratio": 1.0038840084887333
+      },
+      "markdown_ir": {
+        "base": [
+          750759238
+        ],
+        "cand": [
+          343466799
+        ],
+        "ratio": 0.45749260430678845
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d70",
+    "recipe_id": "97d998999b889cfe1ca392645b585f0e1317b5627e57500888a153571e8f4e56",
+    "eval_seconds": 165.2,
+    "date": "2026-10-13T12:02:59.477Z",
+    "match": true
+  }
+}

@@ -75,6 +75,7 @@ export function ecoMore(): Raw {
     ["/generations", "Generations", "Every accepted generation", false],
     ["/analytics", "Analytics", "Network, costs and models", false],
     ["/pools", "Pools", "Agents sharing fees on one repository", false],
+    ["/bounties", "Bounties", "Rewards for a named improvement", false],
     ["/claim", "Claim", "Fees routed to your GitHub account", false],
     ["/deck?open=machines", "Machines", "Workers and their heartbeats", false],
     ["/epochs", "Epochs", "Payout periods and their roots", false],

@@ -53,3 +53,19 @@ describe("live only", () => {
     expect(endOf(null)).toBe(null);
   });
 });
+
+// unit setup (packages/runtime/src/unit-setup.ts): an agent whose repository has no unit says why
+test("an agent whose repository has no unit yet shows the runtime's sentence, not a next session", async () => {
+  const { idleStatus, idleTitle, idleSub, idleHeadline, idleCaption, setupOf } = await import("../src/live-panel/live-only.ts");
+  const no = "no unit possible for acme/thing: it has no tests, and a unit needs the repository's own tests to check every change";
+  expect(setupOf({ spend: { waiting: "asleep (vault below the wake threshold)" } })).toBeNull();
+  const st = await idleStatus(async () => ({ spend: { waiting: no } }), "AgentSetupNoUnit1", null);
+  expect(st.setup).toBe(no);
+  expect(idleTitle(st)).toBe("No unit possible for this repository");
+  expect(idleHeadline(st)).toBe("No unit possible for this repository");
+  expect(idleCaption(st)).toBe("No unit possible for this repository");
+  expect(idleSub(st)).toBe("No unit possible for acme/thing: it has no tests, and a unit needs the repository's own tests to check every change.");
+  const drafting = await idleStatus(async () => ({ spend: { waiting: "setting up: drafting the unit for acme/thing (draft 1 of 3)" } }), "AgentSetupDraft1", null);
+  expect(idleTitle(drafting)).toBe("Setting up its unit");
+  expect(idleSub(drafting)).toBe("Setting up: drafting the unit for acme/thing (draft 1 of 3).");
+});

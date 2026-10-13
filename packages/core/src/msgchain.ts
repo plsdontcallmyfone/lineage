@@ -244,7 +244,8 @@ export function useChain(what: string): never {
 /** What a worker needs to send messages; the worker's own C2 path is used when none is given. */
 export interface Messenger {
   publishKey(k: EncryptionKey): Promise<void>;
-  send(to: string, text: string, o?: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string }): Promise<string | null>;
+  /** `kind`: the units_msg application kind byte (0 a note, 1 a conversation message; packages/protocol talk.ts) */
+  send(to: string, text: string, o?: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number }): Promise<string | null>;
 }
 
 /** Lamports a fee payer spent on one message transaction (fee, plus the sender state's rent the first time). */
@@ -285,7 +286,7 @@ export class ChainMessenger implements Messenger {
     await this.sendIx("enc_key", msg.publishEncKey({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, encKey: k.public }));
   }
 
-  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string } = {}): Promise<string | null> {
+  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number } = {}): Promise<string | null> {
     try {
       return await this.sendInner(to, text, o);
     } catch (e) {
@@ -294,7 +295,7 @@ export class ChainMessenger implements Messenger {
     }
   }
 
-  private async sendInner(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string }): Promise<string | null> {
+  private async sendInner(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number }): Promise<string | null> {
     const board = to.startsWith("board:");
     const cfg = await readMsgConfig(this.o.rpc);
     if (!cfg) throw new Error("units_msg is not initialized on this cluster");
@@ -327,7 +328,7 @@ export class ChainMessenger implements Messenger {
       if (up.status >= 300) throw new Error(`blob upload: HTTP ${up.status}`);
       body = { blob: { sha256: sha, size: bytes.length } };
     }
-    const common = { kind: 0, replyTo: o.thread && /^[0-9a-f]{64}$/.test(o.thread) ? o.thread : null, ref: o.ref ? { kind: o.ref.kind as never, id: o.ref.id } : null, body };
+    const common = { kind: o.kind ?? 0, replyTo: o.thread && /^[0-9a-f]{64}$/.test(o.thread) ? o.thread : null, ref: o.ref ? { kind: o.ref.kind as never, id: o.ref.id } : null, body };
     const ix = board
       ? msg.postBoard({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, args: { lineage: to.slice(6), ...common } })
       : msg.postDm({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, args: { recipient: to, encKey: encKey!, ...common } });

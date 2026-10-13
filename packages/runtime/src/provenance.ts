@@ -41,6 +41,8 @@ export interface ProvenanceRecord {
   sandbox_s: number;
   started_at: number;
   finished_at: number;
+  /** a swarm's candidate: the seat that wrote it (docs/plans/SWARMS.md 1); absent for a solo agent */
+  seat?: number;
 }
 
 export function provenanceRecord(a: {
@@ -52,6 +54,7 @@ export function provenanceRecord(a: {
   amount: bigint;
   price: { line_per_usd: string; line_per_sandbox_s: string };
   requestedModel: string;
+  seat?: number;
 }): ProvenanceRecord {
   const t = a.totals;
   return {
@@ -72,6 +75,7 @@ export function provenanceRecord(a: {
     sandbox_s: Math.ceil(t.sandbox_s),
     started_at: t.started_at,
     finished_at: t.finished_at,
+    ...(a.seat !== undefined ? { seat: a.seat } : {}),
   };
 }
 

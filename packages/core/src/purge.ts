@@ -71,14 +71,14 @@ type Rule =
 export const RULES: Record<string, Rule> = {
   // the agent itself
   agents: "rows", agent_keys: "rows", agent_previous_tokens: "rows", retired_agents: "rows", hidden_mints: "rows", nonces: "rows",
-  links: "rows", prepay: "rows", bonds: "rows", strikes: "rows", slashes: "rows", claims: "rows",
+  links: "rows", tweet_launches: "rows", prepay: "rows", bonds: "rows", strikes: "rows", slashes: "rows", claims: "rows",
   souls: "rows", soul_chain: "rows", coin_images: "rows", msg_keys: "rows", msg_blocks: "rows",
   // its work, and the verifiers' rows about that work
   candidates: "rows", candidate_deferrals: "rows", generations: "rows", gen_github: "rows", provenance: "rows", series: "rows",
   splits: "rows", split_reports: "rows", teams: "rows", team_members: "rows", ports: "rows",
   replays: "rows", audits: "rows", disputes: "rows", assignment_rounds: "rows", beacon_uses: "rows", slot_beacons: "rows",
-  canary_queue: "rows", units: "rows", usage: "rows", records: "rows", record_marks: "rows", contributions: "rows",
-  upstream_prs: "rows", upstream_merges: "rows", challenges: "rows", bounties: "rows",
+  canary_queue: "rows", units: "rows", usage: "rows", records: "rows", record_marks: "rows", contributions: "rows", bounty_results: "rows",
+  upstream_prs: "rows", upstream_merges: "rows", challenges: "rows", bounties: "rows", open_bounties: "rows",
   findings: "rows", hotspot_claims: "rows", profile_replays: "rows",
   // what it did and said
   sessions: "rows", session_events: "rows", activity: "rows", heartbeat_log: "rows", intents: "rows", journal: "rows",
@@ -90,6 +90,10 @@ export const RULES: Record<string, Rule> = {
   runtime_spend: "rows", runtime_spend_samples: "rows", runtime_spend_daily: "rows", viewer_samples: "rows", viewer_hourly: "rows",
   revenue_cranks: "rows", revenue_identity: "rows", revenue_tokens: "rows",
   pool_mirror: "rows", pool_actions: "rows", pool_milestones: "rows", pool_settlements: "rows", fee_claim_attestations: "rows",
+  // the owner mark of a bounty's poster (bounty-owners.ts): a wallet's proof for a repository, and the setting of how long it counts
+  bounty_owner_marks: "rows", bounty_owner_kv: "keep",
+  // swarms (swarms.ts): a seat's session link, heartbeat and the runtime's statement about it
+  swarm_sessions: "rows", swarm_heartbeats: "rows", swarm_seat_state: "rows",
   // reports a service sends again on its next pass (one row holds every agent)
   runtime_spend_global: "rows", findings_dump: "rows", model_availability: "rows",
   // the event log: an event that names anything purged goes
@@ -108,7 +112,10 @@ export const RULES: Record<string, Rule> = {
   epochs: "keep", chain_epochs: "keep", chain_deployments: "keep", meta: "keep", schema_migrations: "keep", guard_configs: "keep",
   model_registry: "keep", msg_chain_cursor: "keep", prepay_admin: "keep", prepay_rates: "keep", social_config: "keep",
   recipe_proposals: "keep", calib_replays: "keep", upstream_repos: "keep", upstream_seen: "keep", revenue_sources: "keep",
+  swarm_settings: "keep", // the admin's swarm settings (swarms.ts): no launch owns them
   pool_kv: "keep", fee_claim_kv: "keep", fee_claim_states: "keep", fee_claim_users: "keep",
+  fee_claim_repos: "keep", fee_claim_repo_names: "keep", fee_claim_bound: "keep", fee_claim_waiting: "keep", // GitHub repositories by numeric id and the ids bound to them: no launch owns them
+  tweet_links: "keep", // the tweet a reply bot's link answers: it names no launch (tweet_launches, a rows table, ties one to it)
   shadows: "keep", shadow_keys: "keep", shadow_msg_keys: "keep", shadow_souls: "keep",
 };
 

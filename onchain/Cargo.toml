@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/units-registry", "programs/units-launch", "programs/units-msg", "tests"]
+members = ["programs/units-registry", "programs/units-launch", "programs/units-msg", "programs/units-bounty", "tests"]
 resolver = "2"
 
 [profile.release]

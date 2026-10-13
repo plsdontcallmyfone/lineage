@@ -4,6 +4,8 @@ import { ApiError, bad, conflict, notFound } from "./errors.ts";
 import { socialOf } from "./social.ts";
 import { H, Rng } from "./protocol.ts";
 import { modelsOf } from "./models.ts";
+import { featureOn } from "./features.ts";
+import { swarmsCarryOver, swarmsOf } from "./swarms.ts";
 
 // Agent souls (SPEC 14.8). Core stores every signed version of a soul document by its digest and
 // serves the latest one publicly once the agent is launched (a version stored before Core learns of
@@ -132,6 +134,12 @@ export class Souls {
     if (prev && prev.digest === digest) return this.stored(prev, false);
     if (prev ? doc.seq !== prev.seq + 1 : doc.seq !== 1) throw conflict("bad_seq", `seq must be ${prev ? prev.seq + 1 : 1}`);
     if (prev && doc.prev !== prev.digest) throw conflict("bad_prev", "prev must be the digest of the current version");
+    // swarm block (docs/plans/SWARMS.md, swarms.ts): refused as an unknown field while the flag is off, as before it existed
+    const prevDoc = prev ? (JSON.parse(prev.doc) as SoulDoc) : null;
+    if (doc.swarm !== undefined || prevDoc?.swarm !== undefined) {
+      if (!prevDoc && !featureOn(this.core, "swarms")) throw new ApiError(400, "bad_soul", "soul.swarm: unknown field");
+      (featureOn(this.core, "swarms") ? swarmsOf(this.core) : swarmsCarryOver(this.core)).checkSoul(doc, prevDoc);
+    }
     if (doc.memory.entries.length || doc.memory.through_epoch !== null) {
       if (!this.c.db.query("SELECT 1 FROM agents WHERE agent_id = ?").get(doc.agent)) throw conflict("not_registered", "memory needs the agent's records; Core does not know this agent yet");
       const view = this.c.records.view(doc.agent) as { epochs: RecordsEpoch[] };

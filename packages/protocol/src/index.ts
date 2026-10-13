@@ -13,3 +13,4 @@ export * from "./shapley.ts";
 export * from "./journal.ts";
 export * from "./trailers.ts";
 export * from "./untrusted.ts";
+export * from "./talk.ts";

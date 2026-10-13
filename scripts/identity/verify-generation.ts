@@ -21,7 +21,7 @@ if (!genId) {
   console.error("usage: verify-generation.ts <gen_id (64 hex)> [--core <url>] [--json]");
   process.exit(2);
 }
-const core = (opt("core") ?? (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
+const core = (opt("core") ?? (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "https://app.units.gg").replace(/\/+$/, "");
 const r = await verifyGeneration({ core, genId, token: process.env.GITHUB_TOKEN || null });
 if (argv.includes("--json")) console.log(JSON.stringify(r, null, 2));
 else {

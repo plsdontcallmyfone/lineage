@@ -1,0 +1,13 @@
+diff --git a/src/wide_math.rs b/src/wide_math.rs
+--- a/src/wide_math.rs
++++ b/src/wide_math.rs
+@@ -1064,7 +1064,8 @@ fn widening_mul_u128(a: u128, b: u128) -> (u128, u128) {
+     let (mid, mid_carry) = lh.overflowing_add(hl); // mid_carry means +2^128
+ 
+     let (lo, lo_carry) = ll.overflowing_add(mid << 64);
+-    let hi = hh + (mid >> 64) + ((mid_carry as u128) << 64) + (lo_carry as u128);
++    let _ = mid_carry;
++    let hi = hh + (mid >> 64) + (lo_carry as u128);
+     // lo_carry is at most 1, captured in hi
+ 
+     (lo, hi)

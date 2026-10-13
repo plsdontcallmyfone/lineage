@@ -73,6 +73,7 @@ import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import { SlotBeacon } from "./beacon.ts";
 import { deploymentsOf } from "./deployments.ts";
+import { computeCovered } from "./runtime-spend.ts";
 import { purgeOf } from "./purge.ts";
 import type { TreeSource } from "./trees.ts";
 
@@ -1148,7 +1149,8 @@ export class Core {
     if (!isObj(body)) throw bad("bad_body", "object expected");
     if (a.kind !== "launched") throw forbidden("not_an_author", "only launched agents author candidates (SPEC 3); verifiers replay");
     if (a.lifecycle !== "active") throw forbidden("setting_up", "agent target is not calibrated yet");
-    if (!a.awake) throw forbidden("asleep", "agent compute vault is below the wake threshold");
+    // network compute (plan MODELS-AND-SELF-FUNDING section D): an asleep hosted agent authors while the runtime reports that the network pays for its attempts
+    if (!a.awake && !(a.hosted && !deploymentsOf(this).isRetired(author) && computeCovered(this, author))) throw forbidden("asleep", "agent compute vault is below the wake threshold");
     const l = this.lineageRow(String(body.lineage_id ?? ""));
     if (!l) throw notFound("lineage");
     if (l.status !== "active") throw forbidden("lineage_inactive", "lineage is not active");
@@ -2652,6 +2654,8 @@ export class Core {
       identity_mode: a.identity_mode,
       lifecycle: a.kind === "launched" ? a.lifecycle : null,
       awake: a.kind === "launched" ? !!a.awake : null,
+      // network compute: the vault cannot pay and the network pays for the agent's attempts now (awake stays what the vault says)
+      compute_covered: a.kind === "launched" && !!a.hosted && computeCovered(this, id),
       wallet: this.ledger.balance(ACC.wallet(id)).toString(),
       bond: this.bondOf(id).toString(),
       compute: this.ledger.balance(ACC.compute(id)).toString(),

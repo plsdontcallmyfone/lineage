@@ -1,0 +1,62 @@
+{
+  "_note": "The calibration the units mainnet site recorded for the unit of this recipe, as its Core serves it: GET https://app.units.gg/v1/lineages/1e0bb4c35c430a87e83781ab192b096c5e272395d0535ecc81a6174261831705 (fields calibration, calib_id, calibration_by, calibration_sig), read on 2026-10-13. It is the baseline a verifier reproduces to qualify for the unit. Written by scripts/public/site-calibrations.ts; not edited by hand.",
+  "source": "site",
+  "network": "mainnet",
+  "site": "https://app.units.gg",
+  "lineage_id": "1e0bb4c35c430a87e83781ab192b096c5e272395d0535ecc81a6174261831705",
+  "recipe_id": "e96254f6e75afbd1a416aeaf60c6cfe2a1a5518e37159976fa6c3bb849ec7a2a",
+  "calib_id": "2076b22cfa5dbe4022a1ae91543ae478b442eeecc20c93936fb3bed9b2cbb4e9",
+  "calibrated_by": "3usYPowhwA2ZwZ6afdxZbjAB73YsZtQugurfQ8MKoeb8",
+  "calibration_sig": "3YbE1qDpWmQ1APv6riYxab1yF9nqXMw3z3gTPqf2DcecVoryewtaJ1ytg1Gse364E1QpKjD3PjxRviaNhzHAzngf",
+  "read_at": "2026-10-13",
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 186,
+    "metrics": {
+      "add_ir": {
+        "base_value": 169959075,
+        "cv": 0,
+        "enabled": true
+      },
+      "concurrent_ir": {
+        "base_value": 133580650,
+        "cv": 0,
+        "enabled": true
+      },
+      "contains_ir": {
+        "base_value": 188998736,
+        "cv": 0,
+        "enabled": true
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "e96254f6e75afbd1a416aeaf60c6cfe2a1a5518e37159976fa6c3bb849ec7a2a",
+    "runs": 5,
+    "seed": "58f391f32a6476422ee613816ddbed0544a6c0da8b3c0b84a80d8c5580ed8bc1",
+    "snapshot_id": "844bbf7dbe7ed759e0f021e04a79ac181c0863660bdfbe8d26d478d91b454aef",
+    "stable": [
+      "src/lib.rs::bloom::test::test_add_contains",
+      "src/lib.rs::bloom::test::test_atomic_bloom",
+      "src/lib.rs::bloom::test::test_atomic_bloom_round_trip",
+      "src/lib.rs::bloom::test::test_bloom_filter",
+      "src/lib.rs::bloom::test::test_debug",
+      "src/lib.rs::bloom::test::test_filter_math",
+      "src/lib.rs::bloom::test::test_random",
+      "src/lib.rs::bloom::test::test_wincode_compatibility_bloom",
+      "tests/lineage_props.rs::bloom_matches_model",
+      "tests/lineage_props.rs::concurrent_bloom_matches_model",
+      "tests/lineage_props.rs::fixed_size_items_match_model",
+      "tests/lineage_props.rs::hash_at_index_is_keyed_fnv1a",
+      "tests/lineage_props.rs::interval_filter_adds_and_finds",
+      "tests/lineage_props.rs::wire_form_round_trips",
+      "tests/lineage_upstream.rs::test_add_contains",
+      "tests/lineage_upstream.rs::test_atomic_bloom",
+      "tests/lineage_upstream.rs::test_atomic_bloom_round_trip",
+      "tests/lineage_upstream.rs::test_bloom_filter",
+      "tests/lineage_upstream.rs::test_debug",
+      "tests/lineage_upstream.rs::test_filter_math",
+      "tests/lineage_upstream.rs::test_random",
+      "tests/lineage_upstream.rs::test_wincode_compatibility_bloom"
+    ]
+  }
+}

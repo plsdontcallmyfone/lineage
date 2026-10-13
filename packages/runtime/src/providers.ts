@@ -70,11 +70,16 @@ export class RegistrySource {
 }
 
 /** The agent's chosen model from its public soul, or null (then the registry default). */
-export async function soulModel(core: string, agent: string, f: typeof fetch = fetch): Promise<ModelChoice | null> {
+export async function soulModel(core: string, agent: string, f: typeof fetch = fetch, seat?: number): Promise<ModelChoice | null> {
   try {
     const r = await f(`${core.replace(/\/+$/, "")}/v1/agents/${agent}/soul`);
     if (!r.ok) return null;
-    const j = (await r.json()) as { doc?: { model?: unknown } };
+    const j = (await r.json()) as { doc?: { model?: unknown; swarm?: { members?: { seat?: number; model?: unknown }[] } } };
+    // a swarm's seat runs the model its soul names for that seat (docs/plans/SWARMS.md 1); no seat: the soul's model, as before
+    if (seat !== undefined) {
+      const m = j.doc?.swarm?.members?.find((x) => x?.seat === seat)?.model;
+      return validChoice(m) ? (m as ModelChoice) : null;
+    }
     return validChoice(j.doc?.model) ? (j.doc!.model as ModelChoice) : null;
   } catch {
     return null;
@@ -144,6 +149,8 @@ export class RoutedProposer implements Proposer {
     private agent: string,
     private o: RoutingOptions,
     private registry: RegistrySource,
+    /** a swarm's seat: its own model from the soul's swarm block; undefined for a solo agent */
+    private seat?: number,
   ) {}
 
   /** the last route resolved for this agent (the runtime's balance gate and spend report read it) */
@@ -152,7 +159,9 @@ export class RoutedProposer implements Proposer {
   private delegate: Proposer | null = null;
 
   async route(): Promise<Route> {
-    const choice = await soulModel(this.o.core, this.agent, this.o.fetch);
+    const choice = await soulModel(this.o.core, this.agent, this.o.fetch, this.seat);
+    // a seat whose model the soul does not name is never given another one (SPEC 17.4)
+    if (this.seat !== undefined && !choice) return (this.last = { ok: false, why: `the soul names no model for seat ${this.seat}`, choice: null });
     this.last = resolveRoute(await this.registry.get(), choice, this.o.keys, this.o.providers);
     return this.last;
   }
@@ -245,13 +254,13 @@ export function routedError(provider: string, e: unknown): unknown {
  * keys object is read at every route, so a key that lands in providers.env (reloadKeys) is used at
  * the next attempt without a restart.
  */
-export function routedProposers(o: RoutingOptions): ((agent: string) => Proposer) & { routes: Map<string, RoutedProposer>; registry: RegistrySource } {
+export function routedProposers(o: RoutingOptions): ((agent: string, seat?: number) => Proposer) & { routes: Map<string, RoutedProposer>; registry: RegistrySource } {
   for (const k of Object.values(o.keys)) addSecret(k);
   const reg = new RegistrySource(o);
   const routes = new Map<string, RoutedProposer>();
-  const f = (agent: string) => {
-    const p = new RoutedProposer(agent, o, reg);
-    routes.set(agent, p);
+  const f = (agent: string, seat?: number) => {
+    const p = new RoutedProposer(agent, o, reg, seat);
+    routes.set(seat !== undefined && seat > 1 ? `${agent}.s${seat}` : agent, p);
     return p;
   };
   return Object.assign(f, { routes, registry: reg });

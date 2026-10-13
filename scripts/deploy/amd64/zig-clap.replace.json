@@ -1,1 +1,1 @@
-[["aarch64-linux-musl", "x86_64-linux-musl"]]
+[["aarch64-linux-musl", "x86_64-linux-musl"], ["zig build examples", "zig build -j2 examples"]]

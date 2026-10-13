@@ -25,6 +25,14 @@ export interface IdleStatus {
   masked?: boolean | null;
   /** why the agent's attempts do not start for want of a desktop, in the runtime's words (a funded, bound agent); absent otherwise */
   waiting_desktop?: string;
+  /** the runtime's sentence while the agent's repository has no unit yet (unit setup, packages/runtime/src/unit-setup.ts); absent otherwise */
+  setup?: string;
+}
+
+/** The runtime's unit setup sentence (spend.waiting "setting up: ...", "no unit possible for ...", "unit setup for ... stopped ..."), else null. */
+export function setupOf(spend: any): string | null {
+  const w = typeof spend?.spend?.waiting === "string" ? (spend.spend.waiting as string).trim() : "";
+  return /^(setting up|no unit possible|unit setup)\b/i.test(w) ? w.slice(0, 300) : null;
 }
 
 /** The runtime's reason when an agent waits for a desktop (spend.waiting "waiting for a desktop: <why>", packages/runtime desktop-gate.ts), else null. */
@@ -66,19 +74,22 @@ export function pauseOf(spend: any): Exclude<IdleKind, "next"> | null {
 const spendCache = new Map<string, { at: number; p: Promise<any> }>();
 
 /** The agent's idle status: the runtime's pause if it reports one, else waiting for the next session. */
-export async function idleStatus(get: (path: string) => Promise<any>, agent: string | null | undefined, lastEnd: number | null): Promise<IdleStatus> {
+export async function idleStatus(get: (path: string) => Promise<any>, agent: string | null | undefined, lastEnd: number | null, seat?: number): Promise<IdleStatus> {
   if (!agent) return { kind: "next", last_end: lastEnd };
-  let c = spendCache.get(agent);
+  // a swarm's seat (apps/web/src/swarm.ts seatPanelIO) reads its own desktop through `get`: cached per seat
+  const key = seat === undefined ? agent : `${agent}#${seat}`;
+  let c = spendCache.get(key);
   if (!c || Date.now() - c.at > 30_000) {
     c = { at: Date.now(), p: get(`agents/${agent}/spend`).catch(() => null) };
-    spendCache.set(agent, c);
+    spendCache.set(key, c);
   }
   const spend = await c.p;
   const kind = pauseOf(spend) ?? "next";
   const desktop = desktopOf(spend);
   const wait = kind === "next" ? desktopWaitOf(spend) : null;
   const masked = typeof spend?.desktop_masked === "boolean" ? { masked: spend.desktop_masked as boolean } : {};
-  return { kind, last_end: lastEnd, ...(desktop ? { desktop } : {}), ...(wait ? { waiting_desktop: wait } : {}), ...masked };
+  const setup = kind === "next" ? setupOf(spend) : null;
+  return { kind, last_end: lastEnd, ...(desktop ? { desktop } : {}), ...(wait ? { waiting_desktop: wait } : {}), ...(setup ? { setup } : {}), ...masked };
 }
 
 /** When a session ended: its end, else its last event (a session that never closed). */
@@ -111,6 +122,7 @@ function agoText(t: number, now = Date.now()): string {
 
 /** The headline of the idle state. */
 export function idleTitle(st: IdleStatus): string {
+  if (st.kind === "next" && st.setup) return /^no unit possible/i.test(st.setup) ? "No unit possible for this repository" : /^unit setup/i.test(st.setup) ? "Unit setup stopped" : "Setting up its unit";
   if (st.kind === "next" && st.waiting_desktop) return `Waiting for a desktop: ${st.waiting_desktop}`;
   return st.kind === "vault" ? "Paused: vault empty" : st.kind === "provider" ? "Paused: provider balance low" : "Starting next session";
 }
@@ -119,6 +131,8 @@ export function idleTitle(st: IdleStatus): string {
 export function idleSub(st: IdleStatus, now = Date.now()): string {
   // a paused desktop is said in words; it comes back by itself
   const desk = st.desktop?.state === "paused" ? " Its desktop is paused and resumes with its next session." : "";
+  // no unit for its repository yet: the runtime's own sentence says why
+  if (st.kind === "next" && st.setup) return `${st.setup.charAt(0).toUpperCase()}${st.setup.slice(1)}${/[.!?]$/.test(st.setup) ? "" : "."}`;
   if (st.last_end === null) return `No session has run yet.${desk}`;
   const at = new Date(st.last_end);
   const clock = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -131,7 +145,7 @@ export const NEXT_WINDOW_MS = 5 * 60_000;
 
 /** The idle headline on the agent's screen: right after a session the next one is starting; later, since when the agent is idle. */
 export function idleHeadline(st: IdleStatus, now = Date.now()): string {
-  if (st.kind !== "next" || st.waiting_desktop) return idleTitle(st);
+  if (st.kind !== "next" || st.waiting_desktop || st.setup) return idleTitle(st);
   const desk = desktopLine(st);
   if (desk) return desk;
   if (st.last_end === null) return "Agent idle: no session has run yet";
@@ -145,7 +159,7 @@ export function idleHeadline(st: IdleStatus, now = Date.now()): string {
 
 /** One line for a small screen (cards, thumbnails). */
 export function idleCaption(st: IdleStatus, now = Date.now()): string {
-  if (st.kind !== "next" || st.waiting_desktop) return idleTitle(st);
+  if (st.kind !== "next" || st.waiting_desktop || st.setup) return idleTitle(st);
   const desk = desktopLine(st);
   if (desk) return desk;
   if (st.last_end === null) return "Agent idle: no session has run yet";

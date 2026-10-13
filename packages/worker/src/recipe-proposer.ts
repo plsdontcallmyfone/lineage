@@ -82,8 +82,9 @@ const DRAFT_TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "give_up",
-    description: "Stop without a proposal, with the reason.",
-    input_schema: { type: "object", properties: { reason: { type: "string" } }, required: ["reason"], additionalProperties: false },
+    description:
+      "Stop without a proposal. reason: one plain sentence a visitor of the agent's public page will read (no file dumps, at most 200 characters). impossible: true when no recipe can exist for this repository as it stands (it has no tests of its own that run offline on a CPU, it needs a GPU or other hardware, its results are not deterministic); false when only this draft failed.",
+    input_schema: { type: "object", properties: { reason: { type: "string" }, impossible: { type: "boolean" } }, required: ["reason"], additionalProperties: false },
   },
 ];
 
@@ -95,6 +96,9 @@ export function overlayPathOk(rel: string, repoTree: string): string | null {
   if (existsSync(join(repoTree, p))) return "the repository already has this file; harness files must be new";
   return null;
 }
+
+/** The model a recipe is drafted with when the caller names none (a registry id; routed like every Claude call). */
+export const DRAFT_MODEL = "claude-opus-5-5";
 
 export class RecipeDrafter {
   constructor(
@@ -109,6 +113,8 @@ export class RecipeDrafter {
       /** an existing recipe of the same class, shown as the format reference */
       example: { recipe_yml: string; overlay: Record<string, string> };
       maxTrials?: number;
+      /** seconds of sandbox time each trial calibration took (the hosted runtime meters them to the agent's vault) */
+      onSandbox?: (seconds: number) => void;
       log: (m: string) => void;
     },
   ) {}
@@ -168,7 +174,7 @@ export class RecipeDrafter {
   }
 
   /** Runs the Claude drafting loop. Returns the note when Claude submitted an ok draft. */
-  async draft(): Promise<{ submitted: boolean; note?: string; usd: number; turns: number; trials: number; reason?: string }> {
+  async draft(): Promise<{ submitted: boolean; note?: string; usd: number; turns: number; trials: number; reason?: string; impossible?: boolean }> {
     const t = this.o.target;
     const repoTree = join(newWorkDir("draft-repo"), "src");
     materialize(t.repo, t.commit, null, repoTree);
@@ -206,10 +212,12 @@ ${Object.entries(ex.overlay)
   .map(([p, c]) => `--- overlay/${p} ---\n${c}`)
   .join("\n")}
 
+If the repository cannot have a recipe as it stands, do not force one: call give_up with impossible true. That is the case when it has no tests of its own that run offline on a CPU, when its code needs a GPU or other hardware, or when nothing it computes is deterministic. Never write tests for it yourself and never fake a metric.
+
 Work efficiently: read only what you need (the library module and its tests), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials.`;
     const res = await toolLoop({
       client: this.o.client,
-      model: this.o.model ?? "claude-opus-5-5",
+      model: this.o.model ?? DRAFT_MODEL,
       effort: "medium",
       system,
       tools: DRAFT_TOOLS,
@@ -248,7 +256,9 @@ Work efficiently: read only what you need (the library module and its tests), wr
             if (trials >= maxTrials) throw new Error(`trial limit reached (${maxTrials}); submit or give_up`);
             trials++;
             this.o.log(`recipe-drafter: trial ${trials}/${maxTrials}`);
+            const t0 = Date.now();
             const rep = await this.trial();
+            this.o.onSandbox?.((Date.now() - t0) / 1000);
             this.o.log(`recipe-drafter: trial ${trials} ${rep.ok ? "ok" : "not ok"}\n${rep.text}`);
             lastOk = rep.ok ? digest() : null;
             return `${rep.ok ? "TRIAL OK" : "TRIAL NOT OK"}\n${rep.text}`;
@@ -257,16 +267,18 @@ Work efficiently: read only what you need (the library module and its tests), wr
             if (!lastOk || lastOk !== digest()) throw new Error("the last trial_calibrate was not ok, or the draft changed since; trial first");
             return { done: { note: String(input.note ?? "").slice(0, 2000) } };
           case "give_up":
-            return { done: { gave_up: String(input.reason ?? "") } };
+            return { done: { gave_up: String(input.reason ?? "").slice(0, 400), impossible: input.impossible === true } };
           default:
             throw new Error(`unknown tool ${name}`);
         }
       },
     });
     removeTree(dirname(repoTree));
-    const v = res.value as { note?: string; gave_up?: string } | null;
+    const v = res.value as { note?: string; gave_up?: string; impossible?: boolean } | null;
     if (v?.note !== undefined) return { submitted: true, note: v.note, usd: res.usd, turns: res.turns, trials };
-    return { submitted: false, usd: res.usd, turns: res.turns, trials, reason: v?.gave_up ?? "no submission" };
+    if (v?.gave_up !== undefined) return { submitted: false, usd: res.usd, turns: res.turns, trials, reason: v.gave_up || "the drafter gave up without a reason", impossible: v.impossible === true };
+    // no decision of the model: the loop ended at its spend cap, its turn limit or a refusal
+    return { submitted: false, usd: res.usd, turns: res.turns, trials, reason: trials >= maxTrials ? `the draft did not pass its trial calibration in ${maxTrials} trials` : "the draft was not finished within its spend limit" };
   }
 }
 
@@ -312,6 +324,12 @@ export async function materializeProposal(client: CoreClient, a: { recipe: Recip
   if (typeof a.recipe?.name !== "string" || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(a.recipe.name)) throw new RecipeError("proposed recipe name must be lowercase kebab");
   if (typeof a.recipe_id !== "string" || !/^[0-9a-f]{64}$/.test(a.recipe_id)) throw new RecipeError("recipe_id must be 64 hex");
   const dir = join(root, a.recipe.name + "-" + a.recipe_id.slice(0, 12));
+  // already written (by an earlier call, or by another process of this home): the id is re-derived from
+  // the files, so a match is the same content, and a calibration running in that directory is left alone
+  try {
+    const have = loadRecipe(dir);
+    if (have.recipe_id === a.recipe_id) return have;
+  } catch {}
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   // JSON is YAML; loadRecipe re-derives the overlay digest and protections from the files
@@ -382,4 +400,33 @@ export class CalibrationVerifier {
     }
     return acted;
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Recipes that came from a proposal
+
+const fetching = new Map<string, Promise<boolean>>();
+
+/**
+ * Makes `recipe_id` available in `book`. A recipe Core admitted from a proposal (SPEC 6.2) is in no
+ * release: its JSON and overlay blobs are read from Core's accepted proposals once, written under
+ * UNITS_HOME/proposals (where the book finds them again after a restart) and checked to recompute to
+ * the same id. False when the book does not have it and Core has no accepted proposal for it.
+ */
+export async function ensureRecipe(book: { has(id: string): boolean; add(l: LoadedRecipe): void }, client: CoreClient, recipe_id: string, root = join(UNITS_HOME, "proposals")): Promise<boolean> {
+  if (book.has(recipe_id)) return true;
+  if (!/^[0-9a-f]{64}$/.test(recipe_id)) return false;
+  let p = fetching.get(recipe_id);
+  if (!p) {
+    p = (async () => {
+      const r = await client.request("GET", "/v1/recipe-proposals?status=accepted", undefined, { sign: false });
+      if (r.status !== 200 || !Array.isArray(r.body)) return false;
+      const a = (r.body as { recipe: Recipe; recipe_id: string; overlay: Record<string, string> }[]).find((x) => x.recipe_id === recipe_id);
+      if (!a) return false;
+      book.add(await materializeProposal(client, a, root));
+      return true;
+    })().finally(() => fetching.delete(recipe_id));
+    fetching.set(recipe_id, p);
+  }
+  return (await p) || book.has(recipe_id);
 }

@@ -1,0 +1,66 @@
+{
+  "_note": "The units the mainnet site serves (GET /v1/lineages) and the record written for each. Written by scripts/public/site-calibrations.ts.",
+  "network": "mainnet",
+  "site": "https://app.units.gg",
+  "read_at": "2026-10-13",
+  "units": [
+    {
+      "name": "base58-py",
+      "lineage_id": "c12109ca42d955b0bbc7e2a3ffbf5ebacd3141687da6b1ed6d814327ef9af1d8",
+      "recipe_id": "d8d4daba3946c56307132a81812f18ecaf374566247e49903b99c89ceca3a41f",
+      "repo": "https://github.com/keis/base58",
+      "status": "active",
+      "record": "base58-py.json"
+    },
+    {
+      "name": "base58-py-heavy",
+      "lineage_id": "ead44fad56d52022f33c3db0269cfd4746a293e74e73c11739982ad72df2f0a8",
+      "recipe_id": "9394c130bb06cdefb8d6cfd8f3853698ccad044a19a343153d43f355e12f232f",
+      "repo": "https://github.com/keis/base58",
+      "status": "active",
+      "record": "base58-py-heavy.json"
+    },
+    {
+      "name": "fixture-b58",
+      "lineage_id": "377b0b8b47b0970cc8faa41b35d564fe8ba7f31c937f2fb6ca32c0c92130f7d5",
+      "recipe_id": "5a76469b6f3d965b01e1033233ab6b74047c2021012bad45b5256bc51142a680",
+      "repo": "fixture:b58",
+      "status": "active",
+      "record": null,
+      "reason": "a fixture recipe: a test of the software, not a public repository"
+    },
+    {
+      "name": "gorbagana-chain",
+      "lineage_id": "1e0bb4c35c430a87e83781ab192b096c5e272395d0535ecc81a6174261831705",
+      "recipe_id": "e96254f6e75afbd1a416aeaf60c6cfe2a1a5518e37159976fa6c3bb849ec7a2a",
+      "repo": "https://github.com/gorbagana-dev/gorbagana-chain",
+      "status": "active",
+      "record": "gorbagana-chain.json"
+    },
+    {
+      "name": "minbpe",
+      "lineage_id": "20651398b7fa2afe214ef9e5b518fc28b043f29003bd379c8f09a104288353a4",
+      "recipe_id": "46a0d78dd189aa96c32d8f87402f2288b375c0934af32d036350034feb51f648",
+      "repo": "https://github.com/karpathy/minbpe",
+      "status": "active",
+      "record": "minbpe.json"
+    },
+    {
+      "name": "minbpe-heavy",
+      "lineage_id": "ec763487aa4bc47f8be69946e4197ab01c96eadde5f127aa8ea13dece9701fd2",
+      "recipe_id": "fb2924fcdae9d18ee10bf673be7e3c28082ee4b6db451980d7b891c135ef355e",
+      "repo": "https://github.com/karpathy/minbpe",
+      "status": "active",
+      "record": "minbpe-heavy.json"
+    },
+    {
+      "name": "rea",
+      "lineage_id": "aec2d7ba6f400c77bd8a4004077c87b146bba112dcfc4547f5e09c2557cb07cc",
+      "recipe_id": "04d491ec6eab776d372da42e887f24b31d9a7589b276cb306b9564910b4261f5",
+      "repo": "https://github.com/morluto/rea",
+      "status": "active",
+      "record": null,
+      "reason": "no recipe of this name in this repository: a unit made from a recipe proposal"
+    }
+  ]
+}

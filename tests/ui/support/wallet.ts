@@ -10,6 +10,9 @@ import type { BrowserContext } from "@playwright/test";
 // (~/.config/lineage/devnet/app-launch-test.json, or UI_WALLET_KEY), which launched TLAMP and holds
 // devnet UNITS; when it is absent (CI) a throwaway key is generated and the checks that need a funded
 // launcher are skipped. The key never leaves this process and is never printed.
+// UI_WALLET_ADDRESS=<base58 address> makes the wallet watch-only at that address instead: no key file
+// is read, the account is that public key, and a message is signed with a throwaway key (no check
+// that needs a valid signature can pass). For read-and-simulate checks against a funded wallet.
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 export function base58(bytes: Uint8Array): string {
@@ -25,6 +28,25 @@ export function base58(bytes: Uint8Array): string {
     s = "1" + s;
   }
   return s;
+}
+
+function unbase58(s: string): Uint8Array {
+  let n = 0n;
+  for (const c of s) {
+    const i = B58.indexOf(c);
+    if (i < 0) throw new Error("not base58");
+    n = n * 58n + BigInt(i);
+  }
+  const out: number[] = [];
+  while (n > 0n) {
+    out.unshift(Number(n % 256n));
+    n /= 256n;
+  }
+  for (const c of s) {
+    if (c !== "1") break;
+    out.unshift(0);
+  }
+  return Uint8Array.from(out);
 }
 
 export interface TestWallet {
@@ -44,7 +66,13 @@ export function testWallet(): TestWallet {
   let seed: Buffer;
   let pub: Uint8Array;
   let stored = false;
-  if (existsSync(path)) {
+  const watch = process.env.UI_WALLET_ADDRESS;
+  if (watch) {
+    seed = generateKeyPairSync("ed25519").privateKey.export({ format: "der", type: "pkcs8" }).subarray(16);
+    pub = unbase58(watch);
+    if (pub.length !== 32) throw new Error("UI_WALLET_ADDRESS is not a 32-byte base58 address");
+    stored = true;
+  } else if (existsSync(path)) {
     const raw = Uint8Array.from(JSON.parse(readFileSync(path, "utf8")) as number[]);
     seed = Buffer.from(raw.subarray(0, 32));
     pub = raw.subarray(32, 64);

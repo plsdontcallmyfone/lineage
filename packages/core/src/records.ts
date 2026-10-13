@@ -1,4 +1,5 @@
 import type { Core } from "./core.ts";
+import { featureOn } from "./features.ts";
 import { slashId } from "./chain.ts";
 import { notFound } from "./errors.ts";
 import { journalOf } from "./journal.ts";
@@ -20,8 +21,16 @@ import { canonicalJson, hashJson, leafHash, merkleProof, merkleRoot, signKind, s
 // Leaves (canonical JSON, protocol leafHash; sorted by hash before the Merkle root):
 //   record:       { epoch, agent, role: "author" | "verifier", lineage_id | null, record_digest }
 //   contribution: { epoch, gen_id, lineage_id, target, candidate_commitment, members, finder }
+//   result:       { accepted_at, author, epoch, gen_id, height, improvement_bps, kind: "bounty_result", lineage_id, target }
 // with record_digest = hashJson(record) and members [{ agent, role, share_bps }] (the lone author
 // with 10,000 until teams exist, then the team's declared shares).
+//
+// The result leaf (docs/plans/OPEN-BOUNTIES.md 4.3) is what the `units_bounty` program checks a
+// winner against: one per accepted metric generation, written only while the feature `open_bounties`
+// is on, so the roots of a network without the program are built exactly as before. `author` is the
+// agent a bounty pays (the author with the largest share, ties by agent id), `improvement_bps` is
+// floor((1 - effect.ci_high) x 10,000), `accepted_at` is in unix seconds. The registry stores only the
+// root, so no deployed program changes, and the roots of epochs already closed do not change.
 
 interface Internals {
   db: Core["db"];
@@ -47,6 +56,16 @@ export const RECORDS_SCHEMA = `
     leaf TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS contributions_epoch ON contributions(epoch);
+  CREATE TABLE IF NOT EXISTS bounty_results (
+    gen_id TEXT PRIMARY KEY,
+    epoch INTEGER NOT NULL,
+    lineage_id TEXT NOT NULL,
+    author TEXT NOT NULL,
+    result TEXT NOT NULL,                -- canonical JSON of the leaf object
+    leaf TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS bounty_results_epoch ON bounty_results(epoch);
+  CREATE INDEX IF NOT EXISTS bounty_results_lineage ON bounty_results(lineage_id);
   CREATE TABLE IF NOT EXISTS record_marks (
     kind TEXT NOT NULL,                  -- cand | gen | revert | audit | strike | slash | qual | journal
     id TEXT NOT NULL,
@@ -103,6 +122,42 @@ export interface Contribution {
   finder: string | null;
 }
 
+/** What the `units_bounty` program proves a winner with (the header of this file). */
+export interface BountyResult {
+  accepted_at: number;
+  author: string;
+  epoch: number;
+  gen_id: string;
+  height: number;
+  improvement_bps: number;
+  kind: "bounty_result";
+  lineage_id: string;
+  target: string | string[];
+}
+/** Improvement in basis points from a verdict's worst-case ratio (ci_high; the ratio on a deterministic metric). */
+export const improvementBps = (ciHigh: number) => Math.floor(Math.round((1 - ciHigh) * 1e8) / 1e4);
+export const resultLeaf = (r: BountyResult) => leafHash(canonicalJson(r));
+/** A target the program can rebuild byte for byte: one name, or up to 8, of printable ASCII without quote or backslash, at most 96 bytes each. */
+const chainTarget = (t: unknown): t is string | string[] => {
+  const ok = (s: unknown) => typeof s === "string" && s.length > 0 && s.length <= 96 && /^[\x20-\x7e]*$/.test(s) && !/["\\]/.test(s);
+  return Array.isArray(t) ? t.length > 0 && t.length <= 8 && t.every(ok) : ok(t);
+};
+/**
+ * The result of an accepted generation, or null when it has none: a fix (no measured effect), an
+ * improvement that does not round to at least one basis point, a target the chain cannot encode, or
+ * no author to pay.
+ */
+export function bountyResult(g: { epoch: number; gen_id: string; lineage_id: string; height: number; target: unknown; effect: unknown; accepted_at: number },
+  members: Contribution["members"]): BountyResult | null {
+  const ci = (g.effect as { ci_high?: unknown } | null)?.ci_high;
+  if (typeof ci !== "number" || !Number.isFinite(ci) || !chainTarget(g.target)) return null;
+  const bps = improvementBps(ci);
+  const author = members.filter((m) => m.role === "author").sort((x, y) => y.share_bps - x.share_bps || (x.agent < y.agent ? -1 : 1))[0]?.agent;
+  if (!author || !Number.isInteger(bps) || bps < 1 || bps > 9_999 || !Number.isInteger(g.height) || g.height < 0) return null;
+  return { accepted_at: Math.floor(g.accepted_at / 1000), author, epoch: g.epoch, gen_id: g.gen_id, height: g.height, improvement_bps: bps, kind: "bounty_result",
+    lineage_id: g.lineage_id, target: g.target };
+}
+
 export const recordLeaf = (r: AgentRecordDoc) =>
   leafHash(canonicalJson({ epoch: r.epoch, agent: r.agent, role: r.role, lineage_id: r.lineage_id, record_digest: hashJson(r) }));
 export const contributionLeaf = (c: Contribution) => leafHash(canonicalJson(c));
@@ -114,7 +169,9 @@ const units6 = (u: number) => Math.round(u * 1e6) / 1e6;
 
 export class Records {
   private readonly c: Internals;
+  private readonly core: Core;
   constructor(core: Core) {
+    this.core = core;
     this.c = core as unknown as Internals;
     this.c.db.exec(RECORDS_SCHEMA);
     const cols = this.c.db.query<{ name: string }, []>("PRAGMA table_info(epochs)").all();
@@ -142,7 +199,7 @@ export class Records {
    * Builds, stores and roots the records of epoch `n` from everything final and not yet counted.
    * Runs inside the epoch-close transaction; returns the record root (protocol merkleRoot, H("empty") if none).
    */
-  buildEpoch(n: number): { root: string; records: number; contributions: number } {
+  buildEpoch(n: number): { root: string; records: number; contributions: number; results: number } {
     const db = this.c.db;
     const unmarked = (kind: string, col: string) => `${col} NOT IN (SELECT id FROM record_marks WHERE kind = '${kind}')`;
     const mark = (kind: string, id: string | number) => db.query("INSERT OR IGNORE INTO record_marks (kind, id, epoch) VALUES (?, ?, ?)").run(kind, String(id), n);
@@ -207,11 +264,13 @@ export class Records {
     }
     // generations accepted in the window: accepted list, author units, contribution leaves
     const gens = db
-      .query<{ gen_id: string; lineage_id: string; candidate_id: string; kind: string; target: string; effect: string | null; author: string; accepted_at: number }, []>(
-        `SELECT gen_id, lineage_id, candidate_id, kind, target, effect, author, accepted_at FROM generations WHERE entry_type = 'patch' AND ${unmarked("gen", "gen_id")} ORDER BY accepted_at, gen_id`,
+      .query<{ gen_id: string; lineage_id: string; candidate_id: string; kind: string; target: string; effect: string | null; author: string; accepted_at: number; height: number }, []>(
+        `SELECT gen_id, lineage_id, candidate_id, kind, target, effect, author, accepted_at, height FROM generations WHERE entry_type = 'patch' AND ${unmarked("gen", "gen_id")} ORDER BY accepted_at, gen_id`,
       )
       .all();
     const contributions: Contribution[] = [];
+    const results: BountyResult[] = [];
+    const withResults = featureOn(this.core, "open_bounties");
     for (const g of gens) {
       mark("gen", g.gen_id);
       const units = db.query<{ u: number | null }, [string, string]>("SELECT SUM(units) AS u FROM units WHERE ref = ? AND agent_id = ? AND kind = 'author' AND voided = 0").get(g.gen_id, g.author)!.u ?? 0;
@@ -226,6 +285,11 @@ export class Records {
       for (const f of finders.slice(1)) members.push({ agent: f, role: "finder", share_bps: 0 });
       contributions.push({ epoch: n, gen_id: g.gen_id, lineage_id: g.lineage_id, target: JSON.parse(g.target), candidate_commitment: cand.commitment, members,
         finder: finders[0] ?? null });
+      if (withResults && !this.isShadow(g.author)) {
+        const res = bountyResult({ epoch: n, gen_id: g.gen_id, lineage_id: g.lineage_id, height: g.height, target: JSON.parse(g.target),
+          effect: g.effect ? JSON.parse(g.effect) : null, accepted_at: g.accepted_at }, members);
+        if (res) results.push(res);
+      }
       for (const f of finders) {
         const fu = db.query<{ u: number | null }, [string, string]>("SELECT SUM(units) AS u FROM units WHERE ref = ? AND agent_id = ? AND kind = 'finder' AND voided = 0").get(g.gen_id, f)!.u ?? 0;
         author(f, g.lineage_id).finder.push({ gen_id: g.gen_id, units: units6(fu) });
@@ -305,6 +369,7 @@ export class Records {
     const leaves: string[] = [];
     db.query("DELETE FROM records WHERE epoch = ?").run(n);
     db.query("DELETE FROM contributions WHERE epoch = ?").run(n);
+    db.query("DELETE FROM bounty_results WHERE epoch = ?").run(n);
     for (const r of docs) {
       const leaf = recordLeaf(r);
       leaves.push(leaf);
@@ -315,17 +380,30 @@ export class Records {
       leaves.push(leaf);
       db.query("INSERT INTO contributions (gen_id, epoch, contribution, leaf) VALUES (?, ?, ?, ?)").run(c.gen_id, n, canonicalJson(c), leaf);
     }
+    for (const r of results) {
+      const leaf = resultLeaf(r);
+      leaves.push(leaf);
+      db.query("INSERT INTO bounty_results (gen_id, epoch, lineage_id, author, result, leaf) VALUES (?, ?, ?, ?, ?, ?)").run(r.gen_id, n, r.lineage_id, r.author, canonicalJson(r), leaf);
+    }
     leaves.sort();
     const root = merkleRoot(leaves);
     db.query("UPDATE epochs SET record_root = ? WHERE n = ?").run(root, n);
-    return { root, records: docs.length, contributions: contributions.length };
+    return { root, records: docs.length, contributions: contributions.length, results: results.length };
   }
 
-  /** Every leaf of epoch `n`, sorted (the order the root was built in). */
-  private epochLeaves(n: number): string[] {
-    const r = this.c.db.query<{ leaf: string }, [number]>("SELECT leaf FROM records WHERE epoch = ?").all(n).map((x) => x.leaf);
-    const c = this.c.db.query<{ leaf: string }, [number]>("SELECT leaf FROM contributions WHERE epoch = ?").all(n).map((x) => x.leaf);
-    return [...r, ...c].sort();
+  /** Every leaf of epoch `n`, sorted (the order the root was built in): records, contributions and results. */
+  epochLeaves(n: number): string[] {
+    const of = (table: string) => this.c.db.query<{ leaf: string }, [number]>(`SELECT leaf FROM ${table} WHERE epoch = ?`).all(n).map((x) => x.leaf);
+    return [...of("records"), ...of("contributions"), ...of("bounty_results")].sort();
+  }
+
+  /** The result leaf of a generation with its proof against its epoch's record root; null when it has none or the epoch is not closed. */
+  resultProof(genId: string): { epoch: number; record_root: string; result: BountyResult; leaf: string; proof: string[] } | null {
+    const r = this.c.db.query<{ epoch: number; result: string; leaf: string }, [string]>("SELECT epoch, result, leaf FROM bounty_results WHERE gen_id = ?").get(genId);
+    const root = r ? this.c.db.query<{ record_root: string | null }, [number]>("SELECT record_root FROM epochs WHERE n = ?").get(r.epoch)?.record_root : null;
+    if (!r || !root) return null;
+    const leaves = this.epochLeaves(r.epoch);
+    return { epoch: r.epoch, record_root: root, result: JSON.parse(r.result) as BountyResult, leaf: r.leaf, proof: merkleProof(leaves, leaves.indexOf(r.leaf)) };
   }
 
   /** An agent's records (and contributions naming it) with proofs against each epoch's record root. */
@@ -354,6 +432,8 @@ export class Records {
     };
     for (const r of recs) add(r.epoch, { kind: "record", leaf: r.leaf, record: JSON.parse(r.record), proof: [] });
     for (const c of contribs) add(c.epoch, { kind: "contribution", leaf: c.leaf, contribution: JSON.parse(c.contribution), proof: [] });
+    for (const x of db.query<{ epoch: number; result: string; leaf: string }, [string]>("SELECT epoch, result, leaf FROM bounty_results WHERE author = ? ORDER BY epoch, gen_id").all(agent))
+      if (epoch === undefined || x.epoch === epoch) add(x.epoch, { kind: "result", leaf: x.leaf, result: JSON.parse(x.result), proof: [] });
     return [...byEpoch.values()].sort((a, b) => a.epoch - b.epoch);
   }
 
@@ -401,7 +481,12 @@ export class Records {
 
 export type CredentialLeaf =
   | { kind: "record"; leaf: string; record: AgentRecordDoc; proof: string[] }
-  | { kind: "contribution"; leaf: string; contribution: Contribution; proof: string[] };
+  | { kind: "contribution"; leaf: string; contribution: Contribution; proof: string[] }
+  | { kind: "result"; leaf: string; result: BountyResult; proof: string[] };
+
+/** The leaf a credential entry must hash to, recomputed from what it carries. */
+export const credentialLeafHash = (l: CredentialLeaf): string =>
+  l.kind === "record" ? recordLeaf(l.record) : l.kind === "contribution" ? contributionLeaf(l.contribution) : resultLeaf(l.result);
 
 export interface CredentialTotals {
   epochs: number;
@@ -435,6 +520,7 @@ export function credentialTotals(agent: string, epochs: { leaves: CredentialLeaf
         t.contributions++;
         continue;
       }
+      if (l.kind !== "record") continue; // a result leaf restates an accepted generation for the bounty program; it adds to no total
       const r = l.record;
       if (r.agent !== agent) continue;
       if (r.role === "author") {
@@ -477,9 +563,11 @@ export function verifyCredential(cred: { agent: string; epochs: { epoch: number;
     }
     if (onchain !== e.record_root) errors.push(`epoch ${e.epoch}: credential root ${e.record_root.slice(0, 16)} is not the onchain root ${onchain.slice(0, 16)}`);
     for (const l of e.leaves) {
-      const leaf = l.kind === "record" ? recordLeaf(l.record) : contributionLeaf(l.contribution);
-      const subject = l.kind === "record" ? l.record.agent : l.contribution.members.some((m) => m.agent === cred.agent) || l.contribution.finder === cred.agent;
+      const leaf = credentialLeafHash(l);
+      const subject = l.kind === "record" ? l.record.agent : l.kind === "result" ? l.result.author
+        : l.contribution.members.some((m) => m.agent === cred.agent) || l.contribution.finder === cred.agent;
       if (l.kind === "record" && l.record.epoch !== e.epoch) errors.push(`epoch ${e.epoch}: a record names epoch ${l.record.epoch}`);
+      if (l.kind === "result" && l.result.epoch !== e.epoch) errors.push(`epoch ${e.epoch}: a result names epoch ${l.result.epoch}`);
       if (l.kind === "contribution" && l.contribution.epoch !== e.epoch) errors.push(`epoch ${e.epoch}: a contribution names epoch ${l.contribution.epoch}`);
       if (subject !== true && subject !== cred.agent) errors.push(`epoch ${e.epoch}: a leaf is about another agent`);
       if (leaf !== l.leaf) errors.push(`epoch ${e.epoch}: leaf ${l.leaf.slice(0, 16)} does not hash from its ${l.kind}`);

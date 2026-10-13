@@ -33,6 +33,7 @@ import { encryptionKeyStatement, intentNote, messageEnvelope } from "../../core/
 import { deriveEncryptionKey, open, seal, type EncryptionKey } from "../../core/src/seal.ts";
 import type { Messenger } from "../../core/src/msgchain.ts";
 import type { BoardNote, Finding, InboxMessage, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
+import { targetKey } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@units/souls";
@@ -41,13 +42,14 @@ import { guardOutcome, guardRuleReader } from "./guard-limits.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { plannedKey, readShared, sharedBlock, type SharedData } from "./shared-findings.ts";
 import { pickTarget, rankUnits, type UnitInput } from "./target-spread.ts";
+import { rankTargets, seatLine, type SeatHooks, type SeatPlacement, type SeatStack, type SeatUnitInput } from "./seat.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
 import { EpisodeCapture } from "./episode.ts";
 import type { DesktopAttempt, DesktopProvider } from "../../desktop/src/pool.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
 import { DiscoveryAgent } from "./discovery.ts";
-import { CalibrationVerifier } from "./recipe-proposer.ts";
+import { CalibrationVerifier, ensureRecipe } from "./recipe-proposer.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
 // proposer and its agent is an awake launched agent (SPEC 3, 5).
@@ -157,6 +159,12 @@ export interface WorkerOptions {
    * stays on Core's board and inbox views, which index the chain.
    */
   messenger?: Messenger;
+  /**
+   * Swarms (docs/plans/SWARMS.md; seat.ts): this worker is one seat of a swarm. The hosted runtime's
+   * ledger assigns its unit and target, its commits are serialized per unit and stacked on the
+   * swarm's open candidates there, and its requests carry the seat number. Absent: a solo agent.
+   */
+  seat?: SeatHooks;
 }
 
 interface PendingReplay {
@@ -230,6 +238,7 @@ export class Worker {
 
   constructor(private opts: WorkerOptions) {
     this.client = new CoreClient(opts.core, opts.key);
+    if (opts.seat) this.client.seat = opts.seat.seat; // Core keeps a seat's own heartbeat and session rows (swarms.ts)
     // a rotated agent signs with a new key under its unchanged agent id (identity plan I1)
     const agentId = (opts.key as { agent?: string }).agent ?? opts.key.id;
     const tag = agentId.slice(0, 6);
@@ -353,6 +362,8 @@ export class Worker {
   private async runAndCommit(a: Assignment): Promise<void> {
     const t0 = Date.now();
     this.telemetry.job(a.kind === "qualify" || !a.candidate ? "qualify" : "replay", { replay_id: a.replay_id });
+    // a unit admitted from a recipe proposal (SPEC 6.2): its recipe comes from Core, checked against the id
+    await ensureRecipe(this.recipes, this.client, a.recipe_id).catch(() => false);
     const loaded = this.recipes.get(a.recipe_id);
     let result: ReplayResult;
     let transcript: Transcript | Record<string, unknown>;
@@ -445,7 +456,8 @@ export class Worker {
     // a proposer that can never propose again starts nothing: no tree, no session (an exhausted script)
     if (proposer.exhausted?.()) return null;
     const me = await this.me();
-    if (me.kind !== "launched" || me.lifecycle !== "active" || !me.awake) return null;
+    // an asleep agent authors only while Core says the network pays for its compute (compute_covered)
+    if (me.kind !== "launched" || me.lifecycle !== "active" || !(me.awake || me.compute_covered === true)) return null;
     const all = await this.ok<{ lineage_id: string; repo: string; status: string }[]>(this.client.get("/v1/lineages"), "lineages");
     const mine = all.filter((l) => l.status === "active" && (this.opts.lineages?.length ? this.opts.lineages.includes(l.lineage_id) : true));
     const units: any[] = [];
@@ -454,7 +466,8 @@ export class Worker {
       if (me.target_repo && summary.repo && summary.repo !== me.target_repo) continue;
       const view = await this.ok(this.client.get(`/v1/lineages/${summary.lineage_id}`), "lineage");
       if (me.target_repo && view.repo !== me.target_repo) continue;
-      if (!this.recipes.has(view.recipe_id)) {
+      // a unit admitted from a recipe proposal (SPEC 6.2) is in no release: its recipe is read from Core
+      if (!(await ensureRecipe(this.recipes, this.client, view.recipe_id).catch(() => false))) {
         this.log(`lineage ${summary.lineage_id.slice(0, 10)}: recipe not available locally`);
         continue;
       }
@@ -464,6 +477,8 @@ export class Worker {
     // several active units takes them in the order of rankUnits and makes one attempt per step, so the
     // next step ranks again with the new counts. Otherwise (scripted, spread off) every unit in Core's
     // order until one yields a candidate, as before.
+    // a swarm's seat: the unit and target come from the swarm's ledger, never from this worker's own pick
+    if (this.opts.seat) return this.authorAsSeat(this.opts.seat, units);
     const choose = this.opts.spread === true && proposer.name !== "scripted" && (this.opts.collab ?? "advisory") !== "off";
     const order = choose && units.length > 1 ? await this.unitOrder(units) : units;
     for (const view of order) {
@@ -529,8 +544,62 @@ export class Worker {
     }
   }
 
-  private async authorOn(view: any): Promise<string | null> {
+  /**
+   * One attempt as a seat of a swarm (seat.ts): the repository's units with their targets in target
+   * spread's order and the swarm's open candidates on each go to the ledger, which answers with this
+   * seat's unit, target and stack, or with why it waits (then nothing is spent).
+   */
+  private async authorAsSeat(seat: SeatHooks, units: any[]): Promise<string | null> {
+    const ordered = units.length > 1 ? await this.unitOrder(units) : units;
+    const inputs: SeatUnitInput[] = [];
+    for (const view of ordered) {
+      const loaded = this.recipes.get(view.recipe_id);
+      const [intents, shared] = await Promise.all([this.intentsOn(view.lineage_id), readShared(this.client, view.lineage_id).catch(() => null)]);
+      const mem = this.fruitless.get(view.lineage_id);
+      const targets = rankTargets({
+        targets: loaded.recipe.metrics.filter((m) => view.calibration?.metrics?.[m.name]?.enabled).map((m) => ({ kind: m.kind as CandidateKind, name: m.name })),
+        intents,
+        self: this.id,
+        tip: view.tip,
+        shared,
+        fruitless: mem && mem.tip === view.tip ? mem.counts : undefined,
+      });
+      const read_at = Date.now();
+      inputs.push({ unit: view.lineage_id, tip: view.tip, targets, open: await this.openCommits(view.lineage_id), read_at });
+    }
+    if (this.maxOpen === null) {
+      const c = await this.client.get("/v1/config");
+      this.maxOpen = Number(c.body?.network?.max_open_candidates_per_agent ?? Infinity);
+    }
+    const r = seat.place(inputs, this.maxOpen);
+    if (!r.ok) {
+      if (this.seatWhy !== r.why) this.log(`seat ${seat.seat}: no attempt (${r.why})`);
+      this.seatWhy = r.why;
+      return null;
+    }
+    this.seatWhy = null;
+    const view = ordered.find((u) => u.lineage_id === r.p.unit)!;
+    const t = inputs.find((u) => u.unit === r.p.unit)!.targets.find((x) => x.kind === r.p.planned.kind && x.name === r.p.planned.target);
+    this.log(`seat ${seat.seat} (${seat.role}): unit ${r.p.unit.slice(0, 10)}, target ${r.p.planned.kind} ${JSON.stringify(r.p.planned.target)}${r.p.stack ? `, on ${r.p.stack.patches.length} open change(s) of the swarm` : ""}`);
+    let commit: string | null = null;
+    try {
+      commit = await this.authorOn(view, { p: r.p, facts: t?.facts ?? null });
+      return commit;
+    } finally {
+      seat.ended(commit);
+    }
+  }
+  private seatWhy: string | null = null;
+
+  /** Commit ids of this agent's open candidates on a unit, as Core lists them to the agent itself. */
+  private async openCommits(lineage: string): Promise<string[]> {
+    const mine = await this.ok<{ commit_id: string; status: string }[]>(this.client.get(`/v1/candidates?lineage=${lineage}&author=${this.id}&limit=1000`, true), "candidates");
+    return mine.filter((c) => ["committed", "waiting", "queued", "replaying", "disputed"].includes(c.status)).map((c) => c.commit_id);
+  }
+
+  private async authorOn(view: any, seated?: { p: SeatPlacement; facts: string | null }): Promise<string | null> {
     const proposer = this.opts.proposer!;
+    const sp = seated?.p ?? null;
     if (await this.atOpenLimit(view.lineage_id)) return null;
     const budget = this.opts.attempt ? this.opts.attempt() : {};
     if (budget === null) return null;
@@ -538,7 +607,9 @@ export class Worker {
     const tree = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
     const parentPatches: string[] = tree.patches.map((p: { patch: string }) => p.patch);
     // a stacked candidate builds on this agent's own pending patch (SPEC 12.4)
-    let stack = this.opts.series ? await this.stackTarget(view.lineage_id) : null;
+    let stack = !sp && this.opts.series ? await this.stackTarget(view.lineage_id) : null;
+    // a seat builds on the swarm's open candidates on the unit (one stack per unit, from the ledger)
+    const seatStack: SeatStack | null = sp?.stack ?? null;
     const findings = (await this.ok<any[]>(this.client.get(`/v1/findings?lineage=${view.lineage_id}`), "findings")).map((f) => ({ key: f.finding_key ?? f.key, kind: f.kind, target: f.target }) as Finding);
     const deps = await this.recipes.depsFor(loaded, tree.deps_digest);
     const work = newWorkDir("author");
@@ -573,6 +644,8 @@ export class Worker {
         Bun.spawnSync(["git", "add", "-A"], { cwd: dir });
         Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "-m", "prepare outputs"], { cwd: dir });
       }
+      // the repository as the recipe pins it, before any generation's patch: a seat's change is re-based from here (below)
+      const rootRef = sp ? Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir }).stdout.toString().trim() : "";
       for (const p of parentPatches) if (!applyPatch(dir, p)) throw new Error("parent series does not apply locally");
       // the pending candidate no longer applies to the tip (another generation landed on the lines it
       // edits, so it is stale itself): author on the tip instead of failing the attempt (agent efficiency lane;
@@ -585,9 +658,18 @@ export class Worker {
         parentPatches.push(stack.patch);
         this.log(`series: authoring on top of pending ${stack.commit_id.slice(0, 10)}`);
       }
+      if (seatStack) {
+        // an open change of the swarm that no longer applies to the tip is going stale itself: no attempt on top of it
+        for (const p of seatStack.patches) {
+          if (applyPatch(dir, p)) continue;
+          this.log("seat: the swarm's open changes on this unit do not apply to its tip; no attempt until they are final");
+          return null;
+        }
+        parentPatches.push(...seatStack.patches);
+      }
       if (this.opts.desktop && this.opts.telemetry !== false) {
         desk = await this.opts.desktop
-          .begin({ agent: this.id, tree: dir, repo: loaded.recipe.repo, commit: where.commit, stacked: !!stack, label: `${this.id.slice(0, 8)}-${where.lineage_id.slice(0, 8)}` })
+          .begin({ agent: this.opts.seat?.desktopKey ?? this.id, tree: dir, repo: loaded.recipe.repo, commit: where.commit, stacked: !!stack, label: `${this.id.slice(0, 8)}-${where.lineage_id.slice(0, 8)}` })
           .catch((e) => (this.log(`desktop: ${(e as Error).message}`), null));
         // desktop hosts lane: a required desktop that did not start ends the attempt before the model runs
         if (!desk && this.opts.desktop.required) {
@@ -620,8 +702,9 @@ export class Worker {
         onPhase: this.telemetry.onPhase,
         self: this.id,
         collab,
-        dependsOn: stack?.commit_id ?? null,
-        soul: await this.soulBlock(),
+        dependsOn: stack?.commit_id ?? seatStack?.commit_id ?? null,
+        // a seat's role paragraph sits after the rules and before the soul (docs/plans/SWARMS.md 3)
+        soul: sp && this.opts.seat ? [this.opts.seat.rolePrompt, await this.soulBlock()].filter(Boolean).join("\n") : await this.soulBlock(),
         notes: journal ? notesBlock(await readNotes(this.client, this.id, view.lineage_id), view.lineage_id) : null,
         shared: null,
         journalReserveUsd: journal && proposer.journal ? (this.opts.journalReserveUsd ?? JOURNAL_RESERVE_USD) : 0,
@@ -650,7 +733,14 @@ export class Worker {
         await this.ensureEncryptionKey();
         ctx.board = await this.boardOf(view.lineage_id);
         ctx.inbox = await this.readInbox();
-        if (!proposer.plan && this.opts.spread && proposer.name !== "scripted") {
+        if (sp) {
+          // the ledger's assignment: an intent for the others to see, and the assignment paragraph for the model
+          ctx.planned = sp.planned;
+          ctx.suggested = seatLine(sp, seated?.facts ?? null);
+          episode.plan(sp.planned);
+          if (sharedData) setShared(plannedKey(sp.planned));
+          await this.fileIntent(view.lineage_id, tree.gen_id, sp.planned, this.opts.spreadIntentTtlS ?? SPREAD_INTENT_TTL_S);
+        } else if (!proposer.plan && this.opts.spread && proposer.name !== "scripted") {
           // target spread: a pick from counts, an intent for the others to see, one line for the model
           const mem = this.fruitless.get(view.lineage_id);
           const pick = pickTarget({
@@ -670,7 +760,7 @@ export class Worker {
             await this.fileIntent(view.lineage_id, tree.gen_id, pick.planned, this.opts.spreadIntentTtlS ?? SPREAD_INTENT_TTL_S);
           }
         }
-        if (proposer.plan) {
+        if (proposer.plan && !sp) {
           ctx.planned = await proposer.plan(ctx);
           episode.plan(ctx.planned);
           if (ctx.planned && sharedData) setShared(plannedKey(ctx.planned));
@@ -699,6 +789,12 @@ export class Worker {
         outcome(guardOutcome(ctx.guardRegression));
         return null;
       }
+      // a seat's target is fixed for the attempt: a change on another one stands only if no other seat holds that target
+      if (sp && this.opts.seat && targetKey(proposal.kind, proposal.target) !== targetKey(sp.planned.kind, sp.planned.target) && !this.opts.seat.retarget(view.lineage_id, proposal.kind, proposal.target)) {
+        this.log(`seat: the change is on ${proposal.kind} ${JSON.stringify(proposal.target)}, which another seat holds; not submitted`);
+        outcome("no candidate: the change was on a target that another agent of the group is working on");
+        return null;
+      }
       if (proposal.usage) this.log(`author: model spend ${proposal.usage.usd.toFixed(4)} USD (${proposal.usage.input_tokens} in, ${proposal.usage.output_tokens} out, ${proposal.usage.cache_read_tokens} cache read)`);
       const raw = diffWorkingTree(dir);
       if (!raw.trim()) {
@@ -721,6 +817,64 @@ export class Worker {
         ...(dep ? { depends_on: dep } : {}),
         ...this.teamFor({ lineage_id: view.lineage_id, parent_gen_id: parent, commitment, kind: proposal.kind, target: proposal.target, depends_on: dep }),
       });
+      if (sp && this.opts.seat) {
+        // commits of a swarm are serialized per unit and stacked on what is open there at this moment
+        let seatChange = "";
+        const res = await this.opts.seat.commit(view.lineage_id, async (io) => {
+          for (let round = 0; round < 3; round++) {
+            const readAt = Date.now();
+            const now = io.stack(await this.openCommits(view.lineage_id), readAt);
+            let finalPatch = patch;
+            let parent = tree.gen_id as string;
+            const same = (now?.commit_id ?? null) === (seatStack?.commit_id ?? null) && (now?.patches.length ?? 0) === (seatStack?.patches.length ?? 0);
+            if (!same) {
+              // another seat committed on this unit, or a change under this one became final, while it was written:
+              // the change must apply on the tip plus the stack as they are now, and is re-cut there
+              const tip = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
+              // in the attempt's own repository: the change becomes a commit, the new base is built on a branch from
+              // the pinned tree (the tip's patches, then the stack), and the change is cherry-picked onto it, so git
+              // merges it with its real ancestor instead of matching context lines only
+              const git = (...a: string[]) => Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", ...a], { cwd: dir });
+              if (round === 0) {
+                git("add", "-A");
+                git("commit", "-q", "--no-gpg-sign", "-m", "seat change");
+              }
+              const change = round === 0 ? git("rev-parse", "HEAD").stdout.toString().trim() : seatChange;
+              seatChange = change;
+              let base = !!rootRef && git("checkout", "-q", "-B", `restack-${round}`, rootRef).exitCode === 0;
+              for (const p of [...tip.patches.map((x: { patch: string }) => x.patch), ...(now?.patches ?? [])]) base = base && applyPatch(dir, p);
+              if (!base || git("cherry-pick", "--no-commit", change).exitCode !== 0) {
+                git("cherry-pick", "--abort");
+                this.log("seat: the change no longer applies after another change of the swarm on this unit; not submitted");
+                outcome("no candidate: the change no longer applied once another change of the group on this unit was in place");
+                return null;
+              }
+              const dir2 = dir;
+              finalPatch = canonicalizeDiff(diffWorkingTree(dir2));
+              parent = tip.gen_id as string;
+              this.log(`seat: re-cut on ${now ? `${now.patches.length} open change(s) of the swarm` : "the tip"} as they are now`);
+            }
+            const salt = randomBytes(16).toString("hex");
+            const commitment = patchCommitment(patchHash(finalPatch), salt);
+            const dep = now?.commit_id ?? null;
+            const posted = await this.client.post("/v1/candidates", { lineage_id: view.lineage_id, parent_gen_id: parent, kind: proposal.kind, target: proposal.target, commitment, claimed_effect: proposal.claimed_effect ?? null, ...(dep ? { depends_on: dep } : {}) });
+            // the newest change of the stack became final between the read and the commit: read again
+            if (dep && posted.status === 409 && (posted.body as { error?: string })?.error === "dependency_final") continue;
+            const committed = await this.ok(Promise.resolve(posted), "commit candidate");
+            sessionCommit = committed.commit_id;
+            this.telemetry.activity(where, { kind: "submit" });
+            const revealed = await this.ok(this.client.post(`/v1/candidates/${committed.commit_id}/reveal`, { patch: finalPatch, salt }), "reveal candidate");
+            io.committed(committed.commit_id, finalPatch);
+            this.submitted++;
+            this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines)${dep ? `, on ${dep.slice(0, 10)}` : ""} -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);
+            outcome(`submitted a ${proposal.kind} candidate on ${Array.isArray(proposal.target) ? proposal.target.join(", ") : proposal.target} (${g.lines} changed lines); it was committed and revealed (status ${revealed.status}${revealed.reason ? `, ${revealed.reason}` : ""}); its verdict comes later from independent replays`);
+            return committed.commit_id as string;
+          }
+          outcome("no candidate: the group's changes on this unit kept becoming final while this one was committed");
+          return null;
+        });
+        return res;
+      }
       let posted = await this.client.post("/v1/candidates", commitBody(tree.gen_id, stack?.commit_id ?? null));
       // stacked (agent efficiency lane): the pending candidate this attempt built on became final while
       // it ran. Accepted: the new tip is exactly the tree this change was made and measured on, so it
@@ -885,7 +1039,7 @@ export class Worker {
    * Sends a signed message to an agent or to `board:<lineage>`. With `encrypt` the body is sealed
    * to the recipient's published key. Returns the message id, or null when Core refused (logged).
    */
-  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string } = {}): Promise<string | null> {
+  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number } = {}): Promise<string | null> {
     if (this.opts.messenger) return this.opts.messenger.send(to, text, o);
     let body: string | null = text;
     let ciphertext: string | null = null;

@@ -5,7 +5,7 @@
 // at the rate of the model that answered (a server-side refusal fallback may answer with another).
 
 import Anthropic from "@anthropic-ai/sdk";
-import { H, Rng } from "@units/protocol";
+import { H, numbersNotInFacts, Rng } from "@units/protocol";
 import { checkSoul } from "./doc.ts";
 import { personaSafety, textSafety } from "./safety.ts";
 import { voiceBlock, type Surface } from "./prompt.ts";
@@ -293,8 +293,7 @@ export async function composeInVoice(o: {
   if (res.stop_reason !== "end_turn") return { text: null, problems: [`stopped: ${res.stop_reason}`], usage };
   const text = res.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("").trim().replace(/—/g, ",");
   const problems = textSafety(text, o.surface);
-  const allowed = new Set(o.facts.match(/\d+(?:\.\d+)?/g) ?? []);
-  for (const n of text.match(/\d+(?:\.\d+)?/g) ?? []) if (!allowed.has(n)) problems.push(`${o.surface}: the number ${n} is not in the facts`);
+  for (const n of numbersNotInFacts(text, o.facts)) problems.push(`${o.surface}: the number ${n} is not in the facts`);
   o.log?.(`souls: ${o.surface} in voice, ${usage.usd.toFixed(4)} USD`);
   return { text: problems.length ? null : text, problems, usage };
 }

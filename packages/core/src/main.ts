@@ -111,6 +111,17 @@ if (chainSettings) {
   }
   network = boot.network;
   firstEpoch = boot.firstEpoch;
+  // --first-epoch N: this Core's epochs start at N, not at the registry's next one. For a proof run beside a live deployment on
+  // the same registry (scripts/devnet/open-bounty-e2e.ts): its epochs never take the deployment's numbers, and the bridge cannot
+  // post them (post_epoch takes only last + 1), so they reach the chain only by an admin's own transaction.
+  if (arg("first-epoch")) {
+    const n = Number(arg("first-epoch"));
+    if (!Number.isSafeInteger(n) || n < boot.firstEpoch) {
+      console.error(`--first-epoch must be an integer of at least the registry's next epoch ${boot.firstEpoch}`);
+      process.exit(2);
+    }
+    firstEpoch = n;
+  }
   console.log(`chain mode ${chainSettings.mode}: ${redactRpc(chainSettings.rpc_url)}, registry ${chainSettings.registry_program}, mint ${boot.registry.mint} (${boot.decimals} decimals), first epoch ${firstEpoch}`);
 }
 

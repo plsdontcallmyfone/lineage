@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import {
+  BOUNTY_PROGRAM_ID,
   ChainReader,
   DEVNET_V1_PROGRAM_IDS,
   PROGRAM_IDS,
@@ -19,6 +20,7 @@ import {
   type Signer,
 } from "@units/chain";
 import { bountiesOf } from "./bounties.ts";
+import { openBountiesOf } from "./open-bounties.ts";
 import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
@@ -346,6 +348,24 @@ export class ChainBridge {
       this.log(`bounties not mirrored: ${(e as Error).message}`);
     }
 
+    // open bounties (the units_bounty escrow program, docs/plans/OPEN-BOUNTIES.md option A): its Config says whether it is
+    // in use on this network; every Bounty account is mirrored, the open signature looked up once per new bounty
+    let openBounty: { program: string; count: number; configured: boolean } = { program: BOUNTY_PROGRAM_ID, count: 0, configured: false };
+    try {
+      const cfg = await this.reader.openBountyConfig();
+      const obs = cfg ? await this.reader.openBounties() : [];
+      const sigs = new Map<string, string | null>();
+      const known = new Set(openBountiesOf(this.core).known());
+      for (const b of obs.filter((x) => !known.has(x.address))) {
+        const list = await this.reader.rpc.call<{ signature: string }[]>("getSignaturesForAddress", [b.address, { limit: 1000 }]).catch(() => []);
+        sigs.set(b.address, list.length ? list[list.length - 1]!.signature : null);
+      }
+      openBountiesOf(this.core).sync(cfg ? { ...cfg, program: BOUNTY_PROGRAM_ID } : null, obs, (a) => sigs.get(a) ?? null);
+      openBounty = { program: BOUNTY_PROGRAM_ID, count: obs.length, configured: !!cfg };
+    } catch (e) {
+      this.log(`open bounties not mirrored: ${(e as Error).message}`);
+    }
+
     // onchain messages (SPEC 12.5): index every units_msg event into the C2 views
     let messages: unknown = null;
     try {
@@ -444,6 +464,7 @@ export class ChainBridge {
             min_ttl_s: bountyConfig.minTtlS, max_ttl_s: bountyConfig.maxTtlS, refund_grace_s: bountyConfig.refundGraceS, min_amount: s(bountyConfig.minAmount),
             paused: bountyConfig.paused }
         : null },
+      open_bounties: { ...openBounty, settings: openBountiesOf(this.core).settings() },
       agents: kinds,
       messages,
       agents_v1: agents.filter((a) => a.version === 1).length,

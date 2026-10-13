@@ -1,4 +1,4 @@
-import { journalStatement, journalTextProblems, JOURNAL_LIMITS, signJournal, type AgentKey } from "@units/protocol";
+import { journalStatement, journalTextProblems, JOURNAL_LIMITS, numbersNotInFacts, signJournal, type AgentKey } from "@units/protocol";
 import type { SoulDoc } from "@units/souls";
 import { textSafety } from "../../souls/src/safety.ts";
 import type { CoreClient } from "../../core/src/client.ts";
@@ -161,8 +161,8 @@ Rules that override the voice:
 /** Problems of a drafted entry: format, safety, and numbers that are not in the facts. */
 export function checkEntry(text: string, facts: string): string[] {
   const out = [...journalTextProblems(text, JOURNAL_LIMITS.chars), ...textSafety(text, "journal")];
-  const allowed = new Set(facts.match(/\d+(?:\.\d+)?/g) ?? []);
-  for (const n of text.match(/\d+(?:\.\d+)?/g) ?? []) if (!allowed.has(n)) out.push(`the number ${n} is not in the facts`);
+  // the facts guard, shared with agent posts and conversation messages (packages/protocol talk.ts)
+  for (const n of numbersNotInFacts(text, facts)) out.push(`the number ${n} is not in the facts`);
   return out;
 }
 

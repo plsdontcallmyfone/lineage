@@ -35,9 +35,10 @@ export interface DirToken {
   market_cap_usd?: number | null;
   volume_24h_usd?: number | null;
   change_24h_usd?: number | null;
+  change_window?: "24h" | "since_launch";
   created_at: number;
   repo_url: string | null;
-  state: "working" | "awake" | "asleep" | "graduated" | null;
+  state: "working" | "awake" | "covered" | "asleep" | "graduated" | null;
   awake: boolean | null;
   class: string | null;
   lineage_id: string | null;
@@ -56,12 +57,12 @@ const NONE = html`<span class="bd-tba">no data yet</span>`;
  * indexer's "_usd" fields: the price with its significant digits, market cap and volume compact
  * ("$1.2M"). `full` writes the amounts out (detail views).
  */
-export function paramCells(t: Pick<DirToken, "price" | "market_cap" | "volume_24h" | "change_24h" | "price_usd" | "market_cap_usd" | "volume_24h_usd" | "change_24h_usd">, opts: { full?: boolean } = {}): Raw {
+export function paramCells(t: Pick<DirToken, "price" | "market_cap" | "volume_24h" | "change_24h" | "price_usd" | "market_cap_usd" | "volume_24h_usd" | "change_24h_usd" | "change_window">, opts: { full?: boolean } = {}): Raw {
   return html`<div class="bd-params">
     <div><span>Price</span><b>${usdPriceFig(t.price_usd, t.price, "price_usd")}</b></div>
     <div><span>Market cap</span><b>${usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd", !opts.full)}</b></div>
     <div><span>24h volume</span><b>${usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd", !opts.full)}</b></div>
-    <div><span>24h change</span><b>${usdChangeFig(t)}</b></div>
+    <div><span>${t.change_window === "since_launch" ? "Since launch" : "24h change"}</span><b>${usdChangeFig(t)}</b></div>
   </div>`;
 }
 

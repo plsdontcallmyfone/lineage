@@ -92,6 +92,9 @@ const SECRET_RULES: [name: string, re: RegExp][] = [
   ["Slack or Telegram token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b|\b\d{8,10}:AA[A-Za-z0-9_-]{30,}\b/],
   ["home directory path", /\/Users\/[a-z][a-z0-9_-]*\/|\/home\/(?!bun\b|runner\b|lineage\b|units\b|sandbox\b|user\b)[a-z][a-z0-9_-]*\//],
   ["personal email", /[A-Za-z0-9._%+-]+@(?:gmail|outlook|hotmail|yahoo|proton|protonmail|icloud|live)\.[a-z.]{2,}/i],
+  ["personal GitHub account", /plsdontcallmyfone/i],
+  // the test site that preceded mainnet no longer answers; the mainnet site's host has a main- prefix
+  ["retired test site address", /(?<![A-Za-z0-9-])157-245-71-188\.sslip\.io/],
 ];
 
 export interface Finding {
@@ -201,7 +204,7 @@ export function syncTree(dir: string, tree: Tree, o: { check?: boolean; script: 
   return { changed: changed.sort(), extra };
 }
 
-/** Refuses a target that already has a git remote or is inside the monorepo: these exports are local until the owner says otherwise. */
+/** Refuses a target inside the monorepo: the public repositories are checkouts of their own. */
 export function assertLocalCheckout(target: string, monorepo: string): void {
   const inside = (a: string, b: string) => (a + "/").startsWith(b.replace(/\/+$/, "") + "/");
   if (inside(target, monorepo)) throw new Error(`${target} is inside the monorepo; the public repositories live outside it`);

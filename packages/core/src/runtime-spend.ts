@@ -7,6 +7,10 @@ import { purgeOf } from "./purge.ts";
 // of closed usage epochs, its runway, its model and route, and why it waits (for example "provider
 // balance low"). GET /v1/agents/:id/spend serves the latest one to the profile. Every figure is the
 // runtime's own reading; nothing is derived here, and null stays null.
+// A hosted agent the runtime knows but is not bound to (its owner has not signed the bind, or moved
+// the key away) is reported with `bound: false`, null figures and the reason it does not work: that
+// its binding waits for a signature, or, while its repository has no unit, the unit setup sentence
+// (packages/runtime/src/unit-setup.ts).
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runtime_spend (
@@ -57,6 +61,8 @@ function capOf(v: unknown) {
   return {
     max_usd: fin(c.max_usd), window_s: fin(c.window_s), window_start: fin(c.window_start), window_end: fin(c.window_end), spent_usd: fin(c.spent_usd), left_usd: fin(c.left_usd), lifetime_usd: fin(c.lifetime_usd),
     scope: typeof c.scope === "string" && c.scope.length <= 20 ? c.scope : null,
+    // what the vaults could not pay so far (the network's share), when the runtime says
+    ...(c.subsidized_lifetime_usd !== undefined ? { subsidized_lifetime_usd: fin(c.subsidized_lifetime_usd) } : {}),
     past_windows: past.filter((w): w is Record<string, unknown> => !!w && typeof w === "object").map((w) => ({ start: fin(w.start), window_s: fin(w.window_s), usd: fin(w.usd) })),
   };
 }
@@ -84,6 +90,34 @@ function agentDesktopOf(v: unknown) {
   // the id its live stream is served under while it runs (the desktop route's 64 hex; public like a live session's id)
   const stream = typeof d.stream === "string" && /^[0-9a-f]{64}$/.test(d.stream) ? d.stream : null;
   return { state: d.state, why: typeof d.why === "string" && short(d.why) ? d.why : null, since: fin(d.since), ...(d.stream !== undefined ? { stream } : {}) };
+}
+
+/** Network compute (plan section D): the runtime's word that the network pays for this agent's attempts now, with the interval between them; null when absent. */
+function coveredOf(v: unknown): { min_interval_s: number } | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const s = (v as Record<string, unknown>).min_interval_s;
+  return typeof s === "number" && Number.isFinite(s) && s >= 0 && s <= 31_536_000 ? { min_interval_s: s } : null;
+}
+
+/**
+ * True while the hosted runtime's last report names `agent` as covered by the network and that report
+ * is no older than network_compute_report_max_age_s. Reads only: safe inside a transaction (it never
+ * creates the table; with no report ever stored the answer is false).
+ */
+export function computeCovered(core: Core, agent: string): boolean {
+  const c = core as unknown as Internals & { cfg: { network_compute_report_max_age_s: number } };
+  let row: { body: string; reported_at: number } | null;
+  try {
+    row = c.db.query<{ body: string; reported_at: number }, [string]>("SELECT body, reported_at FROM runtime_spend WHERE agent_id = ?").get(agent);
+  } catch {
+    return false;
+  }
+  if (!row || c.now() - row.reported_at > c.cfg.network_compute_report_max_age_s * 1000) return false;
+  try {
+    return coveredOf(JSON.parse(row.body).covered) !== null;
+  } catch {
+    return false;
+  }
 }
 
 const instances = new WeakMap<Core, RuntimeSpend>();
@@ -118,9 +152,10 @@ export class RuntimeSpend {
       if (!AGENT.test(id) || !a || typeof a !== "object") throw bad("bad_spend", `agents.${id.slice(0, 50)}: an agent id and a summary`);
       if (!intStr(a.vault ?? null) || !num(a.vault_usd ?? null) || !intStr(a.burn_per_h ?? null) || !num(a.burn_usd_per_h ?? null) || !num(a.burn_window_s ?? null) || !num(a.runway_h ?? null) || !short(a.waiting ?? null) || !(a.via === null || a.via === undefined || a.via === "direct" || a.via === "openrouter"))
         throw bad("bad_spend", `agents.${id}: vault, vault_usd, burn_per_h, burn_usd_per_h, burn_window_s, runway_h, via, waiting`);
+      if (a.covered !== undefined && a.covered !== null && !coveredOf(a.covered)) throw bad("bad_spend", `agents.${id}.covered: { min_interval_s }`);
       const m = a.model as { provider?: unknown; id?: unknown } | null | undefined;
       if (m != null && !(typeof m.provider === "string" && typeof m.id === "string" && m.provider.length <= 32 && m.id.length <= 100)) throw bad("bad_spend", `agents.${id}.model: { provider, id }`);
-      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}) };
+      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}), ...(a.bound === false ? { bound: false } : {}), ...(coveredOf(a.covered) ? { covered: coveredOf(a.covered) } : {}) };
       put.run(id, JSON.stringify(row), now, by);
     }
     this.c.db.query("INSERT OR REPLACE INTO runtime_spend_global (id, body, reported_at) VALUES (1, ?, ?)").run(JSON.stringify(global), now);

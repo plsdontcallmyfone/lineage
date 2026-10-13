@@ -40,7 +40,18 @@
   "port_share_bps": 2000,
   "_guard_note": "Guard limits on non-target metrics (SPEC 10.1 rule 6, owner 2026-10-11): guard_max_regression is the default max regression (a fraction) seeding guard config version 1; guard_activation_ms 0 = active from Core's first start with this code. Later edits and per-recipe overrides: POST /v1/admin/guard-config.",
   "_features_note": "Feature flags, default off (docs/plans/AGENT-POOLS.md 2, GITHUB-FEE-CLAIMS.md 2): Core serves no pool or fee-claim route and runs no keeper or attestor while a flag is false. UNITS_FEATURE_AGENT_POOLS=1 or UNITS_FEATURE_GITHUB_FEE_CLAIMS=1 turns one on for a single process (a staging Core). The onchain switch is separate: LaunchConfig.features, admin set_features.",
-  "features": { "agent_pools": false, "github_fee_claims": false },
+  "features": { "agent_pools": false, "github_fee_claims": false, "swarms": false },
+  "swarm": {
+    "_note": "Swarms: one coin, several agents (docs/plans/SWARMS.md; owner approval 2026-10-13). Read only while features.swarms is true (UNITS_FEATURE_SWARMS=1 for one process); the admin edits any value with POST /v1/admin/swarms/config. max_members: the largest swarm a launch may declare (owner: 4 at the start). Credits at launch are prepay.min_usd once per seat; that figure is read from prepay, never repeated here. seat_desktop_usd_per_h: what a running screen of seats past seat_desktop_free_seats costs the swarm's vault, at cost: 0.1656 USD per hour is the measured price of the lineage-desktop E2B template (2 vCPU, 4 GiB: 0.000046 USD per second, docs/plans/AGENT-DESKTOPS.md amendment section 4); 0 switches the charge off, null charges the desktop service's own rate. swarm_epoch_max_usd and seat_epoch_max_usd: optional model spend caps per usage epoch. lead_plan_max_usd null: the runtime's journal reserve.",
+    "max_members": 4,
+    "seat_desktop_usd_per_h": 0.1656,
+    "seat_desktop_free_seats": 1,
+    "swarm_epoch_max_usd": null,
+    "seat_epoch_max_usd": null,
+    "slot_fairness": "coin",
+    "lead_plan": true,
+    "lead_plan_max_usd": null
+  },
   "guard_max_regression": 0.01,
   "guard_activation_ms": 0,
   "prepay": {

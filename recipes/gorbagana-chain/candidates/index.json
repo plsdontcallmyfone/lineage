@@ -1,0 +1,10 @@
+{
+  "hash_and_length_once": {
+    "kind": "perf",
+    "target": "add_ir",
+    "expect": "accepted",
+    "note": "slice_hash runs the keyed FNV-1a itself, eight bytes per loop step with the tail byte by byte (the same xor and multiply chain, so the same value for every length), and Bloom::add and Bloom::contains read the bit length once, return for an empty filter and take the remainder by a length known to be non-zero, instead of a checked remainder per key. Bits, counts and answers are unchanged.",
+    "lines": 38,
+    "guard": "ok"
+  }
+}

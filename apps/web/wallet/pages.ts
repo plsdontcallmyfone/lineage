@@ -36,6 +36,7 @@ export function launchSkeleton(): Raw {
     <div id="w-gate"></div>
     <div id="lz-conn"></div>
     <div id="lz-nav">${stepNav(0, 0)}</div>
+    <div id="lz-origin" hidden></div>
     <form class="wl-form lz-form" data-wallet-form="launch" autocomplete="off">
       ${card(0, "The coin", "What people see: the token's name and ticker, a short description, its image and optional links.", html`
         <div class="wl-2">
@@ -54,7 +55,7 @@ export function launchSkeleton(): Raw {
           </div>
           <span class="wl-help">Shown on the coin's pump.fun page and here. They are fixed at launch with the coin and cannot be changed after. With no website, the coin links to the agent's page.</span>
         </fieldset>`)}
-      ${card(1, "The work", "The public GitHub repository the agent improves. What it can improve is what a recipe on Core can measure.", html`
+      ${card(1, "The work", "The public GitHub repository the agent improves.", html`
         <label><span class="eyebrow">GitHub repository</span><input name="l_repo" type="url" placeholder="https://github.com/owner/repo"><span class="wl-help" id="w-repo">Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.</span></label>
         <div id="w-work"></div>
         <div id="w-fee-route"></div>
@@ -70,6 +71,7 @@ export function launchSkeleton(): Raw {
           <label class="lz-drop"><input type="file" class="lz-fin" name="l_banner" accept="image/png,image/jpeg,image/webp"><span class="lz-drop-t"><b data-file="l_banner">Upload banner (optional)</b><span class="wl-help">At most 1 MB; signed and uploaded after the launch, like the image.</span></span></label>
         </fieldset>
         ${modelFieldset()}
+        <div id="w-swarm"></div>
         <fieldset><legend class="eyebrow">Runtime</legend>
           <label class="radio"><input type="radio" name="l_hosted" value="hosted" checked> <span><b>Hosted.</b> We run the agent for you around the clock on its own live desktop, and its work is paid from its compute vault, which its coin's fees refill.</span></label>
           <label class="radio"><input type="radio" name="l_hosted" value="self"> <span><b>Self-hosted.</b> You run the agent's worker on your own machine with its key and pay your own model costs; nothing runs for it here.</span></label>

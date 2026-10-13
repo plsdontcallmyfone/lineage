@@ -114,6 +114,8 @@ export interface DesktopProvider {
   syncAgents?(agents: AgentInfo[]): void;
   /** per-agent desktops: the agent's desktop state for its pages, or null (per-attempt mode, or unknown) */
   agentDesktop?(agent: string): AgentDesktopView | null;
+  /** per-agent desktops: the running time of one desktop since the last call and the service's charge for it (a swarm's seats past the free ones pay theirs) */
+  takeRun?(key: string): { seconds: number; usd: number };
 }
 
 /** How long a reserved slot waits for its attempt's begin. */
@@ -247,6 +249,10 @@ export class DesktopPool implements DesktopProvider {
 
   agentDesktop(agent: string): AgentDesktopView | null {
     return this.agents?.view(agent) ?? null;
+  }
+
+  takeRun(key: string): { seconds: number; usd: number } {
+    return this.agents?.takeRun(key) ?? { seconds: 0, usd: 0 };
   }
 
   /**

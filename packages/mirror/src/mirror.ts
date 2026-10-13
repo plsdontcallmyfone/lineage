@@ -180,6 +180,9 @@ export async function mirrorOnce(o: MirrorOptions): Promise<MirrorReport> {
           pr.action = "pushed";
           pr.detail = head ? `moved from ${head.slice(0, 12)}` : "new branch";
           log(`mirror: ${fork}:${branch} -> ${chain.tip.slice(0, 12)} (${pr.detail})`);
+          // an agent's own fork opens on its work: the branch just published becomes the fork's default
+          // branch (the upstream's history stays on its own branch). Never fatal, never on a shared repository.
+          if (!p.id.repo) await gh.request("PATCH", `/repos/${fork}`, { default_branch: branch }).catch((e) => log(`mirror: ${fork}: default branch not set (${(e as Error).message})`));
         }
       } catch (e) {
         pr.action = "error";

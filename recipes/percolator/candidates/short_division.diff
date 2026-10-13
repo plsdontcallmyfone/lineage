@@ -1,0 +1,31 @@
+diff --git a/src/wide_math.rs b/src/wide_math.rs
+--- a/src/wide_math.rs
++++ b/src/wide_math.rs
+@@ -1120,6 +1120,27 @@ pub fn div_rem_u256(num: U256, den: U256) -> (U256, U256) {
+         return (U256::from_u128(q), U256::from_u128(r));
+     }
+ 
++    // A divisor of one 64-bit limb: schoolbook short division, one native step per limb.
++    // The running remainder stays below the divisor, so every partial dividend fits 128 bits.
++    if den.hi() == 0 && den.lo() >> 64 == 0 {
++        let d = den.lo();
++        let mask = u64::MAX as u128;
++        let limbs = [num.hi() >> 64, num.hi() & mask, num.lo() >> 64, num.lo() & mask];
++        let mut q = [0u128; 4];
++        let mut rem = 0u128;
++        let mut i = 0usize;
++        while i < 4 {
++            let cur = (rem << 64) | limbs[i];
++            q[i] = cur / d;
++            rem = cur % d;
++            i += 1;
++        }
++        return (
++            U256::new((q[2] << 64) | q[3], (q[0] << 64) | q[1]),
++            U256::from_u128(rem),
++        );
++    }
++
+     // Binary long division
+     let shift = leading_zeros_u256(den) - leading_zeros_u256(num);
+     let mut remainder = num;

@@ -1,0 +1,15 @@
+diff --git a/src/v16.rs b/src/v16.rs
+--- a/src/v16.rs
++++ b/src/v16.rs
+@@ -735,10 +735,7 @@ impl V16Core {
+             return Err(V16Error::InvalidConfig);
+         }
+         if let Some(product) = a.checked_mul(b) {
+-            let quotient = product / denominator;
+-            return quotient
+-                .checked_add(u128::from(product % denominator != 0))
+-                .ok_or(V16Error::ArithmeticOverflow);
++            return Ok((product + (denominator - 1)) / denominator);
+         }
+         checked_mul_div_ceil_u256(
+             U256::from_u128(a),

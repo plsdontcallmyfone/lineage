@@ -197,14 +197,9 @@ export async function signAndSend(o: {
     o.onStatus?.("waiting for the wallet to sign");
     const signed = await signTransaction(o.wallet, o.account, unsigned);
     const back = parseWire(signed);
-    if (!sameBytes(back.message, msg.bytes)) {
-      // A wallet that rewrites the message (extra instructions) would invalidate the co-signatures and
-      // change what was reviewed: refuse rather than sign something else.
-      const d = decodeMessage(back.message, o.table ? new Map([[o.table.address, o.table.addresses]]) : undefined);
-      throw new Error(`the wallet changed the transaction (${d.instructions.length} instructions, built ${all.length}); nothing was sent`);
-    }
+    const signedMsg = walletMessage(msg.bytes, back.message, o.table ? [o.table] : []);
     let wire = signed;
-    for (const k of o.local ?? []) wire = placeSignature(wire, k.id, await k.sign(msg.bytes));
+    for (const k of o.local ?? []) wire = placeSignature(wire, k.id, await k.sign(signedMsg));
     return { wire, lastValidBlockHeight };
   };
   if (o.leaveFor || !isMainnet()) {
@@ -242,6 +237,29 @@ export interface BundlePart {
   raw?: boolean;
   local?: WebKey[];
   label: string;
+  /** a v0 message even with no lookup table, so one approval never mixes legacy and v0 messages */
+  v0?: boolean;
+  /**
+   * A signer that is neither the wallet nor a local key (the hosted runtime's key of a bind): asked for
+   * its signature after the wallet signed, before anything is sent. It must hand back the same message.
+   */
+  cosign?: { signer: string; sign: (wire: Uint8Array) => Promise<Uint8Array> };
+  /**
+   * The others do not depend on it and it is the last part. When its signatures cannot be had (the wallet
+   * declined or changed just this one, the co-signer did not answer) or it fails when sent, it is left
+   * out and reported in the answer's `left` instead of failing the rest. `hold`: signed with the others
+   * but never sent from here (reported in `left`, wallet-signed, for its co-signer to send).
+   */
+  optional?: boolean;
+  hold?: boolean;
+}
+
+/** An optional part that was not sent, or failed: why, and its wallet-signed wire when the wallet signed it. */
+export interface LeftPart {
+  label: string;
+  why: string;
+  partial: Uint8Array | null;
+  lastValidBlockHeight: number;
 }
 
 /**
@@ -252,13 +270,36 @@ export interface BundlePart {
  * the first the network refuses or that fails, reporting which landed (the page simulates nothing: the RPC node's own preflight refuses a transaction that would fail). `skip(i)` is asked right before sending
  * transaction i (devnet): true leaves it out (what it carries is already on chain).
  */
+/** Lighthouse, the assertion program wallets add as a guard (it only checks state and fails the transaction; it moves nothing). */
+export const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
+
+/**
+ * The message the wallet signed, when it is the one built or the one built plus the wallet's own guard
+ * instructions (Phantom adds Lighthouse assertions, which can only make the transaction fail, never
+ * move anything). Everything built must still be there, unchanged and in order, and nothing else may
+ * be added: otherwise this throws rather than letting something else be co-signed and sent.
+ */
+function walletMessage(built: Uint8Array, back: Uint8Array, tables: { address: string; addresses: string[] }[], n?: number): Uint8Array {
+  if (sameBytes(back, built)) return built;
+  const map = tables.length ? new Map(tables.map((t) => [t.address, t.addresses] as [string, string[]])) : undefined;
+  const flat = (m: Uint8Array) => decodeMessage(m, map as any).instructions.map((ix: any) => ({ p: ix.programId as string, k: JSON.stringify(ix, (_k, v) => (v instanceof Uint8Array ? Array.from(v) : typeof v === "bigint" ? v.toString() : v)) }));
+  const b = flat(built), g = flat(back);
+  const rest = g.filter((x) => x.p !== LIGHTHOUSE_PROGRAM);
+  if (g.length === rest.length || rest.length !== b.length || !rest.every((x, i) => x.k === b[i]!.k)) {
+    const others = [...new Set(g.map((x) => x.p).filter((p) => !b.some((y) => y.p === p)))];
+    throw new Error(`the wallet changed ${n ? `transaction ${n}` : "the transaction"} (${g.length} instructions, built ${b.length}${others.length ? `; added programs ${others.join(", ")}` : ""}); nothing was sent`);
+  }
+  return back;
+}
+
 export async function signAndSendAll(o: {
   wallet: StdWallet;
   account: StdAccount;
   parts: BundlePart[];
   onStatus?: (s: string) => void;
   skip?: (i: number) => Promise<boolean>;
-}): Promise<{ landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null; bundleId?: string; /** why the mainnet bundle was replaced by ordered sends, when it was */ ordered?: string }> {
+}): Promise<{ landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null; bundleId?: string; /** why the mainnet bundle was replaced by ordered sends, when it was */ ordered?: string;
+  /** optional parts that were not sent or failed (the rest went on without them) */ left: LeftPart[] }> {
   await clusterGate();
   const payer = o.account.address;
   const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
@@ -266,10 +307,12 @@ export async function signAndSendAll(o: {
   for (const p of o.parts) {
     const all = p.raw ? p.ixs : p.price !== undefined ? [...budgetIxs(p.units, p.price), ...p.ixs] : await withBudget(payer, p.ixs, p.units);
     const tables = p.tables ?? (p.table ? [p.table] : []);
-    msgs.push(tables.length ? compileMessageV0(payer, all, blockhash, tables) : compileMessage(payer, all, blockhash));
+    msgs.push(tables.length || p.v0 ? compileMessageV0(payer, all, blockhash, tables) : compileMessage(payer, all, blockhash));
   }
+  const left: LeftPart[] = [];
+  const leave = (p: BundlePart, e: unknown, partial: Uint8Array | null = null) => left.push({ label: p.label, why: String((e as any)?.message ?? e).replace(/\.$/, ""), partial, lastValidBlockHeight });
   o.onStatus?.(`waiting for the wallet to approve ${msgs.length === 1 ? "the transaction" : `all ${msgs.length} transactions at once`}`);
-  let signed: Uint8Array[];
+  let signed: (Uint8Array | null)[];
   try {
     signed = await signTransactions(o.wallet, o.account, msgs.map((m) => unsignedWire(m)));
   } catch (e) {
@@ -279,25 +322,60 @@ export async function signAndSendAll(o: {
     signed = [];
     for (const [i, msg] of msgs.entries()) {
       o.onStatus?.(`the wallet could not approve all at once (${m.replace(/\.$/, "")}); approve transaction ${i + 1} of ${msgs.length}`);
-      signed.push(await signTransaction(o.wallet, o.account, unsignedWire(msg)));
+      const p = o.parts[i]!;
+      try {
+        signed.push(await signTransaction(o.wallet, o.account, unsignedWire(msg)));
+      } catch (e2) {
+        // declining an optional transaction leaves only that one out
+        if (!p.optional) throw e2;
+        signed.push(null);
+        leave(p, e2);
+      }
     }
   }
   const wires: Uint8Array[] = [];
+  const parts: BundlePart[] = [];
   for (const [i, w] of signed.entries()) {
-    if (!sameBytes(parseWire(w).message, msgs[i]!.bytes)) throw new Error(`the wallet changed transaction ${i + 1}; nothing was sent`);
+    const p = o.parts[i]!;
+    if (!w) continue;
     let wire = w;
-    for (const k of o.parts[i]!.local ?? []) wire = placeSignature(wire, k.id, await k.sign(msgs[i]!.bytes));
-    const missing = missingSigners(wire);
-    if (missing.length) throw new Error(`transaction ${i + 1}: signatures missing for ${missing.join(", ")}; nothing was sent`);
+    try {
+      const signedMsg = walletMessage(msgs[i]!.bytes, parseWire(w).message, p.tables ?? (p.table ? [p.table] : []), i + 1);
+      for (const k of p.local ?? []) wire = placeSignature(wire, k.id, await k.sign(signedMsg));
+      if (p.hold) throw new Error("it is sent after the others");
+      if (p.cosign) {
+        const back = await p.cosign.sign(wire);
+        if (!sameBytes(parseWire(back).message, signedMsg)) throw new Error("the co-signer answered with another transaction");
+        wire = back;
+      }
+      const missing = missingSigners(wire);
+      if (missing.length) throw new Error(`transaction ${i + 1}: signatures missing for ${missing.join(", ")}; nothing was sent`);
+    } catch (e) {
+      if (!p.optional) throw e;
+      // what the wallet signed is kept only when it is the transaction that was built (or that plus the wallet's own guard)
+      leave(p, e, /the wallet changed/.test(String((e as Error).message)) ? null : wire);
+      continue;
+    }
     wires.push(wire);
+    parts.push(p);
   }
+  // an optional last part that fails when sent leaves the rest landed and is reported in `left`, not as a failed launch
+  const settle = <T extends { landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null }>(r: T): T & { left: LeftPart[] } => {
+    const f = r.failed;
+    if (f && parts[f.index]?.optional && f.index === parts.length - 1) {
+      leave(parts[f.index]!, f.error);
+      return { ...r, failed: null, left };
+    }
+    return { ...r, left };
+  };
+  if (!wires.length) return { landed: [], failed: null, left };
   let ordered: string | undefined;
   if (isMainnet()) {
     try {
       const sigs = wires.map((w) => wireSignature(w));
       const { bundleId } = await sendJitoBundle(rpc, wires.map((w) => base64Encode(w)), { onStatus: o.onStatus, signatures: sigs });
       const st = await rpc.call<{ value: ({ slot: number; err: unknown } | null)[] }>("getSignatureStatuses", [sigs]);
-      return { bundleId, failed: null, landed: sigs.map((signature, i) => ({ label: o.parts[i]!.label, confirmed: { signature, slot: st.value[i]?.slot ?? 0, err: st.value[i]?.err ?? null, logs: [] } })) };
+      return { bundleId, failed: null, left, landed: sigs.map((signature, i) => ({ label: parts[i]!.label, confirmed: { signature, slot: st.value[i]?.slot ?? 0, err: st.value[i]?.err ?? null, logs: [] } })) };
     } catch (e) {
       // The bundle failed, or Jito did not know it within the grace time, and none of it is on chain. The same
       // signed transactions are sent one by one, in order (sendInOrder): one that did land, before or while
@@ -310,16 +388,16 @@ export async function signAndSendAll(o: {
   const r = await sendInOrder<Confirmed>({
     count: wires.length,
     signature: (i) => wireSignature(wires[i]!),
-    label: (i) => o.parts[i]!.label,
+    label: (i) => parts[i]!.label,
     afterBundle: !!ordered,
     statuses: async (signatures) => (await rpc.call<{ value: (SigStatus | null)[] }>("getSignatureStatuses", [signatures])).value,
     // nothing is simulated by the page (owner 2026-10-12): the RPC node checks each transaction as it takes it (preflight) and refuses one that would fail, before any fee
     send: (i) => sendWire(rpc, wires[i]!, lastValidBlockHeight, o.onStatus, { preflight: true }),
     found: (i, s) => ({ signature: wireSignature(wires[i]!), slot: s.slot, err: null, logs: [] }),
-    skip: o.skip,
+    skip: o.skip ? (i) => o.skip!(o.parts.indexOf(parts[i]!)) : undefined,
     onStatus: o.onStatus,
   });
-  return { landed: r.landed.map((x) => ({ label: x.label, confirmed: x.confirmed })), ordered, failed: r.failed };
+  return settle({ landed: r.landed.map((x) => ({ label: x.label, confirmed: x.confirmed })), ordered, failed: r.failed });
 }
 
 // ---------- amounts ----------

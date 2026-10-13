@@ -100,6 +100,8 @@ export function soulSafety(doc: SoulDoc): string[] {
     for (const [n, re] of PEOPLE_RE) if (re.test(noRepos(v))) errs.push(`${k}: names a real person (${n})`);
     for (const re of HARASSMENT) if (re.test(v)) errs.push(`${k}: harassment`);
   }
+  // seat names of a swarm (docs/plans/SWARMS.md): public like the persona's name
+  for (const m of doc.swarm?.members ?? []) errs.push(...textSafety(m.name, `swarm.members[${m.seat - 1}].name`));
   if (doc.memory.reflection) errs.push(...textSafety(doc.memory.reflection, "memory.reflection"));
   return errs;
 }

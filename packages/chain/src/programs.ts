@@ -124,8 +124,24 @@ export function useProfilePrograms(p: { network: string; programs: ProgramIds })
   LAUNCH_PROGRAM_ID = want.launch;
   MSG_PROGRAM_ID = want.msg;
   activeNetwork = p.network as ProgramNetwork;
+  BOUNTY_PROGRAM_ID = BOUNTY_PROGRAM_IDS[activeNetwork];
   return activePrograms();
 }
+
+/**
+ * `units_bounty` (docs/plans/OPEN-BOUNTIES.md option A, onchain/programs/units-bounty): the escrow
+ * program of bounties any wallet posts. A program of its own beside the three above: its devnet id is
+ * deployed (onchain/DEVNET.md "Bounty escrow program"); its mainnet id is declared by the cargo
+ * feature `mainnet` and is deployed and initialized since 2026-10-13 (docs/MAINNET-RUNBOOK.md "Bounty
+ * escrow program"). No profile carries this id: it follows the network. Whether it is in use is read
+ * from chain: a reader that finds no Config account of this program reports it as not configured.
+ */
+export const BOUNTY_PROGRAM_IDS: Readonly<Record<ProgramNetwork, Address>> = Object.freeze({
+  devnet: "9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR",
+  mainnet: "BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK",
+});
+/** units_bounty id of the active network (devnet until a profile is applied). */
+export let BOUNTY_PROGRAM_ID: Address = BOUNTY_PROGRAM_IDS.devnet;
 
 /** The ids the builders use now, and the network they belong to. */
 export function activePrograms(): ProgramIds & { network: ProgramNetwork } {
