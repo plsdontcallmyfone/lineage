@@ -141,7 +141,7 @@ try {
     page.on("request", (r) => { if (!["GET", "HEAD", "OPTIONS"].includes(r.method()) && !/\/chain\/rpc/.test(r.url())) writes.push(`${r.method()} ${r.url()}`); });
     await page.route("**/api/analytics/project*", (r) => { const name = new URL(r.request().url()).searchParams.get("repo") ?? ""; return r.fulfill({ json: PROJECT(name) }); });
 
-    // the Claim page: the list under the claim steps
+    // the Claim page: the board under the claim card
     await page.goto(`${web.base}/claim`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-fees-list]", { timeout: 60_000 });
     const names = await page.locator("[data-fees-repo]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.feesRepo));
@@ -159,6 +159,7 @@ try {
     await page.waitForSelector("#fees-waiting", { timeout: 60_000 });
     const s = await rules(page, "#fees-waiting");
     check(`${width}: the project page says what waits and who can claim it`, s.text.includes("$530.96 1,327,407 $UNITS is waiting for the owners of acme/engine. Anyone with admin on the repository can claim it.") && /From 2 agents:/.test(s.text) && /nothing claimed so far/.test(s.text) && /waiting since/.test(s.text), s.text);
+    check(`${width}: its Claim button names the amount`, (await page.locator("#fees-waiting [data-fees-claim]").innerText()) === "Claim $530.96");
     check(`${width}: its Claim button opens /claim on that repository, and the address to share is beside it`, (await page.locator("#fees-waiting [data-fees-claim]").getAttribute("href")) === "/claim?repo=acme%2Fengine" && (await page.locator("#fees-waiting [data-fees-share]").getAttribute("href")) === "/claim/acme/engine");
     check(`${width}: the section follows the page's rules`, clean(s), why(s));
     await page.locator("#fees-waiting").scrollIntoViewIfNeeded();
@@ -176,7 +177,7 @@ try {
     await page.goto(`${web.base}/claim/acme/engine`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-fees-page="waiting"]', { timeout: 60_000 });
     const one = await rules(page, ".fw-page");
-    check(`${width}: /claim/acme/engine leads with the amount`, (await page.locator("[data-fees-h]").innerText()).replace(/\s+/g, " ") === "$530.96 is waiting for the owners of acme/engine" && /Agents routing to it 2/.test(one.text) && /20% of its fees/.test(one.text) && /Claimed so far nothing yet/.test(one.text), one.text);
+    check(`${width}: /claim/acme/engine leads with the amount`, (await page.locator("[data-fees-h]").innerText()).replace(/\s+/g, " ") === "$530.96 is waiting for the owners of acme/engine" && /Agents sharing fees 2/.test(one.text) && /20% of its fees/.test(one.text) && /Claimed so far nothing yet/.test(one.text), one.text);
     check(`${width}: its Claim button opens /claim on that repository`, (await page.locator(".fw-page [data-fees-claim]").getAttribute("href")) === "/claim?repo=acme%2Fengine");
     check(`${width}: the page of one repository follows the page's rules`, clean(one), why(one));
     await page.screenshot({ path: join(SHOTS, `waiting-${width}-3-repository.png`), fullPage: true });
@@ -186,11 +187,11 @@ try {
     await page.goto(`${web.base}/claim/acme/quiet`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-fees-page="empty"]', { timeout: 60_000 });
     const q = await rules(page, ".fw-page");
-    check(`${width}: a route that has earned nothing says so, with no figure made up`, /Nothing is waiting for the owners of acme\/quiet/.test(q.text) && /1 agent routes a share of fees to/.test(q.text) && clean(q), why(q));
+    check(`${width}: a route that has earned nothing says so, with no figure made up`, /Nothing is waiting for the owners of acme\/quiet/.test(q.text) && /1 agent shares fees with/.test(q.text) && clean(q), why(q));
     await page.goto(`${web.base}/claim/nobody/nothing`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-fees-page="none"]', { timeout: 60_000 });
     const n = await rules(page, ".fw-page");
-    check(`${width}: a repository nothing is routed to says so`, /No fees are routed to nobody\/nothing/.test(n.text) && !/\$/.test(n.text) && clean(n), why(n));
+    check(`${width}: a repository nothing is routed to says so`, /No fees are shared with nobody\/nothing/.test(n.text) && !/\$/.test(n.text) && clean(n), why(n));
     await page.screenshot({ path: join(SHOTS, `waiting-${width}-4-none.png`), fullPage: false });
     check(`${width}: no page error and nothing written anywhere`, errors.length === 0 && writes.length === 0, [...errors, ...writes].join(" | "));
     await ctx.close();
@@ -209,7 +210,7 @@ try {
     await page.goto(`${web.base}/claim`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-fees-empty]", { timeout: 60_000 });
     const e = await rules(page, "#claim-waiting");
-    check(`${width}: the Claim page's empty state is plain and names no figure`, /No repository has fees waiting\./.test(e.text) && /No agent routes fees to a repository yet\./.test(e.text) && !/\$\d/.test(e.text) && clean(e), why(e));
+    check(`${width}: the Claim page's empty state is plain and names no figure`, /No repository has fees waiting right now\./.test(e.text) && /Launch an agent with fees shared to its repository's owners/.test(e.text) && !/\$\d/.test(e.text) && clean(e), why(e));
     await page.locator("#claim-waiting").scrollIntoViewIfNeeded();
     await page.screenshot({ path: join(SHOTS, `waiting-${width}-5-empty-list.png`), fullPage: true });
     await page.goto(`${web.base}/projects/acme/engine`, { waitUntil: "domcontentloaded" });
@@ -218,7 +219,7 @@ try {
     check(`${width}: the project page has no section then`, (await page.locator("#fees-waiting").count()) === 0);
     await page.goto(`${web.base}/claim/acme/engine`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-fees-page="none"]', { timeout: 60_000 });
-    check(`${width}: the page of one repository says nothing is routed to it`, /No fees are routed to acme\/engine/.test((await rules(page, ".fw-page")).text));
+    check(`${width}: the page of one repository says nothing is routed to it`, /No fees are shared with acme\/engine/.test((await rules(page, ".fw-page")).text));
     await ctx.close();
   }
 } catch (e) {

@@ -103,15 +103,9 @@ export async function claimThroughPage(o: { base: string; wallet: Signer; mode: 
     if (o.mode === "oauth") {
       await page.click('[data-claim="oauth"]');
       await page.waitForSelector("[data-claim-login]", { timeout: 60_000 });
-      if (!(await page.locator('[data-claim="bind"]').count())) {
-        await page.click('[data-claim="connect"]');
-        await page.waitForSelector('[data-claim="bind"]', { timeout: 30_000 });
-      }
-      if (process.env.PAGE_PROOF_DEBUG) {
-        console.log("bind button:", await page.locator('[data-claim="bind"]').innerText());
-        console.log("direct sign:", await page.evaluate(async () => { try { return String((await (window as any).__unitsSignMsg(btoa("hi"))).length); } catch (e) { return "ERR " + e; } }));
-      }
-      await page.click('[data-claim="bind"]');
+      // the card's one action after the sign-in: connect the wallet. The wallet statement is signed with the claim itself (one press)
+      await page.waitForSelector('[data-claim-card][data-claim-state="connect"], [data-claim-wallet]', { timeout: 60_000 });
+      if (await page.locator('[data-claim="connect"]').count()) await page.click('[data-claim="connect"]');
     } else {
       await page.locator("details.cl-gist > summary").click();
       if (await page.locator('details.cl-gist [data-claim="connect"]').count()) await page.click('details.cl-gist [data-claim="connect"]');
@@ -129,7 +123,7 @@ export async function claimThroughPage(o: { base: string; wallet: Signer; mode: 
         const one = async (path: string, init?: RequestInit) => { const t = Date.now(); try { const r = await fetch(path, { ...init, signal: AbortSignal.timeout(5000) }); return `${path} ${r.status} ${Date.now() - t}ms`; } catch (e) { return `${path} ERR ${e}`; } };
         return [await one("/api/fee-claims/providers"), await one("/api/fee-claims/wallet", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), `resources ${performance.getEntriesByType("resource").filter((x: any) => !x.responseEnd).map((x) => x.name).join(",")}`];
       }));
-      throw new Error(`the wallet was not bound: ${(await page.locator(".cl-status").innerText().catch(() => "")).slice(0, 300) || (e as Error).message}; page errors: ${errors.join(" | ").slice(0, 600)}`);
+      throw new Error(`the page does not show the wallet that receives: ${(await page.locator(".cl-status").innerText().catch(() => "")).slice(0, 300) || (e as Error).message}; page errors: ${errors.join(" | ").slice(0, 600)}`);
     });
     await page.waitForSelector("[data-claimable]", { timeout: 60_000 });
     const login = (await page.locator("[data-claim-login]").innerText()).replace(/^@/, "");
@@ -143,7 +137,7 @@ export async function claimThroughPage(o: { base: string; wallet: Signer; mode: 
       if (wide) errors.push("horizontal scroll");
       return { login, claimed: "0", signature: "", per_agent: perAgent, claimable_before: before, claimable_after: before, screenshots: shots, console_errors: errors };
     }
-    await page.click('[data-claim="claim"]');
+    await page.locator('[data-claim="claim"]').first().click();
     await page.waitForSelector("[data-claim-tx]", { timeout: 180_000 });
     await busyDone();
     const signature = (await page.locator("[data-claim-tx]").getAttribute("data-claim-tx"))!;

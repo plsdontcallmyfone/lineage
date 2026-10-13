@@ -301,8 +301,20 @@ describe("fee claims", () => {
     const a = await fetch(start.location!, { redirect: "manual" });
     const cb = new URL(a.headers.get("location")!);
     expect((await get(e, cb.pathname + cb.search)).status).toBe(302);
-    expect((await get(e, cb.pathname + cb.search)).status).toBe(403); // state used
-    expect((await get(e, `/v1/fee-claims/oauth/callback?code=x&state=${"A".repeat(32)}`)).status).toBe(403);
+    // a state that was used, and one that never existed: no session, and the visitor goes back to the claim page with the reason
+    for (const path of [cb.pathname + cb.search, `/v1/fee-claims/oauth/callback?code=x&state=${"A".repeat(32)}`]) {
+      const again = await get(e, path);
+      expect(again.status).toBe(302);
+      expect(again.location).toBe("http://127.0.0.1:9661/claim#signin_error=bad_state");
+    }
+    // the visitor pressed Cancel at GitHub: back to the page the sign-in was started for, and that state is spent
+    const s2 = await get(e, "/v1/fee-claims/oauth/start?json=1&repo=acme/engine");
+    const state = new URL(s2.body.url).searchParams.get("state")!;
+    const denied = await get(e, `/v1/fee-claims/oauth/callback?error=access_denied&state=${state}`);
+    expect(denied.location).toBe("http://127.0.0.1:9661/claim?repo=acme%2Fengine#signin_error=access_denied");
+    expect((await get(e, `/v1/fee-claims/oauth/callback?code=x&state=${state}`)).location).toBe("http://127.0.0.1:9661/claim#signin_error=bad_state");
+    // the reason is one of this module's own codes, and the destination never comes from the request
+    expect((await get(e, `/v1/fee-claims/oauth/callback?error=%3Cscript%3E&state=zz&return_to=https://evil.example`)).location).toBe("http://127.0.0.1:9661/claim#signin_error=bad_callback");
     // return_to may not leave the claim page
     expect((await get(e, "/v1/fee-claims/oauth/start?return_to=https://evil.example/claim")).status).toBe(400);
     expect((await get(e, "/v1/fee-claims/oauth/start?return_to=/claim?id=5")).status).toBe(302);

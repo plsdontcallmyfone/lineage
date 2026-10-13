@@ -436,3 +436,47 @@ Devnet needs its admin to send `set_claim_config` with `min_bps = max_bps = 2000
   mainnet today: no agent has set a route), the preview as X or another site renders it, and the
   tags on a statically hosted copy of the app (they are written by `apps/web/server.ts`).
 
+
+## 13. The Claim page, redesigned (owner 2026-10-13)
+
+"Would like a more seamless design than this. for claiming fees." The page was six stacked panels,
+three of them placeholders ("After step 1."). Proofs, endpoints and the transaction are unchanged.
+
+- **One card.** "Claim fees for your repository", one sentence, one action that changes with what
+  is known: Sign in with GitHub, Connect wallet, then the visitor's repositories with a button each
+  ("Claim $530.96"), money first, then the ones with nothing waiting. The steps are one line
+  (GitHub, Wallet, Claim) with ticks. What the card says is a pure function,
+  `apps/web/wallet/claim-state.ts`, unit-tested state by state and error by error.
+- **One press per claim.** The wallet that receives is the connected one. When this sign-in is not
+  yet tied to it, the press first has the wallet sign the statement (a message; `POST
+  fee-claims/wallet`, as before) and then sends the claim (`POST fee-claims/attest`, the same three
+  instructions). So the first claim of a sign-in is two wallet approvals and every later one is one;
+  the page says which, and shows "Proving your wallet" then "Claiming". Fewer is not possible
+  without weakening a check: the statement is what ties the GitHub account to the wallet, and the
+  program pays only a wallet that signed the transaction. The separate Bind button is gone; a
+  sign-in tied to another wallet has the connected one sign the statement again, as "Bind this one
+  instead" did.
+- **Around it** (`apps/web/src/fees-waiting.ts`, drawn by the shell `pages/claim.ts` with no
+  wallet): four tiles from `GET /v1/fee-claims/waiting` (waiting now, claimed so far, repositories
+  receiving fees, agents sharing fees), the board of repositories with fees waiting, a repository
+  search in the heading whose result is a small card beside the claim card, and "Good to know" with
+  a "How this works" toggle (the bounty explanation's button and panel). The page of one repository
+  and the project page's line carry the same look and a primary Claim that opens `/claim?repo=`.
+- **Words.** A maintainer's: "held for the repository's owners", "checked with GitHub". "No access
+  to your code" is said only when Core's `providers.oauth.scope` is the empty one, and a share in
+  percent only when every listed agent gives the same one. Cost, as the code has it: the claimer
+  pays the network fee and, the first time, the deposit for the wallet's token account
+  (`createAtaIdempotent` is in the claim transaction); the program takes nothing.
+- **One change in Core, to an answer and not to a check.** A sign-in that does not finish
+  (`GET /v1/fee-claims/oauth/callback` refused, or GitHub's own `error=access_denied`) used to
+  leave the visitor on an error document at the callback address. It now answers 302 to the page
+  the sign-in was started for (while its `state` is unspent; else the configured claim page) with
+  `#signin_error=<code>`, and the page says it in words. The destination never comes from the
+  request, and a spent or unknown state still issues no session (`FeeClaims.oauthFailed`, tested).
+- **Proven**: `claim-state.test.ts` 19, `fees-waiting.test.ts` 10, Core `fee-claims.test.ts` 13;
+  `bun scripts/claims/redesign-proof.ts` 120/120 in headless Chromium at 1280 and 390 (every state
+  of the card with a screenshot; the sending of the signed claim is staged there),
+  `repo-page-proof.ts` 34/34 and `waiting-proof.ts` 46/46 on the new page. **Not proven**: anything
+  against github.com (the real sign-in screen, a cancelled sign-in's `error=access_denied`, an
+  organisation that has not approved the app), and a claim on a real chain through the new card
+  (`scripts/pools/devnet-proof.ts` follows the new selectors and was not run).

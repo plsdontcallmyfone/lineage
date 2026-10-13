@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 import { accountDisc, claimPdas, decodeLaunchConfig, LAUNCH_PROGRAM_ID, launchPdas, Rpc, signBytes, Writer, type Address, type Signer } from "@units/chain";
 import { generateAgentKey } from "@units/protocol";
+import sites from "../../config/sites.json" with { type: "json" };
 import { systemClock } from "../../packages/core/src/clock.ts";
 import { loadNetworkConfig } from "../../packages/core/src/config.ts";
 import { Core } from "../../packages/core/src/core.ts";
@@ -26,10 +27,12 @@ import { startMockGithub } from "./mock-github.ts";
 import { startWeb } from "./page-proof.ts";
 
 const arg = (n: string, d: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PORTS = { web: 9666, mock: 9667, core: 9669 };
+// the dashboard never on 9667: it looks for a hosted runtime there by default and would call itself once a wallet connects
+const [WEB, CORE_P] = (process.env.REPO_PAGE_PROOF_PORTS ?? "9668,9669").split(",").map(Number) as [number, number];
+const PORTS = { web: WEB, mock: 0, core: CORE_P };
 const SHOTS = arg("shots", join(tmpdir(), `units-repo-claim-proof-${Date.now()}`));
 mkdirSync(SHOTS, { recursive: true });
-for (const p of Object.values(PORTS)) {
+for (const p of [PORTS.web, PORTS.core]) {
   let pid = "";
   try { pid = execFileSync("lsof", ["-ti", `:${p}`], { encoding: "utf8" }).trim(); } catch { /* free */ }
   if (pid) throw new Error(`port ${p} is in use by pid ${pid}; not binding`);
@@ -131,7 +134,7 @@ async function pageRules(page: import("@playwright/test").Page, sel: string) {
 
 try {
   // the dollar price is the public site's live indexer reading (a read-only GET); every other request stays on this machine
-  web = await startWeb(PORTS.web, `http://127.0.0.1:${PORTS.core}`, "https://app.units.gg");
+  web = await startWeb(PORTS.web, `http://127.0.0.1:${PORTS.core}`, sites.mainnet_site_url.replace(/\/+$/, ""));
   for (const width of [1280, 390]) {
     // ---- /claim as Mona (the mock signs in as its first user)
     const wallet = generateAgentKey() as unknown as Signer;
@@ -144,17 +147,14 @@ try {
     await page.goto(`${web.base}/claim`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-claim="oauth"]', { timeout: 60_000 });
     const first = await pageRules(page, "#claim-root");
-    check(`${width}: signed out, the page offers "Sign in with GitHub" and a repository lookup`, /Sign in with GitHub/.test(first.text) && /Check any repository/.test(first.text) && !first.status, first.status ?? "");
+    check(`${width}: signed out, the page offers "Sign in with GitHub" and a repository search`, /Sign in with GitHub/.test(first.text) && /Check any repository/.test(first.text) && !first.status, first.status ?? "");
     await page.screenshot({ path: join(SHOTS, `claim-${width}-1-signed-out.png`), fullPage: true });
     const tokensBefore = mock.tokenCalls.length;
     await page.click('[data-claim="oauth"]');
     await page.waitForSelector("[data-claim-login]", { timeout: 60_000 });
     const tokenCalls = mock.tokenCalls.slice(tokensBefore);
-    if (!(await page.locator('[data-claim="bind"]').count())) {
-      await page.click('[data-claim="connect"]');
-      await page.waitForSelector('[data-claim="bind"]', { timeout: 30_000 });
-    }
-    await page.click('[data-claim="bind"]');
+    await page.waitForSelector('[data-claim="connect"]', { timeout: 30_000 });
+    await page.click('[data-claim="connect"]');
     await page.waitForSelector("[data-claim-wallet]", { timeout: 60_000 });
     await page.waitForSelector("[data-claim-balances]", { timeout: 60_000 });
     const repos = await page.locator("[data-claim-repo]").evaluateAll((els) => els.map((e) => e.textContent!.trim()));
@@ -164,12 +164,12 @@ try {
     check(`${width}: each repository shows its escrow's balance read from chain`, JSON.stringify(Object.fromEntries(claimable)) === JSON.stringify({ [ENGINE.id]: "1327407400000", [TOOLS.id]: "829696100000" }), JSON.stringify(claimable));
     const r = await pageRules(page, "#claim-root");
     const moneyCells = await page.locator("tr[data-claim-agent] td:last-child").evaluateAll((els) => els.map((e) => e.textContent!.trim().replace(/\s+/g, " ")));
-    const statCells = await page.locator("[data-claim-balances] .stat").evaluateAll((els) => els.map((e) => `${e.querySelector(".v")!.textContent!.trim()} | ${e.querySelector(".s")!.textContent!.trim()}`));
+    const amountCells = await page.locator("[data-claim-balances] .cl-r-amt").evaluateAll((els) => els.map((e) => `${e.querySelector("b")!.textContent!.trim()} | ${e.querySelector("i")!.textContent!.trim()}`));
     check(`${width}: every amount is in US dollars (the live indexer price) with the coin amount beside it`,
-      moneyCells.length === 3 && moneyCells.every((t) => /^\$[\d,.]+ [\d,.]+ UNITS$/.test(t)) && statCells.length === 6 && statCells.every((t) => /^\$[\d,.]+ \| [\d,.]+ UNITS/.test(t)), `${moneyCells[0]}; ${statCells[0]}`);
-    check(`${width}: the page says that any one admin can claim the whole balance`, r.text.includes("Any one admin of acme/engine can claim the whole balance to the wallet they bind."));
+      moneyCells.length === 3 && moneyCells.every((t) => /^\$[\d,.]+ [\d,.]+ \$UNITS$/.test(t)) && amountCells.length === 2 && amountCells.every((t) => /^\$[\d,.]+ \| [\d,.]+ \$UNITS/.test(t)), `${moneyCells[0]}; ${amountCells[0]}`);
+    check(`${width}: the page says that any one admin can claim everything waiting`, r.text.includes("Any one admin of a repository can claim everything waiting for it, to the wallet they connect."));
     const buttons = await page.locator('[data-claim="claim"]').evaluateAll((els) => els.map((e) => [(e as HTMLButtonElement).dataset.repo, (e as HTMLButtonElement).disabled]));
-    check(`${width}: a claim button per repository, enabled once the wallet is bound`, buttons.length === 2 && buttons.every((b) => b[1] === false), JSON.stringify(buttons));
+    check(`${width}: a claim button per repository, enabled once a wallet is connected`, buttons.length === 2 && buttons.every((b) => b[1] === false), JSON.stringify(buttons));
     check(`${width}: Core used the sign-in token for the user and the routed repositories only`, tokenCalls.every((c) => c === "GET /user" || /^GET \/repositories\/\d+$/.test(c)) && tokenCalls.includes("GET /user"), tokenCalls.join(", "));
     const maxWidth = await page.evaluate(() => getComputedStyle(document.querySelector(".cl-page")!).maxWidth);
     check(`${width}: the content width of .cl-page is the one already set`, /px$/.test(maxWidth), maxWidth);
@@ -180,12 +180,12 @@ try {
     await page.fill('[name="cl_lookup"]', "octocat/Hello-World");
     await page.click('[data-claim="lookup"]');
     await page.waitForSelector(`[data-claim-lookup="${HELLO.id}"]`, { timeout: 30_000 });
-    check(`${width}: a lookup shows any repository's balance and offers the sign-in for it`, (await page.locator('[data-claim="oauth-repo"]').getAttribute("data-repo")) === "octocat/Hello-World");
+    check(`${width}: a search shows any repository's balance and offers the sign-in for it`, (await page.locator('[data-claim="oauth-repo"]').getAttribute("data-repo")) === "octocat/Hello-World");
     await page.fill('[name="cl_lookup"]', "mona/unrelated");
     await page.click('[data-claim="lookup"]');
     await page.waitForSelector(`[data-claim-lookup="${OCTO.id}"]`, { timeout: 30_000 }).catch(async (e) => { throw new Error(`lookup of mona/unrelated: ${(await page.locator(".cl-page").innerText()).slice(-600)} ${(e as Error).message.slice(0, 80)}`); });
     const lookedUp = await pageRules(page, "#claim-root");
-    check(`${width}: a repository whose number equals an account-keyed escrow shows nothing to claim`, lookedUp.text.includes("No agent working on this repository routes fees to it.") && !(await page.locator('[data-claim="oauth-repo"]').count()));
+    check(`${width}: a repository whose number equals an account-keyed escrow shows nothing to claim`, lookedUp.text.includes("No agent shares fees with this repository, so there is nothing to claim for it.") && !(await page.locator('[data-claim="oauth-repo"]').count()));
     await page.screenshot({ path: join(SHOTS, `claim-${width}-3-lookup.png`), fullPage: true });
     await ctx.close();
 

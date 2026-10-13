@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CLAIM_SHARE_PATH, claimPreview, loadClaimPreview, usdWords, withPreview } from "../claim-preview.ts";
-import { coins, readWaiting, waitingList, waitingRepoBody, waitingSection, type Waiting } from "../src/fees-waiting.ts";
+import { claimHow, coins, oneShare, readWaiting, waitingList, waitingRepoBody, waitingSection, waitingStats, WAITING_CSS, type Waiting } from "../src/fees-waiting.ts";
 
 // Fees waiting for the owners of a repository (docs/plans/GITHUB-FEE-CLAIMS.md 12): the list on the
 // Claim page, the section on the project page, the page of one repository, and the words a posted
@@ -14,7 +14,7 @@ const row = (name: string, waiting: string, usd: number | null, o: Partial<Waiti
 });
 const USD = { quote_usd: 0.0004, read_at: 1_760_002_000, decimals: 6 };
 const list = (rows: Waiting["repositories"], usd = true): Waiting => ({ repositories: rows, total_waiting: "0", total_waiting_usd: usd ? 0 : null, usd: usd ? USD : null, usd_reason: usd ? null : "the market indexer gave no USD price" });
-const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
 
 describe("fees waiting: what the pages show", () => {
   test("the project page section: dollars first, the coin amount after, the Claim button on that repository", () => {
@@ -27,11 +27,14 @@ describe("fees waiting: what the pages show", () => {
     expect(s).toContain('href="/claim?repo=acme%2Fengine"');
     expect(s).toContain('href="/claim/acme/engine"');
     expect(s).toContain('id="fees-waiting"');
+    // the button says what it claims, and is the primary one only when something waits
+    expect(s).toMatch(/class="wl-btn primary" href="\/claim\?repo=acme%2Fengine" data-fees-claim>Claim \$100\.00</);
     // a route with nothing in the escrow, and a repository nothing is routed to
     const empty = text(waitingSection(list([row("acme/engine", "0", 0)]), "acme/engine").s);
-    expect(empty).toContain("Nothing is waiting for the owners of acme/engine right now. 1 agent routes a share of fees to it");
+    expect(empty).toContain("Nothing is waiting for the owners of acme/engine right now. 1 agent shares fees with it");
     expect(empty).toContain("nothing claimed so far");
     expect(empty).not.toContain("waiting since");
+    expect(waitingSection(list([row("acme/engine", "0", 0)]), "acme/engine").s).toMatch(/class="wl-btn" href="[^"]+" data-fees-claim>Claim</);
     expect(waitingSection(list([row("acme/engine", "5", 1)]), "other/repo").s).toBe("");
     expect(waitingSection(null, "acme/engine").s).toBe("");
   });
@@ -43,11 +46,16 @@ describe("fees waiting: what the pages show", () => {
     expect(text(s)).toContain("Repositories with fees waiting 2");
     expect(text(s)).toContain("$0.024 60 $UNITS");
     expect(s).toContain('href="/projects/octocat/hello-world#fees-waiting"');
-    expect(text(s)).toContain("1 more with a route and nothing waiting.");
+    expect(text(s)).toContain("1 more receives fees and has nothing waiting.");
+    // every row: the repository, what waits, how many agents and since when, and a Claim that opens the flow on it
+    expect(text(s)).toContain("acme/engine 1 agent, waiting since");
+    expect([...s.matchAll(/class="wl-btn fw-claim" href="([^"]+)" data-fees-claim/g)].map((m) => m[1])).toEqual(["/claim?repo=acme%2Fengine", "/claim?repo=octocat%2FHello-World"]);
+    expect(s).toContain('href="/claim/octocat/Hello-World">Details</a>');
     const none = text(waitingList(list([])).s);
-    expect(none).toContain("No repository has fees waiting.");
-    expect(none).toContain("No agent routes fees to a repository yet.");
-    expect(text(waitingList(list([row("acme/quiet", "0", 0)])).s)).toContain("1 agent route a share of fees to a repository; nothing has arrived, or everything was claimed.");
+    expect(none).toContain("No repository has fees waiting right now.");
+    expect(none).toContain("This fills when an agent earns fees for a repository. Launch an agent with fees shared to its repository's owners .");
+    expect(waitingList(list([])).s).toContain('<a class="link" href="/launch">Launch an agent with fees shared to its repository\'s owners</a>');
+    expect(text(waitingList(list([row("acme/quiet", "0", 0)])).s)).toContain("1 agent shares fees with a repository; nothing has arrived yet, or all of it was claimed.");
     // where Core serves no list the page adds nothing
     expect(waitingList(null).s).toBe("");
   });
@@ -56,7 +64,9 @@ describe("fees waiting: what the pages show", () => {
     const has = waitingRepoBody(list([row("acme/engine", "250000000000", 100)]), "acme/engine").s;
     expect(has).toContain('data-fees-page="waiting"');
     expect(text(has)).toContain("$100.00 is waiting for the owners of acme/engine");
-    expect(text(has)).toContain("Fees from agents working on acme/engine . Anyone with admin on the repository can claim them: sign in with GitHub, bind a wallet, claim.");
+    expect(text(has)).toContain("Fees from agents working on acme/engine . Anyone with admin on the repository can claim them.");
+    // the primary button names the amount and lands in the flow with the repository preselected
+    expect(has).toMatch(/class="wl-btn primary" href="\/claim\?repo=acme%2Fengine" data-fees-claim>Claim \$100\.00</);
     expect(text(has)).toContain("20% of its fees");
     expect(has).toContain('href="/claim?repo=acme%2Fengine"');
     const empty = waitingRepoBody(list([row("acme/engine", "0", 0)]), "acme/engine").s;
@@ -64,8 +74,9 @@ describe("fees waiting: what the pages show", () => {
     expect(text(empty)).toContain("Nothing is waiting for the owners of acme/engine");
     const none = waitingRepoBody(list([]), "nobody/nothing").s;
     expect(none).toContain('data-fees-page="none"');
-    expect(text(none)).toContain("No fees are routed to nobody/nothing");
-    expect(none).not.toContain("$");
+    expect(text(none)).toContain("No fees are shared with nobody/nothing");
+    expect(none).not.toMatch(/\$\d/);
+    expect(none).toContain('href="/launch?repo=nobody%2Fnothing"');
     expect(waitingRepoBody(null, "acme/engine").s).toContain('data-fees-page="off"');
   });
 
@@ -82,6 +93,62 @@ describe("fees waiting: what the pages show", () => {
     const kept = readWaiting({ repositories: [row("acme/engine", "5", 1), row("<script>/x", "5", 1), row("a/b", "five", 1), row("a/c", "5", -1 as any)], total_waiting: "5", usd: USD })!;
     expect(kept.repositories.map((r) => r.repository.full_name)).toEqual(["acme/engine"]);
     for (const out of [waitingSection(list([row("acme/engine", "1", 1)]), "acme/engine").s, waitingList(list([])).s]) expect(out).not.toMatch(/\u2014|devnet|TBA|mono/i);
+  });
+});
+
+describe("the Claim page: tiles, the explanation, the words", () => {
+  test("four tiles from the list Core served, and nothing where it served none", () => {
+    const w: Waiting = { ...list([row("acme/engine", "250000000000", 100, { claimed: "40000000000", claimed_usd: 16 }), row("octocat/Hello-World", "60000000", 0.024), row("acme/quiet", "0", 0)]), total_waiting: "250060000000", total_waiting_usd: 100.024 };
+    const t = text(waitingStats(w).s);
+    expect(t).toContain("Waiting now $100.02 250,060 $UNITS");
+    expect(t).toContain("Claimed so far $16.00 40,000 $UNITS, at today's price");
+    expect(t).toContain("Repositories receiving fees 3 2 with fees waiting");
+    expect(t).toContain("Agents sharing fees 3 20% of their fees each");
+    expect(oneShare(w)).toBe(2000);
+    // shares that differ are not averaged into one figure
+    const mixed = list([row("a/b", "5", 1), row("c/d", "5", 1, { agents: [{ agent: AGENT, bps: 1000, routed_total: "5", set_at: 1 }] })]);
+    expect(oneShare(mixed)).toBeNull();
+    expect(text(waitingStats(mixed).s)).toContain("Agents sharing fees 2 with a repository's owners");
+    const none = text(waitingStats(list([])).s);
+    expect(none).toContain("Waiting now $0");
+    expect(none).toContain("Repositories receiving fees 0 none yet");
+    expect(none).toContain("Agents sharing fees 0 none yet");
+    // no dollar reading: the tile says so and no coin count stands in for dollars
+    const dry = text(waitingStats(list([row("acme/engine", "250000000000", null)], false)).s);
+    expect(dry).toContain("Waiting now $ unavailable No US dollar price: the market indexer gave no USD price");
+    expect(waitingStats(null).s).toBe("");
+  });
+
+  test("How this works says only what holds: the share Core served, no access to code only for the empty scope", () => {
+    const full = text(claimHow({ scope: "", share: 2000 }).s);
+    expect(full).toContain("The GitHub sign-in asks for no access to your code.");
+    expect(full).toContain("No GitHub token is kept.");
+    expect(full).toContain("Only someone with admin on the repository can claim.");
+    expect(full).toContain("share 20% of the agent's fees with the owners of the repository it works on");
+    expect(full).toContain("Any one admin can claim all of it, first come.");
+    expect(full).toContain("a team should agree on one wallet before anyone claims");
+    expect(full).toContain("You pay the network fee and, the first time, the small deposit Solana asks for to open the wallet's $UNITS account.");
+    // a wider scope, or one Core did not name: the page does not promise "no access"; with no single share it names no figure
+    for (const scope of ["public_repo", null, undefined]) {
+      const t = text(claimHow({ scope, share: null }).s);
+      expect(t).not.toContain("no access to your code");
+      expect(t).toContain("share part of the agent's fees");
+      expect(t).not.toMatch(/\d+% of the agent/);
+    }
+    // closed until asked for, opened by the bounty explanation's own toggle
+    const h = claimHow({ scope: "" }).s;
+    expect(h).toMatch(/<button type="button" class="rq-btn" aria-expanded="false" aria-controls="(cl-how-\d+)" data-rq-toggle>How this works<\/button>/);
+    expect(h).toMatch(/class="rq-panel" id="cl-how-\d+" role="region" aria-label="How claiming works" hidden>/);
+  });
+
+  test("a maintainer's words, and the page's rules in the style sheet", () => {
+    const w: Waiting = list([row("acme/engine", "250000000000", 100), row("acme/quiet", "0", 0)]);
+    const all = [waitingStats(w).s, waitingList(w).s, waitingList(list([])).s, claimHow({ scope: "", share: 2000 }).s, waitingSection(w, "acme/engine").s, waitingRepoBody(w, "acme/engine").s, waitingRepoBody(w, "acme/quiet").s, waitingRepoBody(list([]), "x/y").s].map(text).join(" ");
+    expect(all).not.toMatch(/escrow|\bCore\b|attest|read from chain|on chain|\bbind|\broute[sd]?\b|\u2014/i);
+    expect(WAITING_CSS).not.toMatch(/mono|courier|menlo|consolas/i);
+    // the content width of the other pages, and one column on a narrow screen
+    expect(WAITING_CSS).toContain(".cl-page{display:grid;gap:20px;max-width:calc(1440px - 2 * var(--pad-x));margin-left:auto;margin-right:auto");
+    expect(WAITING_CSS).toMatch(/@media \(max-width:1100px\)\{\s*\.cl-cols\{grid-template-columns:minmax\(0,1fr\)/);
   });
 });
 

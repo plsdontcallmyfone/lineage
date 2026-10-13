@@ -685,6 +685,27 @@ export class FeeClaims {
   }
 
   /**
+   * Where the browser goes when a sign-in did not finish. The callback is an address the visitor is looking at, so the
+   * reason travels back to the page that started the sign-in instead of being left there as an error document: the
+   * address the sign-in was started for while `state` still names one (spent by this use), else the claim page, with
+   * `signin_error=<code>` in the fragment. Nothing is checked or issued here, and the destination is never taken from the request.
+   */
+  oauthFailed(e: unknown, state: unknown, providerError?: unknown): string {
+    this.on();
+    let back = this.opts.claimPage;
+    if (typeof state === "string" && state) {
+      const row = this.c.db.query<{ return_to: string; created_at: number }, [string]>("SELECT return_to, created_at FROM fee_claim_states WHERE state = ?").get(state);
+      this.c.db.query("DELETE FROM fee_claim_states WHERE state = ?").run(state); // single use
+      if (row && this.c.now() - row.created_at <= 600_000) back = row.return_to;
+    }
+    // GitHub's own word when the visitor pressed Cancel there; otherwise the code of what this module refused
+    const code = providerError === "access_denied" ? "access_denied" : e instanceof ApiError ? e.code : "error";
+    const u = new URL(back);
+    u.hash = `signin_error=${code.replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "error"}`;
+    return u.toString();
+  }
+
+  /**
    * The routed repositories the signed-in user has admin on, asked of GitHub with the user's own token:
    * `GET /repositories/{id}` answers `permissions.admin` for whoever the token belongs to, on a personal
    * and on an organisation repository alike. A small routed set is asked about one by one; a large one is

@@ -412,8 +412,9 @@ export function buildRoutes(core: Core): Route[] {
       return q(c, "json") === "1" ? s : new Response(null, { status: 302, headers: { location: s.url, "cache-control": "no-store" } });
     }),
     route("GET", "/v1/fee-claims/oauth/callback", "none", async (c) => {
-      const r = await feeClaimsOf(core).oauthCallback(q(c, "code"), q(c, "state"));
-      return new Response(null, { status: 302, headers: { location: r.redirect, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+      // a sign-in that did not finish goes back to the page that started it with the reason; the checks are oauthCallback's own
+      const location = await feeClaimsOf(core).oauthCallback(q(c, "code"), q(c, "state")).then((r) => r.redirect, (e) => feeClaimsOf(core).oauthFailed(e, q(c, "state"), q(c, "error")));
+      return new Response(null, { status: 302, headers: { location, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
     }),
     route("GET", "/v1/fee-claims/session", "none", (c) => feeClaimsOf(core).session(q(c, "session"))),
     route("POST", "/v1/fee-claims/proofs/gist", "none", (c) => feeClaimsOf(core).gistProof(c.json())),
