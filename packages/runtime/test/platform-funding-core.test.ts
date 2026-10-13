@@ -45,6 +45,7 @@ describe("network compute with Core (simulated mode)", () => {
 
       const empty = await makeAuthor(env, { hosted: true, fees: 0n }); // never funded: asleep, vault 0
       const low = await makeAuthor(env, { hosted: true, fees: 0n });
+      const paying = await makeAuthor(env, { hosted: true }); // awake: its own vault pays
       // a little in the vault, under the wake threshold: asleep too
       const part = net.wake_threshold / 4n;
       await expectOk(admin.c.post("/v1/admin/agent-fees", { agent: low.id, amount: ((part * 10_000n) / BigInt(net.agent_compute_bps)).toString() }));
@@ -70,7 +71,7 @@ describe("network compute with Core (simulated mode)", () => {
       });
       await rt.start();
       await rt.tick();
-      for (const a of [empty, low]) {
+      for (const a of [empty, low, paying]) {
         const req = JSON.parse(readFileSync(join(cfg.state_dir, "bind-requests", `${a.id}.json`), "utf8"));
         await expectOk(a.c.post(`/v1/agents/${a.id}/keys/rotate`, req.body));
       }
@@ -93,26 +94,27 @@ describe("network compute with Core (simulated mode)", () => {
       await expectOk(as(empty.id).post("/v1/candidates", body("a")));
 
       // usage of covered attempts: 0.30 USD each this epoch
-      const usage = () => ({ input_tokens: 1000, output_tokens: 200, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0.3, sandbox_s: 10, models: ["claude-opus-5-5"], attempts: 1, candidates: [] });
-      rt.state.open.usage[empty.id] = usage();
-      rt.state.open.usage[low.id] = usage();
+      const usage = (network: boolean) => ({ input_tokens: 1000, output_tokens: 200, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0.3, sandbox_s: 10, models: ["claude-opus-5-5"], attempts: 1, candidates: [], ...(network ? { network_usd: 0.3, network_sandbox_s: 10 } : {}) });
+      rt.state.open.usage[empty.id] = usage(true);
+      rt.state.open.usage[low.id] = usage(true);
+      rt.state.open.usage[paying.id] = usage(false);
       rt.store.save();
       await rt.flush();
       const cost = costOf(resolvePrices(cfg, net.token_decimals), 0.3, 10);
-      expect(cost > lowBal).toBe(true);
       const e = rt.state.closed[0]!;
       expect(e.done).toBe(true);
       expect(e.leaves.find((l) => l.agent === empty.id)).toMatchObject({ amount: "0", cost: cost.toString() });
-      expect(e.leaves.find((l) => l.agent === low.id)).toMatchObject({ amount: lowBal.toString(), cost: cost.toString() });
+      expect(e.leaves.find((l) => l.agent === low.id)).toMatchObject({ amount: "0", cost: cost.toString() });
       expect(e.debits[empty.id]).toBe("none"); // no debit was sent for the empty vault
-      expect(e.debits[low.id]).toMatch(/^sim:\d+$/); // and the other agent's went through
+      expect(e.debits[low.id]).toBe("none"); // nor for the vault that holds a little: covered usage is not charged to it
+      expect(e.debits[paying.id]).toMatch(/^sim:\d+$/); // and the vault-paid agent's debit went through in the same epoch
       expect((await view(empty.id)).compute).toBe("0");
-      expect((await view(low.id)).compute).toBe("0"); // all it held, no more
+      expect((await view(low.id)).compute).toBe(lowBal.toString()); // untouched: its fees keep adding up toward the wake threshold
       expect((await expectOk(env.anon.get(`/v1/agents/${empty.id}/usage`))).records.length).toBe(0);
-      const rec = (await expectOk(env.anon.get(`/v1/agents/${low.id}/usage`))).records;
+      expect((await expectOk(env.anon.get(`/v1/agents/${low.id}/usage`))).records.length).toBe(0);
+      const rec = (await expectOk(env.anon.get(`/v1/agents/${paying.id}/usage`))).records;
       expect(rec.length).toBe(1);
-      expect(rec[0].amount).toBe(lowBal.toString());
-      expect(rec[0].detail.cost).toBe(cost.toString()); // the public record keeps the whole cost
+      expect(rec[0].amount).toBe(cost.toString());
       expect(rt.state.subsidized_usd_total!).toBeGreaterThan(0);
       expect(core.ledger.reconcile().ok).toBe(true);
 

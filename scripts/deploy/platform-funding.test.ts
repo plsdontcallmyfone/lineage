@@ -29,7 +29,7 @@ function runtimeJson(instance: "" | "mainnet") {
 test("devnet site: network compute off, every other spend value as it was", () => {
   const r = runtimeJson("");
   expect(r.runtime.mode).toBe("devnet");
-  expect(r.runtime.platform_funding).toEqual({ enabled: false, min_interval_s: 900, attempt_max_usd: null });
+  expect(r.runtime.platform_funding).toEqual({ enabled: false, min_interval_s: 900, attempt_max_usd: null, charge_vault: false });
   expect(r.runtime).toMatchObject({ global_max_usd: 100, global_cap_scope: "all", global_window_s: 86400, attempt_max_usd: 1, attempt_gap_s: 30, agent_epoch_max_usd: null });
   expect(r.out).toContain("network compute off");
   expect(parseConfig({ ...r.runtime, core: "http://x", runtime_key: "k" }).platform_funding?.enabled).toBe(false);
@@ -38,8 +38,8 @@ test("devnet site: network compute off, every other spend value as it was", () =
 test("mainnet instance: network compute on, one attempt every 900 s, under the 800 USD per UTC day cap that counts every dollar", () => {
   const r = runtimeJson("mainnet");
   expect(r.runtime.mode).toBe("mainnet");
-  expect(r.runtime.platform_funding).toEqual({ enabled: true, min_interval_s: 900, attempt_max_usd: null });
+  expect(r.runtime.platform_funding).toEqual({ enabled: true, min_interval_s: 900, attempt_max_usd: null, charge_vault: false });
   expect(r.runtime).toMatchObject({ global_max_usd: 800, global_cap_scope: "all", global_window_s: 86400 });
   expect(r.out).toContain("network compute on (one attempt every 900 s");
-  expect(parseConfig({ ...r.runtime, core: "http://x", runtime_key: "k" }).platform_funding).toEqual({ enabled: true, min_interval_s: 900, attempt_max_usd: null });
+  expect(parseConfig({ ...r.runtime, core: "http://x", runtime_key: "k" }).platform_funding).toEqual({ enabled: true, min_interval_s: 900, attempt_max_usd: null, charge_vault: false });
 });

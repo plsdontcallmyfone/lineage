@@ -42,6 +42,13 @@ export interface AgentUsage {
   desktop_usd?: number;
   desktop_s?: number;
   seats?: Record<string, SeatUsage>;
+  /**
+   * Network compute (plan MODELS-AND-SELF-FUNDING section D): the part of `usd` and `sandbox_s` that
+   * attempts on the network's money used. It is in the record's cost and is not charged to the vault
+   * (unless platform_funding.charge_vault). Absent: none.
+   */
+  network_usd?: number;
+  network_sandbox_s?: number;
 }
 
 export interface SeatUsage {

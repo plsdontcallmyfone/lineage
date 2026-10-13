@@ -186,32 +186,71 @@ describe("network compute (platform_funding)", () => {
   });
 
   for (const scope of ["all", "subsidized"] as const)
-    test(`scope ${scope}: the vault is debited what it holds and never more; the shortfall is subsidized spend under the global cap`, async () => {
+    test(`scope ${scope}: a covered attempt is not charged to the vault at all; its whole cost is subsidized spend under the global cap`, async () => {
       // 0.10 USD in the vault: under the 0.20 floor, so it cannot pay for an attempt
       const s = await setup({ balance: USD / 10n, spend: { usd: 0.3, sandbox_s: 100 }, over: { global_cap_scope: scope } });
       const empty = s.add(0n, false);
       for (let i = 0; i < 4; i++) await s.tick();
       expect(s.starts.length).toBe(2);
       expect(s.starts.every((x) => x.network)).toBe(true);
+      // nothing of it is owed by the vault while the epoch is open
+      expect(s.rt.owed(s.agent)).toBe(0n);
       await s.r.epochs(true);
       const e = s.r.state.closed[0]!;
       const mine = e.leaves.find((l) => l.agent === s.agent)!;
       const zero = e.leaves.find((l) => l.agent === empty)!;
-      // 0.30 USD of model spend plus 100 sandbox s at 0.001 = 0.40 USD of cost each
+      // 0.30 USD of model spend plus 100 sandbox s at 0.001 = 0.40 USD of cost each, none of it debited
       expect(mine.cost).toBe("400000");
-      expect(mine.amount).toBe("100000"); // all the vault holds, no more
+      expect(mine.amount).toBe("0"); // the 0.10 USD the vault holds stays in it
       expect(zero.cost).toBe("400000");
-      expect(zero.amount).toBe("0"); // an empty vault pays nothing, and nothing negative
-      for (const l of e.leaves) expect(BigInt(l.amount) >= 0n && BigInt(l.amount) <= BigInt(l.cost)).toBe(true);
-      expect(s.r.state.subsidized_usd_total).toBeCloseTo(0.3 + 0.4, 9);
-      // the cap's window: every model USD in scope all, the shortfall in scope subsidized
-      expect(s.r.state.window!.usd).toBeCloseTo(scope === "all" ? 0.6 : 0.7, 9);
-      expect(s.rt.capStatus().left_usd).toBeCloseTo(scope === "all" ? 9.4 : 9.3, 9);
-      // a zero leaf is not part of the posted tree: no debit is sent for it, the other agent's is
-      const t = ChainBackend.tree(e);
-      expect(t.items.map((i) => i.l.agent)).toEqual([s.agent]);
+      expect(zero.amount).toBe("0");
+      expect(s.r.state.subsidized_usd_total).toBeCloseTo(0.8, 9);
+      // the cap's window: every model USD in scope all, the whole cost in scope subsidized
+      expect(s.r.state.window!.usd).toBeCloseTo(scope === "all" ? 0.6 : 0.8, 9);
+      expect(s.rt.capStatus().left_usd).toBeCloseTo(scope === "all" ? 9.4 : 9.2, 9);
+      // no leaf with an amount: nothing is posted or debited for the epoch
+      expect(ChainBackend.tree(e).items).toEqual([]);
       await s.rt.stop({ flush: false });
     });
+
+  test("fees arriving while covered are kept: the covered usage does not eat them, and the vault path is back as soon as they cover an attempt", async () => {
+    const s = await setup({ spend: { usd: 0.45 } });
+    for (let i = 0; i < 4; i++) await s.tick();
+    expect(s.starts.map((x) => x.network)).toEqual([true]);
+    // 0.30 USD of fees: under an attempt's floor of 0.20? no, over it, so the vault pays again at once
+    s.chain.set(s.agent, { balance: (3n * USD) / 10n, awake: true });
+    await s.r.refreshAgents();
+    expect(s.rt.owed(s.agent)).toBe(0n);
+    expect(s.r.covered(s.agent)).toBe(false);
+    expect(s.rt.budget(s.agent)).toEqual({ usd: 0.3 }); // the whole deposit, not the deposit less the 0.45 the network paid
+    await s.r.epochs(true);
+    expect(s.r.state.closed[0]!.leaves[0]).toMatchObject({ amount: "0", cost: "450000" });
+    await s.rt.stop({ flush: false });
+  });
+
+  test("a vault-paid attempt and a covered one in the same usage epoch: the vault is charged the first only", async () => {
+    const s = await setup({ balance: USD, spend: { usd: 0.45 } });
+    await s.tick(); // vault-paid: 0.45 of the 1.00
+    await s.tick(); // vault-paid: 0.90
+    await s.tick(); // 0.10 left: under the floor, marked exhausted
+    for (let i = 0; i < 190; i++) await s.tick(); // covered, one interval after the last attempt began
+    expect(s.starts.map((x) => x.network)).toEqual([false, false, true]);
+    expect(s.rt.owed(s.agent)).toBe(900_000n);
+    await s.r.epochs(true);
+    expect(s.r.state.closed[0]!.leaves[0]).toMatchObject({ amount: "900000", cost: "1350000" });
+    expect(s.r.state.subsidized_usd_total).toBeCloseTo(0.45, 9);
+    await s.rt.stop({ flush: false });
+  });
+
+  test("charge_vault true is the earlier rule: the vault pays what it holds toward covered usage, never more", async () => {
+    const s = await setup({ balance: USD / 10n, spend: { usd: 0.3, sandbox_s: 100 }, over: { platform_funding: { enabled: true, min_interval_s: 900, charge_vault: true } } });
+    for (let i = 0; i < 4; i++) await s.tick();
+    await s.r.epochs(true);
+    expect(s.r.state.closed[0]!.leaves[0]).toMatchObject({ amount: "100000", cost: "400000" });
+    expect(s.r.state.subsidized_usd_total).toBeCloseTo(0.3, 9);
+    expect(() => parseConfig({ mode: "sim", core: "http://x", runtime_key: "k", compute_price_line_per_usd: "1", compute_price_line_per_sandbox_s: "0", platform_funding: { enabled: true, charge_vault: "no" } })).toThrow(/charge_vault/);
+    await s.rt.stop({ flush: false });
+  });
 
   for (const scope of ["all", "subsidized"] as const)
     test(`scope ${scope}: the global cap stops a covered agent`, async () => {

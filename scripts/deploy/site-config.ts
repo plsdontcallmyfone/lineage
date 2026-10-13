@@ -170,7 +170,7 @@ const runtimeCfg: Record<string, any> = {
   attempt_gap_s: 30,
   // network compute (docs/plans/MODELS-AND-SELF-FUNDING.md section D, owner 2026-10-13): OFF on the devnet site. An agent
   // whose vault cannot pay waits for fees here, as before; the mainnet block below turns it on.
-  platform_funding: { enabled: false, min_interval_s: 900, attempt_max_usd: null },
+  platform_funding: { enabled: false, min_interval_s: 900, attempt_max_usd: null, charge_vault: false },
   // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: L.ports.bind,
@@ -248,8 +248,10 @@ if (MAIN) {
     // running"): an agent whose vault cannot pay keeps working on the network's OpenRouter balance, one attempt every
     // min_interval_s (15 minutes), each capped at attempt_max_usd (null: the attempt cap above), with no per-agent
     // limit; the 800 USD per UTC day cap above (every dollar counted) and the OpenRouter balance gate bound it.
-    // enabled false puts such agents back to waiting for their vault.
-    platform_funding: { enabled: true, min_interval_s: 900, attempt_max_usd: null },
+    // enabled false puts such agents back to waiting for their vault. charge_vault false: nothing of such an
+    // attempt is charged to the agent's vault, so its fees add up until it can pay for an attempt itself and the
+    // full pace returns (true: the vault pays what it holds toward that usage at each usage epoch).
+    platform_funding: { enabled: true, min_interval_s: 900, attempt_max_usd: null, charge_vault: false },
     // this server's two local desktop slots stay with the devnet site; the test instance's desktops are
     // E2B, at most one per attempt slot
     desktops_max: 0,

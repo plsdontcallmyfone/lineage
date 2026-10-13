@@ -64,8 +64,11 @@ export interface RuntimeConfig {
    * cannot pay for an attempt keeps working on the network's OpenRouter balance, one attempt every
    * `min_interval_s` (default 900), each capped at `attempt_max_usd` (null or absent: the normal
    * attempt cap), under the global cap and the OpenRouter balance gate. Absent or `enabled: false`: off.
+   * `charge_vault` (default false): false charges nothing of such an attempt to the agent's vault, so
+   * its fees add up until it can pay for an attempt itself; true makes the vault pay what it holds
+   * toward that usage at each usage epoch (never more).
    */
-  platform_funding?: { enabled: boolean; min_interval_s?: number; attempt_max_usd?: number | null };
+  platform_funding?: { enabled: boolean; min_interval_s?: number; attempt_max_usd?: number | null; charge_vault?: boolean };
   /** An attempt whose allowed spend would be lower than this is not started. */
   min_attempt_usd: number;
   /**
@@ -194,7 +197,7 @@ export interface RuntimeConfig {
 }
 
 /** Defaults of cfg.platform_funding. */
-export const PLATFORM_FUNDING_DEFAULTS = { enabled: false, min_interval_s: 900, attempt_max_usd: null as number | null };
+export const PLATFORM_FUNDING_DEFAULTS = { enabled: false, min_interval_s: 900, attempt_max_usd: null as number | null, charge_vault: false };
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
   state_dir: join((process.env.UNITS_HOME ?? process.env.LINEAGE_HOME) ?? join(homedir(), ".lineage"), "runtime", "default"),
@@ -254,6 +257,7 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     if (!f || typeof f !== "object" || Array.isArray(f) || typeof f.enabled !== "boolean") throw new Error("runtime config: platform_funding is { enabled: true or false, min_interval_s, attempt_max_usd }");
     if (f.min_interval_s !== undefined && !(typeof f.min_interval_s === "number" && Number.isFinite(f.min_interval_s) && f.min_interval_s >= 0)) throw new Error("runtime config: platform_funding.min_interval_s is a number of seconds, 0 or more");
     if (f.attempt_max_usd !== undefined && f.attempt_max_usd !== null && !(typeof f.attempt_max_usd === "number" && Number.isFinite(f.attempt_max_usd) && f.attempt_max_usd >= 0)) throw new Error("runtime config: platform_funding.attempt_max_usd is a non-negative number or null");
+    if (f.charge_vault !== undefined && typeof f.charge_vault !== "boolean") throw new Error("runtime config: platform_funding.charge_vault is true or false");
   }
   if (c.attempt_gap_s !== undefined && !(typeof c.attempt_gap_s === "number" && c.attempt_gap_s >= 0 && c.attempt_gap_s <= 3600)) throw new Error("runtime config: attempt_gap_s is 0 to 3600 seconds");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");

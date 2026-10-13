@@ -230,12 +230,14 @@ This section adds it, under that cap. The owner's three answers:
 
 **Settings (runtime config, every figure editable).**
 
-    platform_funding: { enabled: false, min_interval_s: 900, attempt_max_usd: null }
+    platform_funding: { enabled: false, min_interval_s: 900, attempt_max_usd: null, charge_vault: false }
 
 `enabled` is false in code and on devnet; scripts/deploy/site-config.ts turns it on for the mainnet
 instance. `min_interval_s`: seconds from the start of one of an agent's attempts to the start of its
 next one while the network pays. `attempt_max_usd`: the cap of such an attempt; null means the normal
-`attempt_max_usd`. Core has one setting of its own, `network_compute_report_max_age_s` (default 600):
+`attempt_max_usd`. `charge_vault`: false (the default, coordinator decision 2026-10-13) charges nothing
+of such an attempt to the agent's vault; true is the first rule of this section, where the vault paid
+what it held toward that usage. Core has one setting of its own, `network_compute_report_max_age_s` (default 600):
 how old the runtime's last report may be for Core to still treat an agent as covered.
 
 **When an agent is covered.** The setting is on, the agent is bound, its repository has a unit, and
@@ -257,19 +259,26 @@ waits with the reason ("global runtime cap ... reached", "provider balance low .
 **What is charged where.** Nothing new is invented in the accounting:
 
 - Every model response and sandbox second of a covered attempt is metered into the agent's usage
-  record exactly as today. Sandbox seconds (the evaluations) of such attempts are paid by the network
+  record exactly as today, and also into the record's `network_usd` and `network_sandbox_s`: the part
+  the network paid for. Sandbox seconds (the evaluations) of such attempts are paid by the network
   too: they are in the record's cost at the published sandbox price.
-- At the close of the usage epoch the leaf's `cost` is the whole usage and its `amount` is
-  `min(cost, vault balance)`: the vault pays what it holds and never more, an empty vault pays 0 and
-  gets no debit transaction (a zero leaf is left out of the posted tree; `debit_compute` refuses 0).
-  A vault that received fees since pays them toward the epoch's usage first.
+- A covered attempt is not charged to the agent's vault at all (decision 2026-10-13, replacing "the
+  vault pays what it holds" of the first version: with that rule a trickle of fees was spent every
+  epoch and never reached the wake threshold, so the agent stayed on the slow pace for ever). What the
+  vault owes is the record without the network's part, so while an agent is covered its fees add up
+  untouched until the vault can pay for an attempt and the chain wakes it; then the normal path and
+  the full pace return.
+- At the close of the usage epoch the leaf's `cost` is the whole usage and its `amount` is the vault's
+  own part, at most what the vault holds. A record with only covered usage has amount 0: it gets no
+  debit transaction (a zero leaf is left out of the posted tree; `debit_compute` refuses 0). A record
+  with a vault-paid attempt and a covered one debits the first only.
 - `cost - amount`, in USD, is added to `subsidized_usd_total` (now kept in both cap scopes; before
-  only in scope "subsidized").
+  only in scope "subsidized"): the whole cost of covered usage.
 - The global cap counts it. Scope "all" (both sites today): every metered USD is in the window as it
   is spent, and every running attempt's unspent reserve is held against it, so a covered attempt is
   capped like any other. Scope "subsidized": the window gets the shortfall at the epoch close, and a
   covered attempt's room is the cap less that window, less the unspent reserves of running covered
-  attempts, less the shortfall the open usage already implies.
+  attempts, less the network's part of the open usage.
 - Posts and the follow step after a session are not covered: they stay vault-paid and wait.
 
 **The chain and Core (read 2026-10-13).**
@@ -309,6 +318,7 @@ shows 0).
 
 **Exit.** Tests (packages/runtime/test/platform-funding.test.ts, Core's runtime-spend test): an empty
 vault starts a covered attempt at most once per interval; a funded vault returns to the vault path;
+covered usage leaves the vault balance unchanged and a later fee deposit brings the vault path back;
 the leaf never debits more than the vault holds; the shortfall is in `subsidized_usd_total` and under
 the global cap in both scopes; the cap and a low OpenRouter balance stop it; a zero leaf does not fail
 the post for other agents; Core accepts a covered asleep agent's candidate and refuses it when the

@@ -419,6 +419,15 @@ export class Runtime {
     return costOf(this.prices, u.usd + (u.desktop_usd ?? 0), u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0);
   }
 
+  /**
+   * What of a usage record its vault is charged: everything but the part attempts on the network's
+   * money used (plan section D; with platform_funding.charge_vault the whole record, as before).
+   */
+  private vaultCost(u: AgentUsage): bigint {
+    if (this.cfg.platform_funding?.charge_vault || !(u.network_usd || u.network_sandbox_s)) return this.usageCost(u);
+    return costOf(this.prices, Math.max(0, u.usd - (u.network_usd ?? 0)) + (u.desktop_usd ?? 0), Math.max(0, u.sandbox_s - (u.network_sandbox_s ?? 0))) + chainCostOf(this.prices, u.chain_lamports ?? 0);
+  }
+
   /** Records lamports this runtime paid for one of the agent's onchain messages (usage line "chain fee"). */
   private meterChain(f: ChainFee): void {
     const u = this.usageOf(f.agent);
@@ -431,7 +440,7 @@ export class Runtime {
   /** Base units already owed by `agent`: its open usage plus closed epochs not yet debited. */
   owed(agent: string): bigint {
     const u = this.state.open.usage[agent];
-    let owed = u ? this.usageCost(u) : 0n;
+    let owed = u ? this.vaultCost(u) : 0n;
     for (const e of this.state.closed) {
       if (e.done || e.debits[agent]) continue;
       const l = e.leaves.find((x) => x.agent === agent);
@@ -541,7 +550,7 @@ export class Runtime {
     let line = avail;
     if (this.limits.maxDebitPerEpoch !== null) {
       let epochOwed = 0n;
-      for (const u of Object.values(this.state.open.usage)) epochOwed += this.usageCost(u);
+      for (const u of Object.values(this.state.open.usage)) epochOwed += this.vaultCost(u);
       for (const a of new Set([...this.attempts.values()].map((x) => x.agent))) epochOwed += this.reservedLine(a);
       const left = this.limits.maxDebitPerEpoch - epochOwed;
       if (left < line) line = left;
@@ -600,8 +609,10 @@ export class Runtime {
     let held = 0;
     for (const a of this.attempts.values()) if (a.network) held += Math.max(0, a.maxUsd - a.totals.usd);
     if (this.prices.perUsd > 0n)
-      for (const agent of Object.keys(this.state.open.usage)) {
-        const gap = this.owed(agent) - (this.vaults.get(agent)?.balance ?? 0n);
+      for (const [agent, u] of Object.entries(this.state.open.usage)) {
+        // what the vault is not charged (the network's part), and what it is charged past what it holds
+        const over = this.owed(agent) - (this.vaults.get(agent)?.balance ?? 0n);
+        const gap = this.usageCost(u) - this.vaultCost(u) + (over > 0n ? over : 0n);
         if (gap > 0n) held += Number((gap * 1_000_000n) / this.prices.perUsd) / 1e6;
       }
     return this.globalLeft() - held;
@@ -730,6 +741,7 @@ export class Runtime {
         s.cache_read_tokens += u.cache_read_tokens;
         s.cache_write_tokens += u.cache_write_tokens;
         s.usd += u.usd;
+        if (a.network) s.network_usd = (s.network_usd ?? 0) + u.usd;
         if (!s.models.includes(u.model)) s.models.push(u.model);
         const su = seatUsage();
         if (su) su.usd += u.usd;
@@ -744,6 +756,7 @@ export class Runtime {
       sandbox: (sec) => {
         a.totals.sandbox_s += sec;
         this.usageOf(a.agent).sandbox_s += sec;
+        if (a.network) this.usageOf(a.agent).network_sandbox_s = (this.usageOf(a.agent).network_sandbox_s ?? 0) + sec;
         const su = seatUsage();
         if (su) su.sandbox_s += sec;
         this.save();
@@ -1557,9 +1570,11 @@ export class Runtime {
         const leaves: ClosedEpoch["leaves"] = [];
         for (const [agent, u] of used) {
           const cost = this.usageCost(u);
+          // the vault is charged its own part (not what the network paid for, plan section D)
+          const due = this.vaultCost(u);
           // a vault cannot pay more than it holds; the shortfall stays in the record (cost) and is never invented
-          const bal = this.vaults.get(agent)?.balance ?? cost;
-          const amount = cost < bal ? cost : bal;
+          const bal = this.vaults.get(agent)?.balance ?? due;
+          const amount = due < bal ? due : bal;
           leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0, ...(u.seats ? { desktop_usd: u.desktop_usd ?? 0, desktop_s: u.desktop_s ?? 0, seats: u.seats } : {}) });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
