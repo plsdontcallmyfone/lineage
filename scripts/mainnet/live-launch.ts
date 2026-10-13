@@ -65,7 +65,7 @@ export function parsePlan(transactions: string, rows: { label: string; usd: stri
 }
 
 /** Why this plan must not be signed, or null. */
-export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; unitsAccount?: boolean }): string | null {
+export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; unitsAccount?: boolean; initialBuy?: boolean }): string | null {
   if (!p.built) return "the page shows no built launch (or still speaks of a simulation)";
   // two transactions with the purchase on the quote coin's curve (or none); three when it is bought on its PumpSwap pool
   // a hosted launch may carry its binding as one more transaction, last and alone (seamless bind, apps/web/wallet/bind-plan.ts)
@@ -75,7 +75,11 @@ export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; un
   if (n !== 2 && n !== 3) return `the plan has ${n} launch transactions, expected 2 or 3 (launch + soul, then the purchase, initial buy, credits and tip)`;
   if (!p.txs[0]!.groups.includes("launch")) return "the first transaction does not carry the launch";
   const later = p.txs.slice(1).flatMap((t) => t.groups);
-  if (!later.includes("credits") || !later.includes("initial-buy")) return "the transactions after the launch do not carry the credits and the initial buy";
+  // the initial buy is a setting (Core's launch fronting, initial_buy_bps): at 0 the launch carries the credits alone
+  const wantBuy = o.initialBuy !== false;
+  if (!later.includes("credits")) return "the transactions after the launch do not carry the credits";
+  if (wantBuy && !later.includes("initial-buy")) return "the transactions after the launch do not carry the initial buy";
+  if (!wantBuy && later.includes("initial-buy")) return "the plan carries an initial buy although the site's initial buy is set to zero";
   const paysAccount = p.txs.some((t) => t.groups.includes("units-account"));
   if (paysAccount && !o.unitsAccount) return "the plan pays for a units account, which this run did not choose";
   if (!paysAccount && o.unitsAccount) return "the units account was chosen and no transaction of the plan pays its fee";
@@ -373,7 +377,8 @@ async function main() {
       const souls1 = (await j("/souls/config")).body;
       S.soul_view = soulText.slice(0, 1500);
       S.soul_by = await page.locator("[data-soul-by]").getAttribute("data-soul-by").catch(() => null);
-      check("wizard, Agent: the soul appeared without a click, written by the site's model (a real model call), not the page's plain fallback", S.soul_by === "model", `${soulText.slice(0, 160)}; by ${S.soul_by}; souls spend today ${souls0?.spent_today_usd} -> ${souls1?.spent_today_usd} USD`);
+      // owner 2026-10-13: every agent's soul is the page's plain one (no model call at launch); a site that still drafts with its model is taken too
+      check("wizard, Agent: the soul appeared without a click (the page's plain soul, or the site's model where a site drafts with one)", (S.soul_by === "launcher" || S.soul_by === "model") && /Digest\s+[0-9a-f]{16}/.test(soulText), `${soulText.slice(0, 160)}; by ${S.soul_by}; souls spend today ${souls0?.spent_today_usd} -> ${souls1?.spent_today_usd} USD`);
       S.model_choice = await page.locator('[name="l_model"]:checked, select[name="l_model"]').first().inputValue().catch(() => "the default (nothing picked)");
       S.runtime_choice = await page.locator('input[name="l_hosted"]:checked').inputValue().catch(() => null);
       check("wizard, Agent: the default model and the hosted runtime are selected", S.runtime_choice === "hosted", `model ${S.model_choice}, runtime ${S.runtime_choice}`);
@@ -438,6 +443,16 @@ async function main() {
       const rows = (await page.locator("#w-launch-out .lz-fronting [data-fronting]").evaluateAll((els: HTMLElement[]) =>
         els.map((e) => ({ label: e.getAttribute("data-fronting") ?? "", usd: e.querySelector("b")?.textContent ?? "", sol: e.querySelector(".dim")?.textContent ?? "" })))) as Plan["rows"];
       const plan = parsePlan((/Transactions(.{0,400}?)(Launch \(one signature\)|$)/.exec(review) ?? ["", review])[1]!, rows, review);
+      // a hosted launch's binding to the runtime rides as one more transaction of the same approval (seamless bind): the page lists
+      // it in the transaction table, not in the Transactions row, and the runtime co-signs it
+      const fronting = (await j("/v1/launch-fronting")).body;
+      const wantBuy = Number(fronting?.initial_buy_bps ?? 100) > 0;
+      const bindRow = (await page.locator("#w-launch-out .lz-tech tr[data-tx]").evaluateAll((els: HTMLElement[]) => els.map((e) => (e.querySelector("td")?.textContent ?? "").replace(/\s+/g, " ").trim()).find((t) => /^bind\b/.test(t)) ?? null).catch(() => null)) as string | null;
+      const approval = (/Approval\s*one signature\s*(\d+) transactions?/i.exec(review) ?? [])[1] ?? null;
+      if (bindRow) plan.txs.push({ groups: ["bind"], bytes: 0, v0: true });
+      S.bind_plan = { in_plan: !!bindRow, row: bindRow, approval_transactions: approval === null ? null : Number(approval), initial_buy_bps: fronting?.initial_buy_bps ?? null };
+      if (S.runtime_choice === "hosted") check("wizard, Review: the hosted runtime's binding rides in the same approval as the launch (one more transaction, co-signed by the runtime)", !!bindRow && Number(approval) === plan.txs.length,
+        bindRow ? `${bindRow.slice(0, 120)}; the Approval row says ${approval} transactions, the plan has ${plan.txs.length}` : "no bind transaction in the plan: the runtime gave no key (down, full or an older release), so the binding would be one more approval after the launch");
       const ids = await page.locator("#w-launch-out .lz-tech").evaluate((e: HTMLElement) => {
         const row = (k: string) => Array.from(e.querySelectorAll("dt, th, .k, span.eyebrow, td")).find((x) => x.textContent?.trim() === k)?.nextElementSibling;
         const a = (k: string) => (row(k)?.querySelector("[title], a, [data-addr]") as HTMLElement | null)?.getAttribute("title") ?? row(k)?.querySelector("a")?.getAttribute("href") ?? row(k)?.textContent ?? null;
@@ -455,9 +470,11 @@ async function main() {
       const forkSpent = Number(fork.launch?.wallet_sol_spent_fork_lamports ?? 0) / 1e9;
       log(`fork figures: the wizard on the fork spent ${forkSpent.toFixed(9)} SOL at the fork's rent; the instruction rehearsal measured 0.097173597 SOL at mainnet rent (docs/MAINNET-COSTS.md), 1,082 and 1,101 bytes`);
       const pageTotal = ((await page.locator("#w-launch-out .lz-tech").evaluate((e: HTMLElement) => e.dataset.launchTotal ?? null).catch(() => null)) as string | null);
-      const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9, unitsAccount: SEED.identity === "units" });
+      const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9, unitsAccount: SEED.identity === "units", initialBuy: wantBuy });
       check("wizard, Review: the launch is built with its cost lines (nothing simulated) and the plan is within the limits (2 transactions, each within a packet, total under --max-sol)", !problem, problem ?? `${plan.txs.length} transactions of ${plan.txs.map((t) => t.bytes).join(" and ")} bytes; total ${plan.total_sol} SOL = ${plan.total_usd} USD; limit ${MAX_SOL} SOL`);
-      if (SWARM > 1) check(`wizard, Review: the Swarm row names ${SWARM} agents, one coin and one vault, before the one signature`, new RegExp(`${SWARM} agents, one coin and one vault`).test(review) && /One signature, as for one agent/.test(review), (/Swarm.{0,400}/.exec(review) ?? ["no Swarm row"])[0].slice(0, 400));
+      // the Swarm row is among the Review step's own rows (#w-review), above the built launch
+      const reviewRows = ((await page.locator("#w-review").evaluate((e: HTMLElement) => e.textContent ?? "").catch(() => "")) as string).replace(/\s+/g, " ");
+      if (SWARM > 1) check(`wizard, Review: the Swarm row names ${SWARM} agents, one coin and one vault, before the one signature`, new RegExp(`${SWARM} agents, one coin and one vault`).test(reviewRows) && /One signature, as for one agent/.test(reviewRows), (/Swarm.{0,400}/.exec(reviewRows) ?? ["no Swarm row"])[0].slice(0, 400));
       const disabled = await page.locator('[data-act="launch-sign"]').isDisabled();
       check("wizard, Review: Launch is enabled (the wallet covers the total)", !disabled, await text("#w-launch-out [data-fronting-short], #w-launch-out .lz-fronting .wl-fine"));
       if (!SEND) {
@@ -466,8 +483,10 @@ async function main() {
         await page.locator('[data-act="launch-sign"]').click();
         await page.waitForFunction(() => /dry run/.test(document.querySelector("#w-launch-status")?.textContent ?? ""), null, { timeout: 90_000 }).catch(() => {});
         S.rpc_methods_to_prompt = { ...rpcCounts };
-        check("dry: Launch asked the wallet once for every transaction, and the page made no simulateTransaction request up to that prompt",
-          signed.length === 1 && signed[0]!.txs.length === plan.txs.length && (rpcCounts.simulateTransaction ?? 0) === 0, `signing requests ${JSON.stringify(signed.map((r) => r.txs.length))}; rpc methods ${JSON.stringify(rpcCounts)}`);
+        // a wallet that refuses the batch is asked again one transaction at a time (apps/web/wallet/chain.ts signAndSendAll, for
+        // wallets that cannot sign several at once): here that second request is refused too
+        check("dry: Launch asked the wallet for every transaction in ONE request (after the refusal the page may ask once more for a single transaction), and the page made no simulateTransaction request up to that prompt",
+          signed.length >= 1 && signed.length <= 2 && signed[0]!.txs.length === plan.txs.length && signed.slice(1).every((r) => r.txs.length === 1) && (rpcCounts.simulateTransaction ?? 0) === 0, `signing requests ${JSON.stringify(signed.map((r) => r.txs.length))}; rpc methods ${JSON.stringify(rpcCounts)}`);
         await shot("7-dry-prompt");
         if (wires[0]) await verifyCosts(page, wires[0], wallet.id);
         return log("dry run: the wallet refused; nothing was signed or sent");
