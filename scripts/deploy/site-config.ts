@@ -176,6 +176,11 @@ const runtimeCfg: Record<string, any> = {
   bind_port: L.ports.bind,
   // the bind surface is the bind service's (units-bind, packages/runtime/src/bind-service.ts): up while this runtime drains or restarts
   bind_service_port: L.ports.bindService,
+  // the key pool for backup bind signatures (packages/runtime/src/pool.ts, docs/plans/SEAMLESS-BIND.md section 10): the
+  // runtime authority funds one nonce account per pool key (rent 1,056,640 lamports as read on mainnet 2026-10-13,
+  // returned when the account closes): 20 ready, refilled below 8, never more than 40 alive (0.0211 SOL at the
+  // target, 0.0423 SOL at the cap), 4 creations a minute, and never a refill that takes the payer under 0.05 SOL
+  bind_pool: { enabled: true, target: 20, low: 8, cap: 40, per_pass: 4, payer_floor_lamports: 50_000_000 },
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
   // (desktop_required: an attempt waits, short retry, until one is free). Desktop hosts first (the
   // hosts file that scripts/deploy/desktop-host/provision.sh fills; none until the owner creates one),
