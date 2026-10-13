@@ -118,7 +118,8 @@ import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
 import { checkedCoinUri, loadCoinOrigin, storeCoinImage, storeCoinLinks, type CoinOrigin } from "./coin-uri.ts";
 export { mountClaim } from "./claim.ts";
 export { mountBountyPost } from "./bounty-post.ts";
-export { mountPoolJoin } from "./pool-join.ts";
+import { mountPoolJoin } from "./pool-join.ts";
+export { mountPoolJoin };
 export { mountTalk } from "./talk.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
@@ -2482,8 +2483,13 @@ async function renderManage() {
     </div>
     <div class="me-sub eyebrow">Hosted runtime</div>
     <div class="me-b2"><p class="wl-fine">A hosted agent starts working once its owner's wallet signs its binding to the hosted runtime.</p><div id="w-rt-bind"><span class="dim">Asking the hosted runtime for its key…</span></div></div>
+    <div class="me-sub eyebrow">Repository pool</div>
+    <div class="me-b2" id="me-pool" data-pool-join-agent="${l.agent}"></div>
     <div class="me-sub eyebrow">Signing key, owner and GitHub token</div>
     <div class="grid-2 me-b2"><div id="w-id"></div><details class="me-kit"><summary class="eyebrow">How rotation works</summary><div id="w-id-kit"></div></details></div>`.s;
+  // open or join the repository's pool for this agent: the Pools page's own component (pool-join.ts)
+  const poolBox = box.querySelector<HTMLElement>("#me-pool");
+  if (poolBox) void mountPoolJoin(poolBox, { agent: l.agent });
   S.ikey = l.agent;
   S.iOut = null;
   S.irec = await reader.agent(l.agent).catch(() => null);

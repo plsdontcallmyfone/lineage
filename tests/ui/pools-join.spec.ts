@@ -121,3 +121,34 @@ test("a connected wallet: its agents, each repository's pool, one action, and th
   await review.locator('[data-pj-act="back"]').click();
   await expect(box.locator(`[data-pj-agent="${agent}"] [data-pj-act="review"]`)).toBeVisible();
 });
+
+// Profile > Manage carries the same component for the one agent being managed.
+test("Profile > Manage: the same join for one agent", async ({ page, wallet, data }) => {
+  const res = await data.core("pools").catch(() => null);
+  test.skip(!res?.config, "pools are not open on this site");
+  await page.goto("/profile");
+  await page.evaluate((n) => localStorage.setItem("lineage-wallet", n), MOCK_WALLET_NAME);
+  await page.reload();
+  const manage = page.locator('.me-cr-act [data-act="me-manage"]').first();
+  const found = await manage.waitFor({ timeout: 120_000 }).then(() => true).catch(() => false);
+  test.skip(!found, "this wallet owns no agent");
+  const agent = await manage.getAttribute("data-agent");
+  await manage.click();
+  const box = page.locator(`#me-manage #me-pool[data-pool-join-agent="${agent}"]`);
+  await box.locator('[data-pj-ready="rows"]').waitFor({ timeout: 120_000 });
+  // exactly this agent, with its state and at most one action
+  await expect(box.locator("[data-pj-agent]")).toHaveCount(1);
+  await expect(box.locator(`[data-pj-agent="${agent}"] [data-pj-line]`)).not.toBeEmpty();
+  const act = box.locator('[data-pj-act="review"]');
+  expect(await act.count()).toBeLessThanOrEqual(1);
+  if (await act.count()) {
+    await act.click();
+    const review = box.locator(`[data-pj-review="${agent}"]`);
+    await review.waitFor({ timeout: 90_000 });
+    await expect(review.locator('[data-pj-fact="undo"]')).toContainText("Joining cannot be undone.");
+    await expect(review.locator('[data-pj-act="sign"]')).toBeEnabled();
+  }
+  expect(wallet.log.filter((x) => x.startsWith("signTransaction"))).toEqual([]);
+  await cleanPage(page);
+  if (process.env.UI_SHOTS) await page.locator("#me-manage").screenshot({ path: `${process.env.UI_SHOTS}/manage-pool-${page.viewportSize()!.width}.png` });
+});
