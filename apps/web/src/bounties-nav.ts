@@ -1,4 +1,5 @@
 import { getOptional } from "./api.ts";
+import { refreshNewDots } from "./new-dot.ts";
 
 // The Bounties link in the header navigation and the footer. It is added only once Core's board
 // answers with settings (the board is open): where bounties are not open the link does not exist,
@@ -89,6 +90,7 @@ export async function wireFeatureLinks(doc: Document = document): Promise<void> 
     if (s.bounties) addBountiesLinks(doc, section());
     if (s.pools) addFeatureLink(doc, section(), "/pools", "Pools");
     if (s.claim) addFeatureLink(doc, section(), "/claim", "Claim");
+    refreshNewDots(doc);
   };
   draw();
   const once = async (): Promise<boolean> => {

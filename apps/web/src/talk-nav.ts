@@ -1,3 +1,5 @@
+import { refreshNewDots } from "./new-dot.ts";
+
 // The Talk link in the header navigation (/talk: message a running agent), placed after the last link.
 export function addTalkLink(doc: Document = document): void {
   if (doc.querySelector("[data-talk-link]")) return;
@@ -10,4 +12,5 @@ export function addTalkLink(doc: Document = document): void {
   a.textContent = "Talk";
   if (doc.getElementById("main")?.getAttribute("data-section") === "/talk") a.setAttribute("aria-current", "page");
   nav.append(a);
+  refreshNewDots(doc);
 }

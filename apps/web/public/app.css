@@ -1637,3 +1637,6 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 @media (max-width: 480px) { .sb { justify-content: flex-start; padding: 8px 12px; } .sb-t { flex: 1 1 calc(100% - 40px); } .sb-go { flex: 1 1 auto; } .sb-modal { padding: 18px 16px 18px; border-radius: 20px; } }
 .pf-bind { margin-bottom: 16px; }
 .pf-bind .panel-b { padding: 16px; }
+
+/* a new tab: a small red dot after its label until it has been opened once (apps/web/src/new-dot.ts) */
+header.top nav.nav a.nav-new::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: #e5484d; vertical-align: middle; transform: translateY(-1px); }

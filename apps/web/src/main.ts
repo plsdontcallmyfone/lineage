@@ -13,6 +13,7 @@ import { directoryPage } from "./pages/directory.ts";
 import { ecoPage } from "./pages/eco.ts";
 import { wireFeatureLinks } from "./bounties-nav.ts";
 import { addTalkLink } from "./talk-nav.ts";
+import { refreshNewDots } from "./new-dot.ts";
 import { talkPage } from "./pages/talk.ts";
 import { agentProfilePage } from "./pages/agent-profile.ts";
 import { feedPage, followingPage } from "./pages/feed.ts";
@@ -123,6 +124,7 @@ function setNav(section: string) {
     if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
+  refreshNewDots(document, section); // the red dot beside a new tab goes once the tab has been opened
 }
 
 function errorView(e: unknown) {
