@@ -11,23 +11,32 @@ export { bpsPct, span, targetWords };
 
 // Bounties (/bounties and /bounties/:id, docs/plans/OPEN-BOUNTIES.md): rewards for a named
 // improvement on a repository's unit, escrowed on chain, won by the first accepted generation whose
-// replay verdict meets the requirement. Everything shown is Core's GET /v1/bounties/board and
+// replay verdict meets the requirement. A bounty is held by one of two programs (`kind`): "escrow",
+// funded by any wallet from its own balance, where the chain itself checks the improvement and pays
+// the earliest generation; or "agent", paid from an agent's compute balance. Everything shown is Core's GET /v1/bounties/board and
 // /v1/bounties/:id/view: amounts are the chain's, in US dollars through the app's one formatter
 // (fmt.ts token()) with the coin amount beside them; every limit is the onchain setting. The post
 // form signs a transaction, so it lives in the wallet bundle (apps/web/wallet/bounty-post.ts) and is
 // mounted on demand. When Core serves no bounty settings the page says bounties are not open.
 
 export interface BountyRow {
-  bounty_id: string; payer: string; opener: string; payee: string | null; amount: string; deadline: number; created_at: number; min_epoch: number;
+  /** which program holds it: any wallet's escrow, or an agent's compute balance (absent on an older Core: an agent's) */
+  kind?: "agent" | "escrow"; funder?: string; fee_bps?: number; refund_after?: number; contest_s?: number;
+  claim?: { winner: string; gen_id: string | null; height: number | null; claimed_at: number | null; contest_until: number | null } | null;
+  bounty_id: string; payer: string | null; opener: string; payee: string | null; amount: string; deadline: number; created_at: number; min_epoch: number;
   status: string; state: "open" | "decided" | "paid" | "expired" | "refunded" | "cancelled"; lineage_id: string; repo: string | null; recipe_name: string | null;
   condition_kind: string; metric: { name: string; kind: string; direction: string } | null; any_target: boolean;
-  required: { bps: number; source: "terms" | "unit" } | null; note: string | null; working: string[];
-  winner: { gen_id: string; author: string | null; height: number; epoch: number | null; improvement_bps: number | null; accepted_at: number } | null;
+  required: { bps: number; source: "terms" | "unit" | "chain" } | null; note: string | null; working: string[];
+  winner: { gen_id: string; author: string | null; height: number; epoch: number | null; improvement_bps: number | null; accepted_at: number | null } | null;
   released_to: string | null; released_epoch: number | null; closed_at: number | null; chain_sig: string | null;
 }
 export interface BountySettings { max_bounty_out_bps: number; self_hosted_in_cap: string; window_s: number; min_ttl_s: number; max_ttl_s: number; refund_grace_s: number; min_amount: string; paused: boolean }
-interface Board { settings: BountySettings | null; posting: { agent_owner: boolean; any_wallet: boolean }; bounties: BountyRow[]; units: unknown[] }
-interface Gen { gen_id: string; height: number; author: string | null; accepted_at: number; epoch: number | null; improvement_bps: number | null; reverted: boolean; in_time: boolean; meets: boolean; payee: string | null }
+/** The escrow program's settings (Core reads them from chain). */
+export interface EscrowSettings { program: string; min_amount: string; min_ttl_s: number; max_ttl_s: number; refund_grace_s: number; contest_s: number; fee_bps: number; paused: boolean }
+interface Board { settings: BountySettings | null; escrow?: EscrowSettings | null; posting: { agent_owner: boolean; any_wallet: boolean }; bounties: BountyRow[]; units: unknown[] }
+interface Gen { gen_id: string; height: number; author: string | null; accepted_at: number; epoch: number | null; improvement_bps: number | null; reverted: boolean; in_time: boolean; meets: boolean;
+  payee?: string | null; after_open?: boolean; payable?: boolean }
+const isEscrow = (b: BountyRow) => b.kind === "escrow";
 
 const day = (unixS: number) => new Date(unixS * 1000).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
@@ -101,7 +110,9 @@ function deadlineCell(b: BountyRow, nowS: number): Raw {
 }
 
 export function bountyCard(b: BountyRow, byAgent: Map<string, DirToken>, nowS = Math.floor(Date.now() / 1000), opts: { link?: boolean } = {}): Raw {
-  const [label, tip] = STATE[b.state];
+  const [label, tip0] = STATE[b.state];
+  // an escrow's reward comes from a wallet and returns to it
+  const tip = isEscrow(b) ? tip0.replace("the paying agent", "the wallet that funded it").replace("after its epoch's challenge window", "once its contest time is over") : tip0;
   const title = targetWords(b);
   return html`<article class="bo-card" data-bounty="${b.bounty_id}" data-state="${b.state}">
     <header class="bo-h">
@@ -119,6 +130,17 @@ export function bountyCard(b: BountyRow, byAgent: Map<string, DirToken>, nowS = 
     </div>
     ${!b.winner && b.working.length ? html`<footer class="bo-foot">${b.working.slice(0, 8).map((a) => who(a, byAgent))}</footer>` : ""}
   </article>`;
+}
+
+/** The limits of bounties any wallet posts: the escrow program's settings. */
+function escrowRules(s: EscrowSettings): Raw {
+  return html`<div class="bo-rules" data-bounty-rules="escrow">
+    <span>Any wallet can post</span>
+    <span>Smallest reward <b>${token(s.min_amount)}</b></span>
+    <span>Deadline from <b>${span(s.min_ttl_s)}</b> to <b>${span(s.max_ttl_s)}</b> away</span>
+    <span>A named winner is paid after <b>${span(s.contest_s)}</b></span>
+    <span>Unclaimed rewards return to their funder <b>${span(s.refund_grace_s)}</b> after the deadline</span>
+    ${s.fee_bps > 0 ? html`<span>Fee on a payout <b>${bpsPct(s.fee_bps)}</b></span>` : ""}${s.paused ? html`<span><b>Paused</b></span>` : ""}</div>`;
 }
 
 function rules(s: BountySettings): Raw {
@@ -140,7 +162,7 @@ const how = (): Raw => html`<section class="bo-how"><h2>How a bounty works</h2><
 const sum = (xs: string[]) => xs.reduce((a, x) => a + BigInt(x), 0n).toString();
 const ORDER: BountyRow["state"][] = ["open", "decided", "paid", "expired", "refunded", "cancelled"];
 
-/** The post form: the wallet bundle mounts it (it reads the chain and signs). */
+/** The post form, or one bounty's next step (the element carries data-bounty-id): the wallet bundle mounts it (it reads the chain and signs). */
 async function mountPost(root: HTMLElement) {
   const el = root.querySelector<HTMLElement>("#bo-post");
   if (!el) return;
@@ -149,7 +171,7 @@ async function mountPost(root: HTMLElement) {
     const m = await import(/* @vite-ignore */ url);
     await m.mountBountyPost(el);
   } catch (e) {
-    el.innerHTML = html`<section class="bo-how"><h2>Post a bounty</h2><p>The form did not load: ${String((e as Error)?.message ?? e)}</p></section>`.s;
+    el.innerHTML = html`<section class="bo-how"><h2>${el.dataset.bountyId ? "Next step" : "Post a bounty"}</h2><p>This did not load: ${String((e as Error)?.message ?? e)}</p></section>`.s;
   }
 }
 
@@ -162,7 +184,7 @@ export async function bountiesPage(): Promise<Page> {
     getOptional<Board>("bounties/board").catch(() => null),
     market<{ tokens: DirToken[] }>("tokens?sort=building&limit=200").catch(() => ({ tokens: [] as DirToken[] })),
   ]);
-  if (!res || !res.settings || !Array.isArray(res.bounties)) {
+  if (!res || (!res.settings && !res.escrow) || !Array.isArray(res.bounties)) {
     return { title: "Bounties", body: html`<style>${raw(CSS)}</style><div class="bo-page">${head}${empty("Bounties are not open yet", "A bounty is a reward for a named improvement, paid when a verified change meets it.")}<div class="bo-cols"><div class="bo-list">${how()}</div></div></div>` };
   }
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
@@ -179,7 +201,7 @@ export async function bountiesPage(): Promise<Page> {
         ${stat("On offer", token(sum(open.map((b) => b.amount)), { compact: true }), "escrowed on chain")}
         ${stat("Paid to winners", token(sum(paid.map((b) => b.amount)), { compact: true }), `${paid.length} bount${paid.length === 1 ? "y" : "ies"} won`)}
         ${stat("Repositories", String(new Set(open.map((b) => b.repo ?? b.lineage_id)).size), "with an open bounty")}
-      </div>${rules(res.settings)}</div>
+      </div>${res.escrow ? escrowRules(res.escrow) : ""}${res.settings && !res.escrow ? rules(res.settings) : ""}</div>
       <div class="bo-cols">
         <div class="bo-list">${rows.length ? rows.map((b) => bountyCard(b, byAgent, nowS)) : empty("No bounty yet", "The first bounty posted shows here with its reward and its deadline.")}</div>
         <aside class="bo-side"><div id="bo-post" class="bo-post"></div>${how()}</aside>
@@ -193,31 +215,41 @@ export async function bountyPage(params: string[]): Promise<Page> {
   injectBuildingStyle();
   const id = params[0]!;
   const [v, list] = await Promise.all([
-    getOptional<{ bounty: BountyRow; generations: Gen[]; settings: BountySettings | null }>(`bounties/${id}/view`),
+    getOptional<{ bounty: BountyRow; generations: Gen[]; settings: BountySettings | null; escrow?: EscrowSettings | null }>(`bounties/${id}/view`),
     market<{ tokens: DirToken[] }>("tokens?sort=building&limit=200").catch(() => ({ tokens: [] as DirToken[] })),
   ]);
   const b = v.bounty;
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
   const w = b.winner;
+  const esc = isEscrow(b);
+  const named = esc && b.claim ? b.claim : null;
   const result: Raw = w
     ? html`<div class="bo-win" data-bounty-winner="${w.gen_id}">${w.author ? who(w.author, byAgent) : ""}<span>won with <a class="link" href="/generations/${w.gen_id}">generation ${w.height}</a></span>${w.improvement_bps !== null ? html`<b>${bpsPct(w.improvement_bps)} better</b>` : ""}</div>
         <p style="margin:10px 0 0">${b.state === "paid"
           ? html`The reward was paid into its compute balance${b.released_epoch !== null ? html`, proven against the record root of epoch ${epochLink(b.released_epoch)}` : ""}.`
-          : html`Accepted ${ago(w.accepted_at)}${w.epoch !== null ? html` in epoch ${epochLink(w.epoch)}` : ""}. The reward is paid into its compute balance once that epoch's challenge window has passed; anyone can send the payout.`}</p>`
+          : esc
+            ? html`${w.accepted_at ? html`Accepted ${ago(w.accepted_at)}` : "Accepted"}${w.epoch !== null ? html` in epoch ${epochLink(w.epoch)}` : ""}. ${named
+              ? html`It is named as the winner on chain. The reward is paid into its compute balance from ${day(named.contest_until ?? 0)}, unless an earlier generation that meets the terms is named before then.`
+              : html`It is the earliest generation that meets the terms. Once it is named on chain, the reward is paid into its compute balance ${span(b.contest_s ?? 0)} later.`} Anyone can send both steps.`
+            : html`Accepted ${ago(w.accepted_at ?? 0)}${w.epoch !== null ? html` in epoch ${epochLink(w.epoch)}` : ""}. The reward is paid into its compute balance once that epoch's challenge window has passed; anyone can send the payout.`}</p>`
     : b.state === "open"
       ? html`<p style="margin:0">No generation has met this yet.${v.generations.length ? " The accepted generations so far are below." : ""}</p>`
-      : html`<p style="margin:0">${STATE[b.state][1]}.</p>`;
+      : html`<p style="margin:0">${esc ? STATE[b.state][1].replace("the paying agent", "the wallet that funded it") : STATE[b.state][1]}.</p>`;
   const gens = v.generations.length
     ? html`<div class="tw"><table class="t" data-bounty-gens><thead><tr><th>Generation</th><th>Agent</th><th class="right">Improvement</th><th>Requirement</th><th>Epoch</th></tr></thead><tbody>
         ${v.generations.map((g) => html`<tr><td><a class="link" href="/generations/${g.gen_id}">${g.height}</a>${g.reverted ? html` <span class="faint">reverted</span>` : ""}</td>
           <td>${g.author ? who(g.author, byAgent) : ""}</td>
           <td class="right num">${g.improvement_bps !== null ? bpsPct(g.improvement_bps) : html`<span class="faint">a fix</span>`}</td>
-          <td>${g.meets ? "met" : "not met"}</td>
+          <td>${g.meets ? (esc && g.after_open === false ? "met, but accepted before the bounty" : esc && g.payable === false ? "met, but its author cannot be paid" : "met") : "not met"}</td>
           <td>${g.epoch === null ? html`<span class="faint">not closed yet</span>` : html`${epochLink(g.epoch)}${g.in_time ? "" : html` <span class="faint">${b.deadline < nowS ? "after the deadline" : "not posted yet"}</span>`}`}</td></tr>`)}
       </tbody></table></div>`
     : html`<div class="bo-b">No accepted generation on this target since the bounty opened.</div>`;
-  const decided = html`<p>The chain holds the reward and checks three things before it pays: the generation was accepted on this unit and this ${b.metric ? "metric" : "target"}, its epoch was posted after the bounty opened and no later than the deadline, and the agent paid is credited as its author.</p>
+  const decided = esc
+    ? html`<p>The chain holds the reward and decides alone. It pays a generation only with a proof against the record root posted for its epoch, and checks that the generation is on this unit and this metric, was accepted after the bounty was posted, sits in an epoch posted no later than the deadline, and improved ${b.metric?.name ?? "the metric"} by at least ${bpsPct(b.required?.bps ?? 0)}.</p>
+      <p>The earliest such generation wins: a named winner waits ${span(b.contest_s ?? 0)}, and in that time an earlier generation that meets the terms replaces it. The measured improvement is the replays' own figure.</p>
+      <p>With no winner named by ${day(b.refund_after ?? b.deadline)}, anyone can return the reward to the wallet that funded it, and to no other.${(b.fee_bps ?? 0) > 0 ? ` A fee of ${bpsPct(b.fee_bps!)} is taken from a payout, never from a returned reward.` : ""}</p>`
+    : html`<p>The chain holds the reward and checks three things before it pays: the generation was accepted on this unit and this ${b.metric ? "metric" : "target"}, its epoch was posted after the bounty opened and no later than the deadline, and the agent paid is credited as its author.</p>
     ${b.required ? html`<p>${b.required.source === "terms"
       ? html`The required improvement of ${bpsPct(b.required.bps)} is in the bounty's terms, whose fingerprint is on chain. The measured improvement comes from the replay verdict of each generation, and the lowest generation that meets it is the winner named here.`
       : html`This bounty asks for any accepted improvement, so the requirement is the unit's own minimum for ${b.metric?.name ?? "the metric"}: ${bpsPct(b.required.bps)}.`}</p>` : ""}
@@ -234,17 +266,20 @@ export async function bountyPage(params: string[]): Promise<Page> {
           <section class="bo-sec"><h2>Accepted generations since it opened</h2>${gens}</section>
         </div>
         <aside class="bo-side">
+          ${esc && b.status === "open" ? html`<div id="bo-post" class="bo-post" data-bounty-id="${b.bounty_id}"></div>` : ""}
           <section class="bo-how"><h2>How this bounty is decided</h2>${decided}</section>
           <section class="bo-how"><h2>On chain</h2><div class="kv">
             <div>Bounty account</div><div title="${b.bounty_id}">${short(b.bounty_id)}</div>
-            <div>Paid from</div><div>${who(b.payer, byAgent)}</div>
+            ${esc ? html`<div>Funded by</div><div title="${b.funder ?? ""}">${short(b.funder ?? "")}</div>` : html`<div>Paid from</div><div>${b.payer ? who(b.payer, byAgent) : ""}</div>`}
             <div>Posted</div><div>${day(b.created_at)}</div>
             <div>Deadline</div><div>${day(b.deadline)}</div>
             <div>Counts from</div><div>epoch ${epochLink(b.min_epoch)}</div>
             ${b.payee ? html`<div>Only pays</div><div>${who(b.payee, byAgent)}</div>` : ""}
+            ${esc && b.refund_after ? html`<div>Returns after</div><div>${day(b.refund_after)}</div>` : ""}
           </div></section>
         </aside>
       </div>
     </div>`,
+    mount: (root) => mountPost(root),
   };
 }

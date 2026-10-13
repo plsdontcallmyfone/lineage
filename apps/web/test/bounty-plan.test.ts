@@ -98,3 +98,70 @@ test("the page's words: target, percentages, spans, and a card with the reward i
   expect(won).toContain("generation 7");
   expect(won).toContain("15% better");
 });
+
+// ---------- bounties any wallet posts (the escrow program) ----------
+
+import { OPEN_BOUNTY_ACCOUNT_LEN } from "../../../packages/chain/src/open-bounty.ts";
+import { ESCROW_BOUNTY_ACCOUNT_LEN, planEscrowBounty, type EscrowInput } from "../wallet/bounty-plan.ts";
+
+const ecfg = { minAmount: 1_000_000n, minTtlS: 3600, maxTtlS: 2_592_000, refundGraceS: 86_400, contestS: 3600, feeBps: 0, paused: false };
+const ebase: EscrowInput = {
+  usd: 500, unitsText: null, priceUsd: 0.02, decimals: 6, hours: 72, nowS: 1_800_000_000, lineageId: "ab".repeat(32), metric: { name: "encode_ir", min_improvement_bps: 100 },
+  pct: 10, note: " make it faster ", cfg: ecfg, walletCoin: 30_000_000_000n, walletLamports: 50_000_000n, rent: { bounty: 3_250_320n, vault: 2_074_080n }, feeLamports: 5_300n,
+};
+
+test("any wallet: the exact coin amount from dollars, the terms the chain enforces, the rent, and what the winner receives", () => {
+  expect(ESCROW_BOUNTY_ACCOUNT_LEN).toBe(OPEN_BOUNTY_ACCOUNT_LEN);
+  const p = planEscrowBounty(ebase);
+  if (!p.ok) throw new Error(p.error);
+  expect(p.amount).toBe(25_000_000_000n);
+  expect(p.deadline).toBe(1_800_000_000n + 72n * 3600n);
+  expect(p.minImprovementBps).toBe(1000);
+  expect(p.terms).toEqual({ v: 1, kind: "improvement", lineage_id: "ab".repeat(32), metric: "encode_ir", min_improvement_bps: 1000, note: "make it faster" });
+  expect([p.termsDigest, p.targetDigest]).toEqual([hashJson(p.terms), hashJson("encode_ir")]);
+  expect([p.rentLamports, p.rentReturned]).toEqual([3_250_320n + 2_074_080n, 2_074_080n]);
+  expect([p.winnerGets, p.fee]).toEqual([25_000_000_000n, 0n]);
+  const fee = planEscrowBounty({ ...ebase, cfg: { ...ecfg, feeBps: 250 } });
+  expect(fee.ok && [fee.winnerGets, fee.fee]).toEqual([24_375_000_000n, 625_000_000n]);
+});
+
+test("any wallet: a wallet that holds SOL but not enough of the coin is told exactly what it needs", () => {
+  const p = planEscrowBounty({ ...ebase, walletCoin: 12_500_000_000n });
+  expect(p.ok).toBe(false);
+  if (p.ok) return;
+  expect(p.short).toEqual({ coin: 12_500_000_000n, needCoin: 12_500_000_000n, lamports: 50_000_000n, needLamports: 0n });
+  expect(p.error).toBe("This wallet cannot post this bounty yet: the reward is 25,000 coins and this wallet holds 12,500: it needs 12,500 more.");
+  const none = planEscrowBounty({ ...ebase, walletCoin: 0n, walletLamports: 1_000n });
+  expect(!none.ok && none.short).toEqual({ coin: 0n, needCoin: 25_000_000_000n, lamports: 1_000n, needLamports: 3_250_320n + 2_074_080n + 5_300n - 1_000n });
+  expect(!none.ok && none.error).toContain("posting costs 0.005330 SOL and this wallet holds 0.000001");
+});
+
+test("any wallet: a reward far beyond the wallet quotes what the wallet really holds, never a stand-in figure", () => {
+  // $3,300,000 of a coin worth $0.00000033 is about 1e19 base units: above a 62-bit balance, inside the chain's 64 bits. The
+  // message names this wallet's own 11 coins.
+  const p = planEscrowBounty({ ...ebase, usd: 3_300_000, priceUsd: 3.3e-7, walletCoin: 11_000_000n });
+  expect(p.ok).toBe(false);
+  if (p.ok) return;
+  const amount = BigInt(Math.floor((3_300_000 / 3.3e-7) * 1e6));
+  expect(amount > 2n ** 62n).toBe(true);
+  expect(p.short).toEqual({ coin: 11_000_000n, needCoin: amount - 11_000_000n, lamports: 50_000_000n, needLamports: 0n });
+  expect(p.error).toContain("this wallet holds 11:");
+  // a figure the chain's 64 bits cannot hold is refused as such
+  const huge = planEscrowBounty({ ...ebase, usd: 1e12, priceUsd: 3.3e-7 });
+  expect(!huge.ok && huge.error).toBe("That reward is more of the coin than exists.");
+});
+
+test("any wallet: every onchain limit refuses in words", () => {
+  const err = (over: Partial<EscrowInput>) => {
+    const p = planEscrowBounty({ ...ebase, ...over });
+    return p.ok ? null : p.error;
+  };
+  expect(err({ cfg: { ...ecfg, paused: true } })).toBe("Bounties are paused.");
+  expect(err({ usd: 0.01 })).toBe("The smallest reward is 1 coins.");
+  expect(err({ hours: 0.5 })).toContain("The deadline is between 60 minutes and 30 days away.");
+  expect(err({ hours: 31 * 24 })).toContain("The deadline is between");
+  expect(err({ pct: 0.5 })).toBe("This metric counts an improvement of at least 1%; require that or more.");
+  expect(err({ pct: 100 })).toBe("The improvement required is below 100%.");
+  expect(err({ usd: null, priceUsd: null, unitsText: "abc" })).toBe("Enter the reward.");
+  expect(err({ priceUsd: null })).toContain("there is no dollar price right now");
+});

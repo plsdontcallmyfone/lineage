@@ -3,7 +3,7 @@
 
 export interface BountyAsk {
   metric: { name: string; direction: string } | null;
-  required: { bps: number; source: "terms" | "unit" } | null;
+  required: { bps: number; source: "terms" | "unit" | "chain" } | null;
   any_target: boolean;
   condition_kind: string;
 }

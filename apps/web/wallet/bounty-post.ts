@@ -1,31 +1,49 @@
 // Post a bounty (/bounties, docs/plans/OPEN-BOUNTIES.md 4.1). Self-contained like claim.ts: its own
 // state and markup, mounted by apps/web/src/pages/bounties.ts into the wallet bundle because it reads
-// the chain and signs. Under the deployed program a bounty is paid from an agent's compute vault and
-// opened by the wallet that owns a self-hosted agent, so that is who gets the form; every other wallet
-// reads who can post. Every limit is the onchain BountyConfig; the review is computed from chain
-// reads (bounty-plan.ts), simulated, and only then signed.
-import { bounty, bountyPdas, launchPdas, type AgentLaunch, type BountyConfig, type BountyLedger } from "../../../packages/chain/src/browser/index.ts";
+// the chain and signs. Two programs hold bounties. Where the escrow program is configured (Core's board
+// says posting.any_wallet), any connected wallet posts from its own balance of the coin: the reward in
+// US dollars with the coin amount, the exact cost before signing, and, when the wallet holds too
+// little of the coin, what it still needs (no purchase is offered here). Under the launch program a
+// bounty is paid from an agent's compute vault and opened by the wallet that owns a self-hosted
+// agent; such a wallet may pick that instead. Every limit is the onchain setting; the review is
+// computed from chain reads (bounty-plan.ts), simulated, and only then signed.
+//
+// The same module draws the next step of one bounty of the escrow program on its own page (name the
+// winner, send the payout, return the reward, withdraw): mountBountyPost on an element that carries
+// data-bounty-id.
+import { ata, bounty, bountyPdas, launch, launchPdas, openBounty, openBountyPdas, token, type AgentLaunch, type BountyConfig, type BountyLedger, type BountyResult,
+  type Ix, type OpenBountyConfig } from "../../../packages/chain/src/browser/index.ts";
 import { repoLabel } from "../src/fmt.ts";
 import { html, raw, type Raw } from "../src/html.ts";
 import { bpsPct, span, targetWords } from "../src/bounty-words.ts";
 import { banner } from "../src/ui.ts";
 import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdReading } from "../src/usd.ts";
-import { BOUNTY_ACCOUNT_LEN, BOUNTY_LEDGER_LEN, planBounty, type Plan, type Terms } from "./bounty-plan.ts";
+import { BOUNTY_ACCOUNT_LEN, BOUNTY_LEDGER_LEN, ESCROW_BOUNTY_ACCOUNT_LEN, escrowTerms, planBounty, planEscrowBounty, type EscrowPlan, type Plan, type Terms } from "./bounty-plan.ts";
 import { buildAndSimulate, loadChainCfg, NET, qsym, reader, rpc, signAndSend, sol, unitPrice, units, type ChainCfg } from "./chain.ts";
 import { connectWallet, onSession, restoreSession, session, startDiscovery } from "./standard.ts";
 
 interface UnitMetric { name: string; kind: string; direction: string; deterministic: boolean; min_improvement_bps: number }
 interface Unit { lineage_id: string; repo: string; recipe_name: string; metrics: UnitMetric[] }
-interface Board { settings: Record<string, unknown> | null; posting: { agent_owner: boolean; any_wallet: boolean }; units: Unit[] }
+interface Board { settings: Record<string, unknown> | null; escrow?: Record<string, unknown> | null; posting: { agent_owner: boolean; any_wallet: boolean }; units: Unit[] }
 type OkPlan = Extract<Plan, { ok: true }>;
+type OkEscrow = Extract<EscrowPlan, { ok: true }>;
 interface Review { plan: OkPlan; payer: AgentLaunch; unit: Unit; metric: UnitMetric; balance: bigint; fee: bigint; bountyId: bigint }
+/** The review of a bounty posted from the wallet's own balance. */
+interface WalletReview { plan: OkEscrow; unit: Unit; metric: UnitMetric; balance: bigint; fee: bigint; bountyId: bigint }
+/** What the wallet lacks for the reward it entered. */
+interface Short { coin: bigint; needCoin: bigint; lamports: bigint; needLamports: bigint }
+const WALLET = "wallet";
 
 const COMPUTE_UNITS = 300_000;
 const PENDING = "units.bounty.terms";
 
-const B: { root: HTMLElement | null; board: Board | null; chain: ChainCfg | null; cfg: BountyConfig | null; mine: AgentLaunch[] | null; hosted: number; loadedFor: string | null;
-  review: Review | null; busy: string | null; err: string | null; done: { address: string; signature: string; terms: boolean } | null } =
-  { root: null, board: null, chain: null, cfg: null, mine: null, hosted: 0, loadedFor: null, review: null, busy: null, err: null, done: null };
+const B: { root: HTMLElement | null; board: Board | null; chain: ChainCfg | null; cfg: BountyConfig | null; ecfg: OpenBountyConfig | null; mine: AgentLaunch[] | null; hosted: number;
+  loadedFor: string | null; review: Review | null; wreview: WalletReview | null; short: Short | null; busy: string | null; err: string | null;
+  done: { address: string; signature: string; terms: boolean } | null } =
+  { root: null, board: null, chain: null, cfg: null, ecfg: null, mine: null, hosted: 0, loadedFor: null, review: null, wreview: null, short: null, busy: null, err: null, done: null };
+/** The escrow program is offered: Core's board says any wallet posts, and its Config was read from chain. */
+const anyWallet = () => !!B.board?.posting.any_wallet && !!B.ecfg && !B.ecfg.settings.paused;
+const agentPath = () => !!B.board?.posting.agent_owner && !!B.cfg && !!B.mine?.length;
 
 const me = () => session().account?.address ?? null;
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
@@ -77,8 +95,9 @@ async function loadMine() {
   B.mine = null;
   render();
   try {
-    const [launches, agents, cfg] = await Promise.all([reader.launches(), reader.agents(), reader.bountyConfig()]);
+    const [launches, agents, cfg, ecfg] = await Promise.all([reader.launches(), reader.agents(), reader.bountyConfig(), reader.openBountyConfig().catch(() => null)]);
     if (me() !== w) return;
+    B.ecfg = ecfg;
     const owner = new Map(agents.map((a) => [a.agent, a.owner]));
     const owned = launches.filter((l) => owner.get(l.agent) === w);
     B.cfg = cfg;
@@ -108,9 +127,75 @@ async function act(label: string, fn: () => Promise<void>) {
 
 const actions: Record<string, () => unknown> = {
   connect: () => act("Connecting the wallet", async () => { await connectWallet(); }),
-  back: () => { B.review = null; B.err = null; render(); },
-  again: () => { B.done = null; B.review = null; render(); },
-  review: () => act("Reading the chain", async () => {
+  back: () => { B.review = null; B.wreview = null; B.err = null; render(); },
+  again: () => { B.done = null; B.review = null; B.wreview = null; render(); },
+  review: () => (val("bo_payer") === WALLET || !agentPath() ? reviewWallet() : reviewAgent()),
+  sign: () => (B.wreview ? signWallet() : signAgent()),
+};
+
+/** Review of a bounty paid from the wallet's own balance (the escrow program). */
+const reviewWallet = () => act("Reading the chain", async () => {
+  const c = B.ecfg, w = me(), st = B.chain?.state;
+  B.short = null;
+  if (!c || !w || !st) throw new Error("The chain settings are not loaded yet.");
+  const unit = B.board?.units.find((u) => u.lineage_id === val("bo_unit"));
+  const metric = unit?.metrics.find((m) => m.name === val("bo_metric"));
+  if (!unit || !metric) throw new Error("Pick a repository and a metric.");
+  const reading = await loadUsd("", fetch, 10_000);
+  const mine = ata(w, st.line_mint, st.line_token_program);
+  const [held, lamports, rentBounty, rentVault] = await Promise.all([
+    reader.tokenBalance(mine), rpc.getBalance(w), rpc.getMinimumBalanceForRentExemption(ESCROW_BOUNTY_ACCOUNT_LEN),
+    // the escrow is a token account of the coin's mint: it costs what the wallet's own such account holds in rent, or the fee vault's
+    rpc.getAccountInfo(openBountyPdas.feeVault()).then((a) => a?.lamports ?? null),
+  ]);
+  if (rentVault === null) throw new Error("The bounty program did not answer.");
+  const bountyId = BigInt(Date.now());
+  const byUsd = reading.ok;
+  const input = {
+    usd: byUsd ? Number(val("bo_reward").replace(/[$,\s]/g, "")) : null, unitsText: byUsd ? null : val("bo_reward"), priceUsd: reading.ok ? reading.usd : null, decimals: dec(),
+    hours: Number(val("bo_days")) * 24, nowS: Math.floor(Date.now() / 1000), lineageId: unit.lineage_id, metric, pct: Number(val("bo_pct").replace("%", "")), note: val("bo_note"),
+    cfg: c.settings, walletCoin: held ?? 0n, walletLamports: BigInt(lamports), rent: { bounty: BigInt(rentBounty), vault: BigInt(rentVault) },
+  };
+  // the terms first, on their own; then the network fee at the current priority price; then what this wallet really holds against both
+  const terms = escrowTerms(input);
+  if (!terms.ok) throw new Error(terms.error);
+  const ix = walletOpenIx(w, unit, terms, bountyId);
+  const fee = 5000n + BigInt(Math.ceil((COMPUTE_UNITS * (await unitPrice(w, [ix]))) / 1_000_000));
+  const plan = planEscrowBounty({ ...input, feeLamports: fee });
+  if (!plan.ok) {
+    B.short = plan.short ?? null;
+    throw new Error(plan.error);
+  }
+  const built = await buildAndSimulate(w, [ix], COMPUTE_UNITS);
+  if (built.sim.err) throw new Error(`The chain refuses this bounty: ${(built.sim.logs ?? []).filter((l) => /Error|failed/.test(l)).pop() ?? JSON.stringify(built.sim.err)}`);
+  B.wreview = { plan, unit, metric, balance: held ?? 0n, bountyId, fee };
+});
+
+const signWallet = () => act("Waiting for the wallet", async () => {
+  const r = B.wreview, s = session(), w = me();
+  if (!r || !s.wallet || !s.account || !w) throw new Error("Connect the wallet again.");
+  const address = openBountyPdas.bounty(w, r.bountyId);
+  setPending({ ...pending(), [address]: r.plan.terms });
+  const out = await signAndSend({ wallet: s.wallet, account: s.account, ixs: [walletOpenIx(w, r.unit, r.plan, r.bountyId)], units: COMPUTE_UNITS });
+  const c = out.confirmed!;
+  if (c.err) {
+    const p = pending();
+    delete p[address];
+    setPending(p);
+    throw new Error(`The transaction failed: ${JSON.stringify(c.err)}`);
+  }
+  B.done = { address, signature: c.signature, terms: await sendTerms(address, r.plan.terms) };
+  B.wreview = null;
+  if (!B.done.terms) void retryTerms(address, r.plan.terms);
+});
+
+function walletOpenIx(w: string, unit: Unit, plan: OkEscrow, bountyId: bigint) {
+  const st = B.chain!.state!;
+  return openBounty.open({ funder: w, mint: st.line_mint, tokenProgram: st.line_token_program,
+    args: { bountyId, amount: plan.amount, termsDigest: plan.termsDigest, lineageId: unit.lineage_id, targetDigest: plan.targetDigest, minImprovementBps: plan.minImprovementBps, deadline: plan.deadline } });
+}
+
+const reviewAgent = () => act("Reading the chain", async () => {
     const c = B.cfg, w = me(), st = B.chain?.state;
     if (!c || !w || !st) throw new Error("The chain settings are not loaded yet.");
     const payer = B.mine?.find((l) => l.agent === val("bo_payer"));
@@ -140,8 +225,8 @@ const actions: Record<string, () => unknown> = {
     if (built.sim.err) throw new Error(`The chain refuses this bounty: ${(built.sim.logs ?? []).filter((l) => /Error|failed/.test(l)).pop() ?? JSON.stringify(built.sim.err)}`);
     const price = await unitPrice(w, [ix]);
     B.review = { plan, payer, unit, metric, balance, bountyId, fee: 5000n + BigInt(Math.ceil((COMPUTE_UNITS * price) / 1_000_000)) };
-  }),
-  sign: () => act("Waiting for the wallet", async () => {
+});
+const signAgent = () => act("Waiting for the wallet", async () => {
     const r = B.review, s = session(), w = me();
     if (!r || !s.wallet || !s.account || !w) throw new Error("Connect the wallet again.");
     const ix = openIx(w, r.payer, r.unit, r.plan, r.bountyId);
@@ -159,8 +244,7 @@ const actions: Record<string, () => unknown> = {
     B.review = null;
     // Core mirrors a new bounty on its next chain read; the terms go in as soon as it has
     if (!B.done.terms) void retryTerms(address, r.plan.terms);
-  }),
-};
+});
 
 function openIx(w: string, payer: AgentLaunch, unit: Unit, plan: OkPlan, bountyId: bigint) {
   const st = B.chain!.state!;
@@ -185,7 +269,10 @@ const box = (body: Raw): Raw => html`<section class="bo-how" data-bounty-post><h
 const status = (): Raw => html`<div role="status" aria-live="polite">${B.busy ? html`<p class="dim" data-bounty-busy>${B.busy}…</p>` : B.err ? banner("bad", "That did not work", B.err) : ""}</div>`;
 
 function formView(): Raw {
-  const board = B.board!, mine = B.mine!, c = B.cfg!;
+  const board = B.board!, mine = agentPath() ? B.mine! : [];
+  const wallet = anyWallet();
+  const fromWallet = wallet && (val("bo_payer") === WALLET || !val("bo_payer") || !mine.length);
+  const lim = fromWallet ? B.ecfg!.settings : B.cfg!;
   const unitId = val("bo_unit") || board.units[0]?.lineage_id || "";
   const unit = board.units.find((u) => u.lineage_id === unitId) ?? board.units[0];
   const metricName = unit?.metrics.some((m) => m.name === val("bo_metric")) ? val("bo_metric") : unit?.metrics[0]?.name;
@@ -193,19 +280,52 @@ function formView(): Raw {
   const priced = usdReading().ok;
   if (!unit || !metric) return box(html`<p>No repository has a unit with a metric a bounty can name yet.</p>`);
   return box(html`<form class="wl-form" autocomplete="off" data-wallet-form="bounty-post">
-    <label><span class="eyebrow">Paid from</span><select name="bo_payer">${mine.map((l) => html`<option value="${l.agent}"${l.agent === val("bo_payer") ? raw(" selected") : ""}>${short(l.agent)}, ${repoLabel(l.repoUrl)}</option>`)}</select>
-      <span class="wl-help">The reward leaves this agent's compute balance and is held on chain until the bounty closes.</span></label>
+    ${wallet && !mine.length ? html`<input type="hidden" name="bo_payer" value="${WALLET}">` : html`<label><span class="eyebrow">Paid from</span><select name="bo_payer" data-bounty-change>
+      ${wallet ? html`<option value="${WALLET}"${fromWallet ? raw(" selected") : ""}>This wallet, ${short(me()!)}</option>` : ""}
+      ${mine.map((l) => html`<option value="${l.agent}"${!fromWallet && l.agent === val("bo_payer") ? raw(" selected") : ""}>Compute balance of ${short(l.agent)}, ${repoLabel(l.repoUrl)}</option>`)}</select>
+      <span class="wl-help">${fromWallet ? "The reward leaves this wallet and is held on chain until the bounty closes." : "The reward leaves this agent's compute balance and is held on chain until the bounty closes."}</span></label>`}
     <label><span class="eyebrow">Repository</span><select name="bo_unit" data-bounty-change>${board.units.map((u) => html`<option value="${u.lineage_id}"${u.lineage_id === unit.lineage_id ? raw(" selected") : ""}>${repoLabel(u.repo)}, ${u.recipe_name}</option>`)}</select></label>
     <label><span class="eyebrow">Metric</span><select name="bo_metric" data-bounty-change>${unit.metrics.map((m) => html`<option value="${m.name}"${m.name === metric.name ? raw(" selected") : ""}>${m.name} (${m.direction === "higher" ? "higher is better" : "lower is better"})</option>`)}</select></label>
     <label><span class="eyebrow">Improvement required (%)</span><input name="bo_pct" inputmode="decimal" placeholder="${String(metric.min_improvement_bps / 100)}">
       <span class="wl-help">In one verified change, measured by independent replays. This metric counts ${bpsPct(metric.min_improvement_bps)} or more.</span></label>
     <label><span class="eyebrow">${priced ? "Reward (US dollars)" : `Reward (${qsym()})`}</span><input name="bo_reward" inputmode="decimal">
-      <span class="wl-help">${priced ? `Held as ${qsym()} at the price when you sign. ` : ""}Smallest reward ${priced ? usdOf(c.minAmount) : coins(c.minAmount)}.</span></label>
+      <span class="wl-help">${priced ? `Held as ${qsym()} at the price when you sign. ` : ""}Smallest reward ${priced ? usdOf(lim.minAmount) : coins(lim.minAmount)}.</span></label>
     <label><span class="eyebrow">Deadline (days from now)</span><input name="bo_days" inputmode="decimal">
-      <span class="wl-help">Between ${span(c.minTtlS)} and ${span(c.maxTtlS)}.</span></label>
+      <span class="wl-help">Between ${span(lim.minTtlS)} and ${span(lim.maxTtlS)}.</span></label>
     <label><span class="eyebrow">Note (optional)</span><input name="bo_note" maxlength="280" placeholder="What you want faster or smaller, in a sentence"></label>
     <div class="wl-row"><button type="button" class="wl-btn primary" data-bounty-act="review"${B.busy ? raw(" disabled") : ""}>Review the cost</button></div>
-  </form>${status()}`);
+  </form>${status()}${shortView()}`);
+}
+
+/** What the wallet holds against what the reward needs, when it cannot pay. No purchase is offered here. */
+function shortView(): Raw {
+  const s = B.short;
+  if (!s || B.busy) return html``;
+  const usdSol = (l: bigint) => fmtUsd(solToUsd(Number(l) / 1e9));
+  return html`<div class="kv" style="margin-top:10px" data-bounty-short>
+    <div>This wallet holds</div><div><b>${usdOf(s.coin)}</b> as ${coins(s.coin)}, and ${sol(s.lamports)} SOL (${usdSol(s.lamports)})</div>
+    ${s.needCoin > 0n ? html`<div>Still needed</div><div data-short-coin="${s.needCoin.toString()}"><b>${usdOf(s.needCoin)}</b> as ${coins(s.needCoin)}</div>` : ""}
+    ${s.needLamports > 0n ? html`<div>SOL still needed</div><div>${sol(s.needLamports)} SOL (${usdSol(s.needLamports)})</div>` : ""}
+  </div>${s.needCoin > 0n ? html`<p style="margin-top:8px">A bounty is held in ${qsym()}. ${s.lamports > 0n ? `This wallet holds SOL: buy ${coins(s.needCoin)} with it on the coin's page, then post.` : `Add ${coins(s.needCoin)} to this wallet, then post.`}</p>` : ""}`;
+}
+
+function walletReviewView(r: WalletReview): Raw {
+  const c = B.ecfg!.settings;
+  const p = r.plan;
+  const words = targetWords({ metric: r.metric, required: { bps: p.minImprovementBps, source: "terms" }, any_target: false, condition_kind: "target" });
+  const usdSol = (l: bigint) => fmtUsd(solToUsd(Number(l) / 1e9));
+  return box(html`<div class="kv" data-bounty-review="wallet">
+      <div>Repository</div><div>${repoLabel(r.unit.repo)}, ${r.unit.recipe_name}</div>
+      <div>Asks for</div><div>${words}</div>
+      <div>Reward</div><div><b data-review-amount="${p.amount.toString()}">${usdOf(p.amount)}</b>, held as ${coins(p.amount)}</div>
+      <div>Paid from</div><div>this wallet, ${short(me()!)}: ${coins(r.balance)} now, ${coins(r.balance - p.amount)} after</div>
+      ${p.fee > 0n ? html`<div>Winner receives</div><div><b>${usdOf(p.winnerGets)}</b> as ${coins(p.winnerGets)}, after a fee of ${bpsPct(c.feeBps)} (${coins(p.fee)})</div>` : ""}
+      <div>Deadline</div><div>${new Date(Number(p.deadline) * 1000).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+      <div>New accounts</div><div><span data-review-rent="${p.rentLamports.toString()}">${sol(p.rentLamports)} SOL</span> (${usdSol(p.rentLamports)}) from this wallet; ${sol(p.rentReturned)} SOL returns to it when the bounty closes</div>
+      <div>Network fee</div><div>${sol(r.fee)} SOL (${usdSol(r.fee)}) at the current priority price</div>
+    </div>
+    <p style="margin-top:10px">The chain pays the whole reward to the earliest accepted generation that improves ${r.metric.name} by at least ${bpsPct(p.minImprovementBps)}, into that agent's compute balance. A winner is paid ${span(c.contestS)} after it is named, so that an earlier generation can still be named first. With no winner, anyone can return the reward to this wallet ${span(c.refundGraceS)} after the deadline, and to no other wallet. You can withdraw it yourself only until the next epoch is posted.</p>
+    <div class="wl-row"><button type="button" class="wl-btn primary" data-bounty-act="sign"${B.busy ? raw(" disabled") : ""}>Sign and post</button><button type="button" class="wl-btn" data-bounty-act="back"${B.busy ? raw(" disabled") : ""}>Back</button></div>${status()}`);
 }
 
 function reviewView(r: Review): Raw {
@@ -231,7 +351,8 @@ function render() {
   if (!el) return;
   const board = B.board;
   // closed: the page already says bounties are not open
-  if (!board || !board.settings) return void (el.innerHTML = "");
+  if (!board || (!board.settings && !board.escrow)) return void (el.innerHTML = "");
+  const open = board.posting.any_wallet;
   const keep = new Map<string, string>();
   for (const i of el.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[name]")) keep.set(i.name, i.value);
   const restore = () => {
@@ -246,16 +367,18 @@ function render() {
       ? html`<a class="link" href="/bounties/${B.done.address}" data-bounty-posted="${B.done.address}">Open the bounty</a>`
       : html`It appears in the list within a minute.`}`)}
       <div class="wl-row" style="margin-top:10px"><button type="button" class="wl-btn" data-bounty-act="again">Post another</button></div>`);
-  } else if (!board.posting.agent_owner) {
+  } else if (!board.posting.agent_owner && !open) {
     body = box(html`<p>Posting is paused.</p>`);
   } else if (!me()) {
-    body = box(html`<p>A bounty is paid from an agent's compute balance and posted by the wallet that owns the agent.</p>
+    body = box(html`<p>${open ? "Any wallet can post a bounty. The reward is held on chain and returns to your wallet if nobody wins." : "A bounty is paid from an agent's compute balance and posted by the wallet that owns the agent."}</p>
       <div class="wl-row"><button type="button" class="wl-btn primary" data-bounty-act="connect"${B.busy ? raw(" disabled") : ""}>Connect wallet</button></div>${status()}`);
   } else if (B.mine === null) {
     body = box(html`<p class="dim">Reading this wallet's agents…</p>`);
-  } else if (!B.mine.length || !B.cfg) {
-    body = box(html`<p>A bounty is paid from an agent's compute balance and posted by the wallet that owns the agent. ${short(me()!)} owns no agent that posts from a wallet.</p>
+  } else if (!anyWallet() && !agentPath()) {
+    body = open ? box(html`<p>The bounty program did not answer. Try again in a moment.</p>${status()}`) : box(html`<p>A bounty is paid from an agent's compute balance and posted by the wallet that owns the agent. ${short(me()!)} owns no agent that posts from a wallet.</p>
       ${B.hosted ? html`<p>A hosted agent's bounties are opened by its runtime.</p>` : ""}<a class="link" href="/launch">Launch an agent</a>${status()}`);
+  } else if (B.wreview) {
+    body = walletReviewView(B.wreview);
   } else if (B.review) {
     body = reviewView(B.review);
   } else {
@@ -267,8 +390,11 @@ function render() {
 }
 
 export async function mountBountyPost(root: HTMLElement) {
+  if (root.dataset.bountyId) return mountBountyNext(root, root.dataset.bountyId);
   B.root = root;
   B.review = null;
+  B.wreview = null;
+  B.short = null;
   B.done = null;
   B.err = null;
   root.addEventListener("click", (e) => {
@@ -282,6 +408,8 @@ export async function mountBountyPost(root: HTMLElement) {
   restoreSession();
   onSession(() => {
     B.review = null;
+    B.wreview = null;
+    B.short = null;
     render();
     void loadMine();
   });
@@ -298,4 +426,145 @@ export async function mountBountyPost(root: HTMLElement) {
   render();
   void flushPending();
   void loadMine();
+}
+
+// ---------- the next step of one bounty of the escrow program (its own page) ----------
+
+interface ClaimView {
+  bounty: { bounty_id: string; funder: string; amount: string; fee_bps: number; status: string; contest_s: number; refund_after: number; deadline: number;
+    claim: { winner: string; gen_id: string | null; height: number | null; contest_until: number | null } | null };
+  next: { action: "claim" | "pay" | "refund" | "wait" | "none"; at: number | null; why: string };
+  candidates: { result: BountyResult; proof: string[]; record_root: string; winner: boolean; claimable_at: number }[];
+}
+type Step = "claim" | "pay" | "refund" | "cancel";
+const N: { root: HTMLElement | null; id: string; v: ClaimView | null; chain: ChainCfg | null; busy: string | null; err: string | null;
+  ready: { step: Step; ixs: Ix[]; units: number; fee: bigint } | null; done: { step: Step; signature: string } | null } =
+  { root: null, id: "", v: null, chain: null, busy: null, err: null, ready: null, done: null };
+const when = (unixS: number) => new Date(unixS * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const STEP: Record<Step, { button: string; done: string }> = {
+  claim: { button: "Name the winner", done: "The winner is named on chain" },
+  pay: { button: "Send the payout", done: "The reward is paid" },
+  refund: { button: "Return the reward", done: "The reward is back with its funder" },
+  cancel: { button: "Withdraw the bounty", done: "The bounty is withdrawn" },
+};
+
+async function loadNext() {
+  const r = await fetch(`/api/bounties/${N.id}/claim`, { headers: { accept: "application/json" } });
+  N.v = r.ok ? ((await r.json()) as ClaimView) : null;
+}
+
+/** The instructions of a step, built from Core's view and checked by the chain's own simulation before anything is signed. */
+async function stepIxs(step: Step, w: string): Promise<{ ixs: Ix[]; units: number }> {
+  const v = N.v!, st = N.chain!.state!, b = v.bounty;
+  const common = { bounty: b.bounty_id, funder: b.funder, mint: st.line_mint, tokenProgram: st.line_token_program };
+  if (step === "claim") {
+    const c = v.candidates.find((x) => x.winner) ?? v.candidates[0];
+    if (!c) throw new Error("No generation meets this bounty's terms.");
+    return { ixs: [openBounty.claim({ bounty: b.bounty_id, result: c.result, proof: c.proof })], units: 400_000 };
+  }
+  if (step === "pay") {
+    const winner = b.claim!.winner;
+    // the payout is a plain transfer into the compute vault; the launch program's own refresh then updates the agent's awake flag
+    const mint = await fetch(`/api/agents/${winner}`, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).then((a) => (a?.mint as string | undefined) ?? null).catch(() => null);
+    return { ixs: [openBounty.pay({ ...common, winner }), ...(mint ? [launch.refreshAwake({ agent: winner, agentMint: mint })] : [])], units: 300_000 };
+  }
+  // a refund goes only to a token account of the funder; its own account is made first if it was closed
+  const mk = token.createAtaIdempotent(w, b.funder, st.line_mint, st.line_token_program);
+  return { ixs: [mk, step === "cancel" ? openBounty.cancel(common) : openBounty.refund(common)], units: 250_000 };
+}
+
+async function nextAct(label: string, fn: () => Promise<void>) {
+  if (N.busy) return;
+  N.busy = label;
+  N.err = null;
+  renderNext();
+  try {
+    await fn();
+  } catch (e) {
+    N.err = String((e as Error)?.message ?? e);
+  }
+  N.busy = null;
+  renderNext();
+}
+const prepare = (step: Step) => nextAct("Reading the chain", async () => {
+  const w = me();
+  if (!w || !N.chain?.state) throw new Error("Connect a wallet first.");
+  const { ixs, units: cu } = await stepIxs(step, w);
+  const built = await buildAndSimulate(w, ixs, cu);
+  if (built.sim.err) throw new Error(`The chain refuses this now: ${(built.sim.logs ?? []).filter((l) => /Error|failed/.test(l)).pop() ?? JSON.stringify(built.sim.err)}`);
+  N.ready = { step, ixs, units: cu, fee: 5000n + BigInt(Math.ceil((cu * (await unitPrice(w, ixs))) / 1_000_000)) };
+});
+const sendStep = () => nextAct("Waiting for the wallet", async () => {
+  const r = N.ready, s = session();
+  if (!r || !s.wallet || !s.account) throw new Error("Connect the wallet again.");
+  const out = await signAndSend({ wallet: s.wallet, account: s.account, ixs: r.ixs, units: r.units });
+  const c = out.confirmed!;
+  if (c.err) throw new Error(`The transaction failed: ${JSON.stringify(c.err)}`);
+  N.done = { step: r.step, signature: c.signature };
+  N.ready = null;
+  // Core mirrors the account on its next chain read
+  setTimeout(() => void loadNext().then(renderNext), 15_000);
+});
+
+function renderNext() {
+  const el = N.root;
+  if (!el) return;
+  const v = N.v;
+  // a bounty of the launch program, a closed one, or no answer: nothing to send from here
+  if (!v || v.bounty.status !== "open") return void (el.innerHTML = N.done ? nextBox(html`${banner("info", STEP[N.done.step].done, html`<a class="link" href="${explorerTx(N.done.signature)}" target="_blank" rel="noopener" data-bounty-tx="${N.done.signature}">Transaction</a>`)}`).s : "");
+  const b = v.bounty, w = me();
+  const amount = BigInt(b.amount);
+  const fee = (amount * BigInt(b.fee_bps)) / 10_000n;
+  const usdSol = (l: bigint) => fmtUsd(solToUsd(Number(l) / 1e9));
+  const st = html`<div role="status" aria-live="polite">${N.busy ? html`<p class="dim">${N.busy}…</p>` : N.err ? banner("bad", "That did not work", N.err) : ""}</div>`;
+  const button = (step: Step, primary = true) => w
+    ? html`<button type="button" class="wl-btn${primary ? " primary" : ""}" data-next-act="${step}"${N.busy ? raw(" disabled") : ""}>${STEP[step].button}</button>`
+    : html`<button type="button" class="wl-btn primary" data-next-act="connect"${N.busy ? raw(" disabled") : ""}>Connect wallet</button>`;
+  let body: Raw;
+  if (N.done) {
+    body = html`${banner("info", STEP[N.done.step].done, html`<a class="link" href="${explorerTx(N.done.signature)}" target="_blank" rel="noopener" data-bounty-tx="${N.done.signature}">Transaction</a>. This page shows it within a minute.`)}`;
+  } else if (N.ready) {
+    const r = N.ready;
+    body = html`<div class="kv" data-next-review="${r.step}">
+        ${r.step === "pay" ? html`<div>Paid to</div><div>the compute balance of ${short(b.claim!.winner)}: <b>${usdOf(amount - fee)}</b> as ${coins(amount - fee)}${fee > 0n ? html`, after a fee of ${bpsPct(b.fee_bps)}` : ""}</div>` : ""}
+        ${r.step === "refund" || r.step === "cancel" ? html`<div>Returned to</div><div>${short(b.funder)}: <b>${usdOf(amount)}</b> as ${coins(amount)}</div>` : ""}
+        ${r.step === "claim" ? html`<div>Then</div><div>the reward is paid ${span(b.contest_s)} later, unless an earlier generation is named first</div>` : ""}
+        <div>Network fee</div><div>${sol(r.fee)} SOL (${usdSol(r.fee)}) from your wallet; nothing else leaves it</div>
+      </div>
+      <div class="wl-row" style="margin-top:10px"><button type="button" class="wl-btn primary" data-next-act="send"${N.busy ? raw(" disabled") : ""}>Sign and send</button><button type="button" class="wl-btn" data-next-act="back"${N.busy ? raw(" disabled") : ""}>Back</button></div>${st}`;
+  } else {
+    const nx = v.next;
+    const mine = !!w && w === b.funder && !b.claim;
+    const line: Raw = nx.action === "claim" ? html`<p>A generation meets this bounty's terms${b.claim ? " and is earlier than the one named so far" : ""}. Anyone can name it on chain; the chain checks the proof.</p><div class="wl-row">${button("claim")}</div>`
+      : nx.action === "pay" ? html`<p>The winner is named and its contest time is over. Anyone can send the payout: <b>${usdOf(amount - fee)}</b> as ${coins(amount - fee)} into the winning agent's compute balance.</p><div class="wl-row">${button("pay")}</div>`
+      : nx.action === "refund" ? html`<p>The bounty ended with no winner. Anyone can return <b>${usdOf(amount)}</b> as ${coins(amount)} to the wallet that funded it, ${short(b.funder)}.</p><div class="wl-row">${button("refund")}</div>`
+      : nx.action === "wait" ? html`<p>${b.claim ? "The winner is named. The payout can be sent" : "A generation meets the terms. It can be named"} from ${nx.at ? when(nx.at) : "the next step"}.</p>`
+      : html`<p>${nx.at ? `Nothing has met the terms. The reward can be returned to its funder from ${when(nx.at)}.` : "Nothing to send yet: no generation has met the terms."}</p>`;
+    body = html`${line}${mine ? html`<p style="margin-top:10px">You funded this bounty. You can withdraw it only until the next epoch is posted.</p><div class="wl-row">${button("cancel", false)}</div>` : ""}${st}`;
+  }
+  el.innerHTML = nextBox(body).s;
+}
+const nextBox = (body: Raw): Raw => html`<section class="bo-how" data-bounty-next><h2>Next step</h2>${body}</section>`;
+
+async function mountBountyNext(root: HTMLElement, id: string) {
+  Object.assign(N, { root, id, v: null, busy: null, err: null, ready: null, done: null });
+  root.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-next-act]");
+    if (!b || (b as HTMLButtonElement).disabled) return;
+    const a = b.dataset.nextAct!;
+    if (a === "connect") void nextAct("Connecting the wallet", async () => { await connectWallet(); });
+    else if (a === "back") { N.ready = null; N.err = null; renderNext(); }
+    else if (a === "send") void sendStep();
+    else void prepare(a as Step);
+  });
+  startDiscovery();
+  restoreSession();
+  onSession(() => { N.ready = null; renderNext(); });
+  try {
+    const [, chain] = await Promise.all([loadNext(), loadChainCfg(), loadUsd()]);
+    N.chain = chain;
+  } catch {
+    N.v = null;
+  }
+  renderNext();
 }
