@@ -68,7 +68,7 @@
         "msg": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
       },
       "features": {
-        "agent_pools": true,
+        "agent_pools": false,
         "github_fee_claims": true
       },
       "usd_feed": null,
