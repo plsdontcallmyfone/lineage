@@ -128,6 +128,7 @@ const screenLine = (): string => {
 
 /** The fields of step "The agent" (into #w-swarm); empty while swarms are off. */
 export function swarmFields(base: string): Raw {
+  if (typeof document !== "undefined") wireSwarmSlider();
   if (!SW.cfg) return html``;
   const max = maxNow();
   if (SW.size > max) SW.size = max;
@@ -140,9 +141,12 @@ export function swarmFields(base: string): Raw {
   const per = P.cfg?.min_usd ?? SW.cfg.min_usd_per_seat;
   return html`<fieldset class="lz-swarm"><legend class="eyebrow">Agents</legend>
     <div class="wl-fine" style="margin-bottom:8px">One coin can fund several agents that work on the repository at the same time. Each takes a different target and can run a different model; they share one vault, one coin page and one record.</div>
-    <div class="seg lz-sw-count" role="radiogroup" aria-label="Number of agents">${Array.from({ length: max }, (_, i) => i + 1).map(
-      (n) => html`<label class="seg-b" aria-pressed="${String(n === SW.size)}" style="cursor:pointer"><input type="radio" name="l_sw_size" value="${String(n)}"${n === SW.size ? raw(" checked") : ""} style="position:absolute;opacity:0;width:0;height:0">${String(n)}</label>`,
-    )}</div>
+    <div class="lz-sw-row">
+      <div class="lz-sw-slider" role="radiogroup" aria-label="Number of agents" style="--n:${String(max)};--i:${String(SW.size - 1)}">${Array.from({ length: max }, (_, i) => i + 1).map(
+        (n) => html`<label class="seg-b${n <= SW.size ? " on" : ""}" aria-pressed="${String(n === SW.size)}" title="${String(n)} agent${n === 1 ? "" : "s"}"><input type="radio" name="l_sw_size" value="${String(n)}"${n === SW.size ? raw(" checked") : ""}><span>${String(n)}</span></label>`,
+      )}</div>
+      <div class="lz-sw-read" aria-live="polite"><b>${String(SW.size)}</b> ${SW.size === 1 ? "agent" : "agents"}</div>
+    </div>
     <div class="wl-fine" style="margin-top:6px">${max < SW.cfg.settings.max_members && free !== null ? `${free} screen${free === 1 ? " is" : "s are"} free on the network now, so up to ${max} agent${max === 1 ? "" : "s"} can start.` : `Up to ${SW.cfg.settings.max_members} agents per coin.`}</div>
     ${SW.size < 2
       ? ""
@@ -163,6 +167,35 @@ export function swarmFields(base: string): Raw {
         <div class="wl-fine" style="margin-top:8px">The lead plans who takes which target, then works like the others. By default it is the agent with the priciest model. ${screenLine()}</div>
         <div class="wl-fine" style="margin-top:4px">Model credits: ${per ? `${fmtUsd(Number(per))} for each agent, ${fmtUsd(Number(minUsd()))} for ${SW.size}` : "read from Core on the Funding step"}.</div>`}
   </fieldset>`;
+}
+
+// The number of agents is a slider made of its radio buttons: press a stop, or drag along the track and
+// the nearest stop is chosen. One listener for the page: the fieldset is drawn again after each change.
+let sliderWired = false;
+export function wireSwarmSlider(doc: Document = document): void {
+  if (sliderWired) return;
+  sliderWired = true;
+  let dragging = false;
+  const pick = (x: number) => {
+    const el = doc.querySelector<HTMLElement>(".lz-sw-slider");
+    if (!el) return;
+    const stops = [...el.querySelectorAll<HTMLInputElement>('input[name="l_sw_size"]')];
+    if (stops.length < 2) return;
+    const r = el.getBoundingClientRect();
+    const pad = r.height / 2; // the stops sit half a thumb in from each end
+    const t = Math.max(0, Math.min(1, (x - r.left - pad) / Math.max(1, r.width - 2 * pad)));
+    const stop = stops[Math.round(t * (stops.length - 1))];
+    if (stop && !stop.checked) stop.click();
+  };
+  doc.addEventListener("pointerdown", (e) => {
+    if (!(e.target as HTMLElement | null)?.closest?.(".lz-sw-slider")) return;
+    dragging = true;
+    pick(e.clientX);
+  });
+  doc.addEventListener("pointermove", (e) => { if (dragging) pick(e.clientX); });
+  const stop = () => { dragging = false; };
+  doc.addEventListener("pointerup", stop);
+  doc.addEventListener("pointercancel", stop);
 }
 
 /** A change of one of the fields above; returns true when the roster changed. */
