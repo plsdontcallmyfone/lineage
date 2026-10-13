@@ -1,0 +1,12 @@
+diff --git a/secp256r1/src/group.rs b/secp256r1/src/group.rs
+--- a/secp256r1/src/group.rs
++++ b/secp256r1/src/group.rs
+@@ -347,7 +347,7 @@ impl ProjectivePoint {
+ 
+     #[inline]
+     pub fn has_affine_x(self, x: FieldElement) -> bool {
+-        !self.is_identity() && self.x == x * self.z.square()
++        self.x == x * self.z.square()
+     }
+ 
+     #[inline]

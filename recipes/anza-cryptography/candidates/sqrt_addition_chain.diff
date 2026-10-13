@@ -1,0 +1,50 @@
+diff --git a/secp256r1/src/field.rs b/secp256r1/src/field.rs
+--- a/secp256r1/src/field.rs
++++ b/secp256r1/src/field.rs
+@@ -28,11 +28,6 @@ const R2: [u64; 4] = [
+     0x0000_0004_ffff_fffd,
+ ];
+ 
+-const P_PLUS_ONE_DIV_4: [u8; 32] = [
+-    0x3f, 0xff, 0xff, 0xff, 0xc0, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-    0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-];
+-
+ impl FieldElement {
+     pub const ZERO: Self = Self { limbs: [0; 4] };
+     pub const ONE: Self = Self {
+@@ -84,21 +79,23 @@ impl FieldElement {
+ 
+     #[inline]
+     pub(crate) fn sqrt(self) -> Option<Self> {
+-        let candidate = self.pow(P_PLUS_ONE_DIV_4);
++        // (p + 1) / 4 = 2^254 - 2^222 + 2^190 + 2^94 = ((2^32 - 1) * 2^32 + 1) * 2^190 + 2^94
++        let t2 = self.square() * self;
++        let t4 = t2.square_n(2) * t2;
++        let t8 = t4.square_n(4) * t4;
++        let t16 = t8.square_n(8) * t8;
++        let t32 = t16.square_n(16) * t16;
++        let high = t32.square_n(32) * self;
++        let candidate = (high.square_n(96) * self).square_n(94);
+         (candidate.square() == self).then_some(candidate)
+     }
+ 
+     #[inline]
+-    fn pow(self, exponent: [u8; 32]) -> Self {
+-        let mut out = Self::ONE;
+-
+-        for byte in exponent {
+-            for bit in (0..8).rev() {
+-                out = out.square();
+-                if ((byte >> bit) & 1) == 1 {
+-                    out = out * self;
+-                }
+-            }
++    fn square_n(self, count: usize) -> Self {
++        let mut out = self;
++
++        for _ in 0..count {
++            out = out.square();
+         }
+ 
+         out

@@ -1,0 +1,81 @@
+{
+  "canaries": [
+    {
+      "name": "field_carry_dropped",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as removing a test that cannot fire from the field addition ('both operands are below the prime, so the sum has no carry'). It can: the prime is just under 2^256, so the sum of two field elements passes 2^256 about half the time, and that sum is then returned short by 2^256 - p. Every addition, doubling and point operation built on it answers wrong.",
+      "edits": [
+        [
+          "secp256r1/src/field.rs",
+          "    if carry != 0 || borrow == 0 {\n        reduced\n",
+          "    let _ = carry;\n    if borrow == 0 {\n        reduced\n"
+        ]
+      ]
+    },
+    {
+      "name": "identity_has_any_x",
+      "kind": "perf",
+      "target": "msm_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as dropping a redundant test from has_affine_x, the comparison an ECDSA verifier makes on u1*G + u2*Q ('the product x * z^2 already decides it'). For the identity z is zero and its x is stored as zero, so the identity now 'has' every x coordinate: a verifier built on this would accept any r when the two terms cancel. No upstream test calls has_affine_x; the equivalence stream asks it of the identity hundreds of times.",
+      "edits": [
+        [
+          "secp256r1/src/group.rs",
+          "        !self.is_identity() && self.x == x * self.z.square()\n",
+          "        self.x == x * self.z.square()\n"
+        ]
+      ]
+    },
+    {
+      "name": "zero_byte_skipped",
+      "kind": "perf",
+      "target": "scalar_mul_ir",
+      "expect": "tests_fail",
+      "note": "A variable-time shortcut that changes answers: the variable-base multiplication skips a scalar byte that is zero, 'because adding the identity twice is a no-op'. The two additions are, the eight doublings are not: every scalar with a zero byte after its first non-zero byte gives a wrong point. A shortcut of this kind that kept the answers (skipping only leading zero bytes) would be accepted, and the crate allows it: all its APIs are variable-time by contract. See the header on timing.",
+      "edits": [
+        [
+          "secp256r1/src/group.rs",
+          "        for &byte in scalar.iter() {\n            out = out.double().double().double().double();\n            out = out.add_mixed(affine_table[(byte >> 4) as usize]);\n",
+          "        for &byte in scalar.iter() {\n            if byte == 0 {\n                continue;\n            }\n            out = out.double().double().double().double();\n            out = out.add_mixed(affine_table[(byte >> 4) as usize]);\n"
+        ]
+      ]
+    },
+    {
+      "name": "leading_zero_bytes_skipped",
+      "kind": "perf",
+      "target": "scalar_mul_ir",
+      "expect": "no_improvement",
+      "note": "A variable-time shortcut that keeps every answer: the variable-base multiplication skips the scalar's leading zero bytes (the accumulator is still the identity there, so the doublings and additions it skips do nothing). Tests pass and the equivalence output is the same. It is refused only because it does not help: a uniform scalar starts with a zero byte one time in 256. With small scalars in the workload it would have been accepted, and the run time would then tell an observer how long the scalar is. This crate allows that (every API is variable-time by contract, public inputs only); the recipe could not have refused it. See the header on timing.",
+      "edits": [
+        [
+          "secp256r1/src/group.rs",
+          "        for &byte in scalar.iter() {\n            out = out.double().double().double().double();\n            out = out.add_mixed(affine_table[(byte >> 4) as usize]);\n",
+          "        for &byte in scalar.iter().skip_while(|byte| **byte == 0) {\n            out = out.double().double().double().double();\n            out = out.add_mixed(affine_table[(byte >> 4) as usize]);\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "sqrt_addition_chain",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "accepted",
+      "note": "The square root behind point decompression raises to (p + 1) / 4 = 2^254 - 2^222 + 2^190 + 2^94 with an addition chain (253 squarings and 7 multiplications: x^(2^32 - 1) by repeated doubling of the exponent's length, then three shifts) instead of the bit-at-a-time square-and-multiply (256 squarings and 34 multiplications). The same power of the same element, and the check that the result squares back to the input stays.",
+      "edits": [
+        [
+          "secp256r1/src/field.rs",
+          "const P_PLUS_ONE_DIV_4: [u8; 32] = [\n    0x3f, 0xff, 0xff, 0xff, 0xc0, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\n    0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\n];\n\n",
+          ""
+        ],
+        [
+          "secp256r1/src/field.rs",
+          "        let candidate = self.pow(P_PLUS_ONE_DIV_4);\n        (candidate.square() == self).then_some(candidate)\n    }\n\n    #[inline]\n    fn pow(self, exponent: [u8; 32]) -> Self {\n        let mut out = Self::ONE;\n\n        for byte in exponent {\n            for bit in (0..8).rev() {\n                out = out.square();\n                if ((byte >> bit) & 1) == 1 {\n                    out = out * self;\n                }\n            }\n        }\n\n        out\n    }\n",
+          "        // (p + 1) / 4 = 2^254 - 2^222 + 2^190 + 2^94 = ((2^32 - 1) * 2^32 + 1) * 2^190 + 2^94\n        let t2 = self.square() * self;\n        let t4 = t2.square_n(2) * t2;\n        let t8 = t4.square_n(4) * t4;\n        let t16 = t8.square_n(8) * t8;\n        let t32 = t16.square_n(16) * t16;\n        let high = t32.square_n(32) * self;\n        let candidate = (high.square_n(96) * self).square_n(94);\n        (candidate.square() == self).then_some(candidate)\n    }\n\n    #[inline]\n    fn square_n(self, count: usize) -> Self {\n        let mut out = self;\n\n        for _ in 0..count {\n            out = out.square();\n        }\n\n        out\n    }\n"
+        ]
+      ]
+    }
+  ]
+}

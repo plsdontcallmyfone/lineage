@@ -1,0 +1,12 @@
+diff --git a/secp256r1/src/group.rs b/secp256r1/src/group.rs
+--- a/secp256r1/src/group.rs
++++ b/secp256r1/src/group.rs
+@@ -431,7 +431,7 @@ impl ProjectivePoint {
+ 
+         let mut out = Self::IDENTITY;
+ 
+-        for &byte in scalar.iter() {
++        for &byte in scalar.iter().skip_while(|byte| **byte == 0) {
+             out = out.double().double().double().double();
+             out = out.add_mixed(affine_table[(byte >> 4) as usize]);
+             out = out.double().double().double().double();

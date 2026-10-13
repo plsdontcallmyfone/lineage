@@ -1,0 +1,127 @@
+{
+  "_note": "amd64 calibration measured with scripts/calibrate-recipe.ts (5 runs) on the mainnet capacity host cap-nyc1 (157.230.180.62, 32 vCPU Xeon Gold 6248) in a scratch copy of its release b0265ae on 2026-10-13, after scripts/deploy/arch-recipes.ts re-pinned the recipe to that host's lineage/rust:m1 (the same image id as the site's). Not read back from Core: the site's reference runner calibrates again at deploy with its own seed. The committed calibration.json is the arm64 (Apple M4) one. canaries and candidates are the verdicts of scripts/check-canaries.ts on the same host (metric ratios, candidate over base; null where the candidate's run panicked).",
+  "host": "cap-nyc1",
+  "recipe_id": "da34fed70c9a35e931089d69c26877eb32fcaff9c4e20f36d6c7faaaa39dd441",
+  "image_digest": "sha256:98fec984eaa8a4c9a0d6823b32b915e882547062b7edb6a64eed99d027bfd152",
+  "deps_digest": "b72f741954e9fb1053cd8af2a012fc9ed2e66d5ca8181363148b8610086fd61f",
+  "prepare_seconds": 2.5,
+  "calibration_wall_seconds": 26.1,
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 30,
+    "metrics": {
+      "scalar_mul_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 358237092
+      },
+      "msm_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 271114561
+      },
+      "decode_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 206003491
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "da34fed70c9a35e931089d69c26877eb32fcaff9c4e20f36d6c7faaaa39dd441",
+    "runs": 5,
+    "seed": "ca11b7a7e",
+    "snapshot_id": "",
+    "stable": [
+      "../secp256r1/src/lib.rs::field::tests::add_matches_p256",
+      "../secp256r1/src/lib.rs::field::tests::arithmetic_matches_p256_for_many_samples",
+      "../secp256r1/src/lib.rs::field::tests::edge_values_match_p256",
+      "../secp256r1/src/lib.rs::field::tests::invert_matches_p256",
+      "../secp256r1/src/lib.rs::field::tests::mul_matches_p256",
+      "../secp256r1/src/lib.rs::field::tests::rejects_non_canonical_values",
+      "../secp256r1/src/lib.rs::field::tests::round_trips_canonical_values",
+      "../secp256r1/src/lib.rs::field::tests::square_matches_p256",
+      "../secp256r1/src/lib.rs::field::tests::sub_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::add_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::double_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::double_scalar_mul_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::enforces_identity_point_rules",
+      "../secp256r1/src/lib.rs::group::tests::fixed_base_scalar_mul_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::generator_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::identity_and_inverse_operations_match_p256",
+      "../secp256r1/src/lib.rs::group::tests::identity_points_do_not_bypass_scalar_validation",
+      "../secp256r1/src/lib.rs::group::tests::mixed_add_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::multi_scalar_mul_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::multi_scalar_mul_rejects_length_mismatch",
+      "../secp256r1/src/lib.rs::group::tests::parses_and_serializes_compressed",
+      "../secp256r1/src/lib.rs::group::tests::parses_and_serializes_generator",
+      "../secp256r1/src/lib.rs::group::tests::parses_and_serializes_little_endian",
+      "../secp256r1/src/lib.rs::group::tests::projective_equality_ignores_jacobian_scale",
+      "../secp256r1/src/lib.rs::group::tests::rejects_invalid_compressed_prefixes",
+      "../secp256r1/src/lib.rs::group::tests::scalar_mul_matches_p256",
+      "../secp256r1/src/lib.rs::group::tests::scalar_multiplication_rejects_non_canonical_scalars",
+      "../secp256r1/src/lib.rs::group::tests::unchecked_scalar_multiplication_accepts_non_canonical_scalars",
+      "../secp256r1/src/lib.rs::group::tests::zero_scalars_and_cancelling_msm_return_identity",
+      "../secp256r1/src/lib.rs::scalar::tests::arithmetic_matches_p256",
+      "../secp256r1/src/lib.rs::scalar::tests::arithmetic_matches_p256_for_many_samples",
+      "../secp256r1/src/lib.rs::scalar::tests::is_canonical_agrees_with_from_bytes",
+      "../secp256r1/src/lib.rs::scalar::tests::parses_little_endian_scalars",
+      "../secp256r1/src/lib.rs::scalar::tests::reduced_bytes_match_p256",
+      "../secp256r1/src/lib.rs::scalar::tests::rejects_non_canonical_order",
+      "../secp256r1/src/lib.rs::scalar::tests::round_trips"
+    ]
+  },
+  "canaries": {
+    "field_carry_dropped": {
+      "expect": "tests_fail",
+      "outcome": "rejected",
+      "reason": "tests_fail",
+      "metrics": {
+        "scalar_mul_ir": null,
+        "msm_ir": null,
+        "decode_ir": null
+      }
+    },
+    "identity_has_any_x": {
+      "expect": "equivalence_changed",
+      "outcome": "rejected",
+      "reason": "equivalence_changed",
+      "metrics": {
+        "scalar_mul_ir": 1.0000061931321882,
+        "msm_ir": 1.0000041737927865,
+        "decode_ir": 1.0000107759090087
+      }
+    },
+    "zero_byte_skipped": {
+      "expect": "tests_fail",
+      "outcome": "rejected",
+      "reason": "tests_fail",
+      "metrics": {
+        "scalar_mul_ir": 0.997143883538654,
+        "msm_ir": 1,
+        "decode_ir": 1
+      }
+    },
+    "leading_zero_bytes_skipped": {
+      "expect": "no_improvement",
+      "outcome": "rejected",
+      "reason": "no_improvement",
+      "metrics": {
+        "scalar_mul_ir": 1.0004836774340753,
+        "msm_ir": 1.000000022692846,
+        "decode_ir": 1.0000000291280253
+      }
+    }
+  },
+  "candidates": {
+    "sqrt_addition_chain": {
+      "expect": "accepted",
+      "outcome": "accepted",
+      "reason": null,
+      "metrics": {
+        "scalar_mul_ir": 0.9999999525674491,
+        "msm_ir": 0.999998089285445,
+        "decode_ir": 0.8659779944568999
+      }
+    }
+  }
+}

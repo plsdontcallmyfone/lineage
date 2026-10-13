@@ -1,0 +1,166 @@
+# anza-xyz/cryptography: Anza's cryptography crates for the Solana validator and its syscalls
+# (curve25519, secp256r1, bn254, bls12-381), default branch master. Apache-2.0 (LICENSE-APACHE and
+# the workspace manifest). No CONTRIBUTING file, and no README states a policy against
+# AI-generated changes (checked 2026-10-13).
+#
+# The unit is ONE crate of the workspace of seven, secp256r1/ (solana-secp256r1): P-256 field,
+# scalar and group arithmetic in pure Rust, 1,748 lines of library code and comments in three files with 36 unit
+# tests of their own. A patch may only touch secp256r1/src/field.rs, scalar.rs and group.rs.
+#
+# Why this crate and not the others: instruction counts must be the same on every verifier, and a
+# cryptography library is where code picks itself by CPU.
+#   - solana-ed25519 (the curve25519-dalek fork) chooses between its serial and AVX2 backends at
+#     run time with cpufeatures, and has an AVX-512 IFMA one behind target features;
+#   - solana-bn254 has an avx512 backend next to its portable one;
+#   - bls12-381-syscall is blst (C and assembly); bn254-syscall is arkworks; curve25519-cuda needs a
+#     GPU; experimental/ is a proof system.
+# solana-secp256r1 has none of it: no dependency at all, no SIMD, no assembly, no cfg on a target
+# feature, no CPU detection, and `#![forbid(unsafe_code)]` in src/lib.rs, which is a protected path
+# here: without `unsafe` a patch cannot call a target-feature function or write assembly, so it
+# cannot add a backend. Nothing had to be pinned by a feature or a cfg flag; the commands pass no
+# RUSTFLAGS and the repository has no .cargo/config, so every machine compiles for baseline x86-64.
+# What is left that a CPU decides is the C library: glibc picks memcpy and memcmp by CPU model.
+# Measured on amd64 at this commit, that code is 0.02% of scalar_mul_ir, 0.05% of msm_ir and 0.02%
+# of decode_ir, and forcing glibc onto its other variants (GLIBC_TUNABLES, no ERMS, then no AVX
+# either) moved the three counts by at most 0.02%, 0.08% and 0.01%: inside the 0.1% tolerance
+# replays are compared with even when two machines choose differently. Under valgrind the two
+# mainnet verifier hosts should choose the same anyway (both report AVX2 and ERMS, and valgrind
+# 3.19 hides AVX-512: on the Xeon Gold 6248 it ran __memcpy_avx_unaligned_erms).
+# Fixed-base multiplication is in no metric for this reason: its generator table is built once
+# per process through 1.3 MB of array copies, 0.25% of a count when it was in one, and that count
+# moved by 0.22% without ERMS. The tests and the equivalence harness cover it.
+#
+# How it is built: secp256r1/Cargo.toml lists openssl and criterion as dev-dependencies for its
+# benches, and cargo builds every dev-dependency before one unit test runs. The image has no
+# OpenSSL headers and no pkg-config, so `cargo test -p solana-secp256r1` cannot build in a sandbox.
+# The overlay adds lineage/Cargo.toml, a manifest outside the workspace that compiles the SAME
+# source files (lib.rs as the crate root, the same crate name and edition, cargo's default release
+# profile, which is the workspace's) with the one dev-dependency the tests use, p256, and
+# lineage/Cargo.lock, the 16 packages that needs at the versions of the repository's own Cargo.lock.
+# prepare downloads those 16 (the layer has the same digest on arm64 and amd64). The repository's
+# manifests and lockfile are not read by any command and stay protected. Edition 2024 and
+# rust-version 1.89.0 are the image's Rust 1.89.0; there is no rust-toolchain file.
+#
+# Tests: upstream keeps its 36 unit tests inside the three source files, most of them comparisons
+# with the p256 crate; each `#[cfg(test)]` module is a protected block. They draw their samples
+# from a fixed counter, no random seed to pin. The benches (criterion, OpenSSL) are not built, and
+# the README's doctests are not run (upstream's CI does not run them either: --all-targets).
+#
+# Behaviour must not change. The equivalence harness (overlay/lineage/examples/lineage_equiv.rs)
+# calls every public operation of the crate on seeded inputs and digests every answer as canonical
+# bytes: 65,000 lines a seed, a third of the inputs edge cases (zero, one, the modulus and its
+# neighbours, values that are not canonical, the identity, a point with its negation, the same
+# point twice, one point in two Jacobian scalings, coordinates off the curve, wrong prefixes,
+# multiscalar inputs that cancel, repeat or differ in length). The same digest on arm64 and amd64.
+# P-256 has cofactor 1, so there are no low-order points; the identity is the only special point.
+#
+# KNOWN LIMIT, timing: instruction counts, tests and equivalence see what the code answers and how
+# much work it does on the measured inputs. They do not see WHEN the work depends on the data. A
+# patch that makes the run time depend on a scalar or a point is not detected as such: if it keeps
+# every answer and lowers a count it is accepted. Timing side channels are NOT covered by this
+# recipe. For this crate that is within its contract: its README says "All APIs are intended for
+# public inputs only. No API provides a constant-time guarantee", every multiplication is named
+# *_vartime, and the code already branches on its data. A reviewer of an accepted patch should
+# still read it as cryptographic code. Two canaries mark the line: zero_byte_skipped (a shortcut
+# that changes answers: refused by upstream's tests and by equivalence) and
+# leading_zero_bytes_skipped (one that keeps them: refused only because it does not help on
+# uniform scalars).
+#
+# Metrics: instruction counts of three seeded workloads (overlay/lineage/examples/lineage_bench.rs).
+#   scalar_mul_ir  400 variable-base multiplications, each of a fresh point by a fresh scalar
+#   msm_ir         150 double-scalar multiplications u1*G + u2*Q with the affine x comparison (the
+#                  ECDSA verification shape) and 22 multiscalar multiplications of 1 to 48 points
+#   decode_ir      3,000 compressed points decoded (a square root each, half are off the curve),
+#                  3,000 uncompressed ones validated, 400 Jacobian points encoded (an inversion each)
+# Visible headroom, from a cachegrind profile at this commit (amd64): scalar_mul_ir is 67% point
+# doubling and 18% mixed addition (a fixed 4-bit window: 256 doublings and 64 additions a scalar)
+# and 5.5% the binary-GCD field inversion that normalises each 16-entry table; msm_ir is 42% mixed
+# addition, 39% doubling, and 19% building and normalising one table a point, one inversion each;
+# decode_ir is over 90% the square root, a bit-at-a-time power (the planted improvement,
+# candidates/sqrt_addition_chain, replaces it with an addition chain: decode_ir 0.868 on arm64,
+# 0.866 on amd64). Also measured: on amd64 the dedicated squaring costs MORE instructions than the
+# general multiplication (calling the multiplication instead lowered the three metrics by 2.1%,
+# 1.6% and 3.7%; on arm64 it raised them by 2.0%, 1.5% and 3.5%).
+#
+# Determinism: native code under cachegrind, one thread, inputs only from $LINEAGE_SEED (FNV-1a ->
+# splitmix64, examples/lineage_support/rng.rs); the 64 base points are constants computed outside
+# the crate (lineage_support/points.rs), combined by seed. What is not the library's work
+# (`lineage_bench <mode> <seed> --inputs-only`), at this commit: 0.10% of scalar_mul_ir, 0.15% of
+# msm_ir and 0.48% of decode_ir on arm64; 0.09%, 0.13% and 0.54% on amd64. msm_ir's size follows
+# the seed (four of its batches have 1 to 48 points): base and candidate always share a seed.
+# Calibrated on arm64 (Docker on Apple silicon); calibration-amd64.json is the same measurement
+# on the mainnet capacity host. Measured there at 2 CPUs: build 12 s, the 36 tests under 1 s,
+# equivalence 1.3 s, base and candidate evaluated in about 27 s.
+name: anza-cryptography
+class: rust
+requires: { arch: arm64 }
+repo: https://github.com/anza-xyz/cryptography
+commit: "3efe73c7395f735f073bd25162cdc2fb4333f570"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  - cargo fetch --locked --manifest-path lineage/Cargo.toml
+prepare_outputs: []
+build:
+  commands:
+    - cargo build --release --locked --offline --manifest-path lineage/Cargo.toml --lib --examples --tests
+  artifacts: ["lineage/target/release/libsolana_secp256r1.rlib"]
+  reproducible: true
+test:
+  # --no-fail-fast: without it cargo stops at the first failing test binary, and every later
+  # binary's tests would be reported as failures too.
+  command: cargo test --release --locked --offline --manifest-path lineage/Cargo.toml --no-fail-fast --lib --tests 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: lineage/target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: scalar_mul_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage/target/release/examples/lineage_bench scalar_mul "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: msm_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage/target/release/examples/lineage_bench msm "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage/target/release/examples/lineage_bench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["secp256r1/src/field.rs", "secp256r1/src/scalar.rs", "secp256r1/src/group.rs"]
+  protected_paths:
+    - "lineage/**"
+    - "secp256r1/src/lib.rs"
+    - "secp256r1/benches/**"
+    - "secp256r1/tests/**"
+    - "secp256r1/examples/**"
+    - "secp256r1/README.md"
+    - "**/Cargo.toml"
+    - "Cargo.lock"
+    - "**/build.rs"
+    - "**/.cargo/**"
+    - "rust-toolchain*"
+    - "scripts/**"
+    - ".github/**"
+    - "**/*.yml"
+  protected_blocks:
+    # upstream keeps its 36 unit tests inside the three source files; a patch may edit the library but never these modules
+    - { glob: "secp256r1/src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
+  max_files: 3
+  max_lines: 300
+limits: { cpus: 2, memory_mb: 4096, pids: 512, wall_s: 1800, disk_mb: 4096 }

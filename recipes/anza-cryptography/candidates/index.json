@@ -1,0 +1,10 @@
+{
+  "sqrt_addition_chain": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "accepted",
+    "note": "The square root behind point decompression raises to (p + 1) / 4 = 2^254 - 2^222 + 2^190 + 2^94 with an addition chain (253 squarings and 7 multiplications: x^(2^32 - 1) by repeated doubling of the exponent's length, then three shifts) instead of the bit-at-a-time square-and-multiply (256 squarings and 34 multiplications). The same power of the same element, and the check that the result squares back to the input stays.",
+    "lines": 29,
+    "guard": "ok"
+  }
+}

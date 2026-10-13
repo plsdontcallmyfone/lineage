@@ -1,0 +1,80 @@
+{
+  "recipe_id": "3c17625ba49b5c332e9560268cb9bce280aff007f15e04023bb1be9fd47eb1fa",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "../secp256r1/src/lib.rs::field::tests::add_matches_p256",
+    "../secp256r1/src/lib.rs::field::tests::arithmetic_matches_p256_for_many_samples",
+    "../secp256r1/src/lib.rs::field::tests::edge_values_match_p256",
+    "../secp256r1/src/lib.rs::field::tests::invert_matches_p256",
+    "../secp256r1/src/lib.rs::field::tests::mul_matches_p256",
+    "../secp256r1/src/lib.rs::field::tests::rejects_non_canonical_values",
+    "../secp256r1/src/lib.rs::field::tests::round_trips_canonical_values",
+    "../secp256r1/src/lib.rs::field::tests::square_matches_p256",
+    "../secp256r1/src/lib.rs::field::tests::sub_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::add_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::double_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::double_scalar_mul_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::enforces_identity_point_rules",
+    "../secp256r1/src/lib.rs::group::tests::fixed_base_scalar_mul_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::generator_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::identity_and_inverse_operations_match_p256",
+    "../secp256r1/src/lib.rs::group::tests::identity_points_do_not_bypass_scalar_validation",
+    "../secp256r1/src/lib.rs::group::tests::mixed_add_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::multi_scalar_mul_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::multi_scalar_mul_rejects_length_mismatch",
+    "../secp256r1/src/lib.rs::group::tests::parses_and_serializes_compressed",
+    "../secp256r1/src/lib.rs::group::tests::parses_and_serializes_generator",
+    "../secp256r1/src/lib.rs::group::tests::parses_and_serializes_little_endian",
+    "../secp256r1/src/lib.rs::group::tests::projective_equality_ignores_jacobian_scale",
+    "../secp256r1/src/lib.rs::group::tests::rejects_invalid_compressed_prefixes",
+    "../secp256r1/src/lib.rs::group::tests::scalar_mul_matches_p256",
+    "../secp256r1/src/lib.rs::group::tests::scalar_multiplication_rejects_non_canonical_scalars",
+    "../secp256r1/src/lib.rs::group::tests::unchecked_scalar_multiplication_accepts_non_canonical_scalars",
+    "../secp256r1/src/lib.rs::group::tests::zero_scalars_and_cancelling_msm_return_identity",
+    "../secp256r1/src/lib.rs::scalar::tests::arithmetic_matches_p256",
+    "../secp256r1/src/lib.rs::scalar::tests::arithmetic_matches_p256_for_many_samples",
+    "../secp256r1/src/lib.rs::scalar::tests::is_canonical_agrees_with_from_bytes",
+    "../secp256r1/src/lib.rs::scalar::tests::parses_little_endian_scalars",
+    "../secp256r1/src/lib.rs::scalar::tests::reduced_bytes_match_p256",
+    "../secp256r1/src/lib.rs::scalar::tests::rejects_non_canonical_order",
+    "../secp256r1/src/lib.rs::scalar::tests::round_trips"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "scalar_mul_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 256793392
+    },
+    "msm_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 195098566
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 137420205
+    }
+  },
+  "median_eval_seconds": 23,
+  "seed": "ca11b7a7e",
+  "recipe_name": "anza-cryptography",
+  "repo": "https://github.com/anza-xyz/cryptography",
+  "commit": "3efe73c7395f735f073bd25162cdc2fb4333f570",
+  "deps_digest": "b72f741954e9fb1053cd8af2a012fc9ed2e66d5ca8181363148b8610086fd61f",
+  "image_digest": "sha256:ceb982bf874b01e6727906d82078b96aabd6462a38be78eaa6fba49394b5490f",
+  "date": "2026-10-13T16:41:26.318Z",
+  "calibration_wall_seconds": 21.7,
+  "counts": {
+    "stable": 36,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 22 s"
+  ]
+}

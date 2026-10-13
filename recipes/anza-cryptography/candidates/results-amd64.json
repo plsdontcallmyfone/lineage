@@ -1,0 +1,58 @@
+{
+  "sqrt_addition_chain": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "decode_ir",
+      "ratio": 0.8659779944568999,
+      "ci_low": 0.8659779944568999,
+      "ci_high": 0.8659779944568999,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.8659779944568999,
+          "ci_low": 0.8659779944568999,
+          "ci_high": 0.8659779944568999,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "scalar_mul_ir": {
+        "base": [
+          358403663
+        ],
+        "cand": [
+          358403646
+        ],
+        "ratio": 0.9999999525674491
+      },
+      "msm_ir": {
+        "base": [
+          274242952
+        ],
+        "cand": [
+          274242428
+        ],
+        "ratio": 0.999998089285445
+      },
+      "decode_ir": {
+        "base": [
+          205912573
+        ],
+        "cand": [
+          178315757
+        ],
+        "ratio": 0.8659779944568999
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "da34fed70c9a35e931089d69c26877eb32fcaff9c4e20f36d6c7faaaa39dd441",
+    "eval_seconds": 28.5,
+    "date": "2026-10-13T16:40:52.061Z",
+    "match": true
+  }
+}

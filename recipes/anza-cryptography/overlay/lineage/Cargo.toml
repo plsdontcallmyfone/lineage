@@ -1,0 +1,23 @@
+# Lineage harness manifest for solana-secp256r1 (recipe overlay, protected).
+# The crate's own manifest (secp256r1/Cargo.toml) lists openssl and criterion as dev-dependencies
+# for its benches, and cargo builds every dev-dependency before it runs one unit test. The sandbox
+# image has no OpenSSL headers and no pkg-config, so `cargo test -p solana-secp256r1` cannot build
+# there. This manifest compiles the SAME source files (../secp256r1/src, lib.rs as the crate root,
+# the same crate name and edition, cargo's default release profile like the workspace's) with the
+# one dev-dependency the unit tests use: p256, locked to the versions of the repository's Cargo.lock.
+# The empty [workspace] table keeps it out of the repository's workspace.
+[package]
+name = "lineage-secp256r1"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.89.0"
+publish = false
+
+[workspace]
+
+[lib]
+name = "solana_secp256r1"
+path = "../secp256r1/src/lib.rs"
+
+[dev-dependencies]
+p256 = { version = "0.13", default-features = false, features = ["arithmetic", "expose-field"] }

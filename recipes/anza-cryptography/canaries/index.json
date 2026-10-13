@@ -1,0 +1,34 @@
+{
+  "field_carry_dropped": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as removing a test that cannot fire from the field addition ('both operands are below the prime, so the sum has no carry'). It can: the prime is just under 2^256, so the sum of two field elements passes 2^256 about half the time, and that sum is then returned short by 2^256 - p. Every addition, doubling and point operation built on it answers wrong.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "identity_has_any_x": {
+    "kind": "perf",
+    "target": "msm_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as dropping a redundant test from has_affine_x, the comparison an ECDSA verifier makes on u1*G + u2*Q ('the product x * z^2 already decides it'). For the identity z is zero and its x is stored as zero, so the identity now 'has' every x coordinate: a verifier built on this would accept any r when the two terms cancel. No upstream test calls has_affine_x; the equivalence stream asks it of the identity hundreds of times.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "zero_byte_skipped": {
+    "kind": "perf",
+    "target": "scalar_mul_ir",
+    "expect": "tests_fail",
+    "note": "A variable-time shortcut that changes answers: the variable-base multiplication skips a scalar byte that is zero, 'because adding the identity twice is a no-op'. The two additions are, the eight doublings are not: every scalar with a zero byte after its first non-zero byte gives a wrong point. A shortcut of this kind that kept the answers (skipping only leading zero bytes) would be accepted, and the crate allows it: all its APIs are variable-time by contract. See the header on timing.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "leading_zero_bytes_skipped": {
+    "kind": "perf",
+    "target": "scalar_mul_ir",
+    "expect": "no_improvement",
+    "note": "A variable-time shortcut that keeps every answer: the variable-base multiplication skips the scalar's leading zero bytes (the accumulator is still the identity there, so the doublings and additions it skips do nothing). Tests pass and the equivalence output is the same. It is refused only because it does not help: a uniform scalar starts with a zero byte one time in 256. With small scalars in the workload it would have been accepted, and the run time would then tell an observer how long the scalar is. This crate allows that (every API is variable-time by contract, public inputs only); the recipe could not have refused it. See the header on timing.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}
