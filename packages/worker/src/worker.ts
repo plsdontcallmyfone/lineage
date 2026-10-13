@@ -249,7 +249,7 @@ export class Worker {
     this.stateFile = join(dir, "pending.json");
     this.telemetry = new Telemetry(this.client, this.log, { enabled: opts.telemetry !== false });
     this.profiles = new DiscoveryAgent(opts.core, opts.key, this.recipes, this.log);
-    this.calibrations = new CalibrationVerifier(opts.core, opts.key, this.log);
+    this.calibrations = new CalibrationVerifier(opts.core, opts.key, this.log, undefined, join(dir, "calibrations.json"));
     // a stopping worker takes no new side work either (only finishes what it runs and reveals)
     this.profiles.stopping = () => this.draining;
     this.calibrations.stopping = () => this.draining;

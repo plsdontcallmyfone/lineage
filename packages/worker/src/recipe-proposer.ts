@@ -9,6 +9,7 @@ import { calibCommitment } from "../../core/src/recipe-proposals.ts";
 import { duplicateUnit, headroomError } from "../../core/src/more-units.ts";
 import { toolLoop, withBuiltTree, type SpendLedger } from "./discovery.ts";
 import { ToolBox } from "./proposers/anthropic.ts";
+import { writeSecret } from "./secret-file.ts";
 import type { ProposeContext } from "./proposers/types.ts";
 import { candidateLine, multiPackage, repoStructure, structureSection, type ImageFacts } from "./repo-structure.ts";
 import { calibrationReason, equivalenceReason, errorReason, historyLines, oneLine, reasonLine, reasonWords, type TrialOutcome, type TrialReason } from "./trial-reason.ts";
@@ -635,17 +636,43 @@ export class CalibrationVerifier {
     key: SigningKey,
     private log: (m: string) => void = (m) => console.log(`[calibrate] ${m}`),
     private root = join(UNITS_HOME, "proposals"),
+    /**
+     * Where the committed, not yet revealed calibrations are kept. Without it a restart between the
+     * commit and the reveal (a deploy) lost the salt, the reveal could never be made, and the proposal
+     * sat in "calibrating" until Core's window expired an hour later.
+     */
+    private stateFile?: string,
   ) {
     this.client = new CoreClient(core, key);
+    if (stateFile && existsSync(stateFile)) {
+      for (const [k, v] of Object.entries(JSON.parse(readFileSync(stateFile, "utf8")) as Record<string, { calibration: Calibration; deps_digest: string; salt: string }>)) this.pending.set(k, v);
+    }
   }
 
   /** True once the worker is stopping: no new calibration run starts. */
   stopping: () => boolean = () => false;
 
+  /** Committed calibrations this verifier still has to reveal. */
+  get pendingReveals(): number {
+    return this.pending.size;
+  }
+
+  private persist(): void {
+    if (this.stateFile) writeSecret(this.stateFile, JSON.stringify(Object.fromEntries(this.pending)));
+  }
+
   async once(): Promise<number> {
     const r = await this.client.get("/v1/recipe-proposals/assignments", true);
     if (r.status >= 300) throw new Error(`calibration assignments: HTTP ${r.status}`);
     let acted = 0;
+    // Core lists every open (assigned or committed) calibration of ours; a kept result for anything
+    // else expired or was cancelled there and can never be revealed, so drop it
+    const open = new Set((r.body as CalibAssignment[]).map((a) => a.replay_id));
+    const stale = [...this.pending.keys()].filter((id) => !open.has(id));
+    if (stale.length) {
+      for (const id of stale) this.pending.delete(id);
+      this.persist();
+    }
     for (const a of r.body as CalibAssignment[]) {
       try {
         if (a.status === "assigned") {
@@ -657,6 +684,7 @@ export class CalibrationVerifier {
           const salt = randomBytes(16).toString("hex");
           const res = { calibration, deps_digest: deps.digest };
           this.pending.set(a.replay_id, { ...res, salt });
+          this.persist(); // before the commit: a commit Core holds with no salt on disk can never be revealed
           const c = await this.client.post(`/v1/recipe-proposals/replays/${a.replay_id}/commit`, { commitment: calibCommitment(res, salt) });
           if (c.status >= 300) throw new Error(`commit: HTTP ${c.status} ${JSON.stringify(c.body)}`);
           const ms = Object.entries(calibration.metrics).map(([k, v]) => `${k}=${v.enabled ? v.base_value : "off"}`).join(" ");
@@ -668,6 +696,7 @@ export class CalibrationVerifier {
           const v = await this.client.post(`/v1/recipe-proposals/replays/${a.replay_id}/reveal`, p);
           if (v.status >= 300) throw new Error(`reveal: HTTP ${v.status} ${JSON.stringify(v.body)}`);
           this.pending.delete(a.replay_id);
+          this.persist();
           this.log(`calibration ${a.replay_id.slice(0, 10)}: revealed, proposal ${(v.body as { proposal: string }).proposal}`);
           acted++;
         }
