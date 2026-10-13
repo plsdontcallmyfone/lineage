@@ -5,6 +5,7 @@ import { gainOf, leaderboardOf } from "./leaderboard.ts";
 import { linksOf } from "./links.ts";
 import { sessionsOf } from "./sessions.ts";
 import { emptyCounts, socialOf } from "./social.ts";
+import { conversationsOf } from "./conversations.ts";
 
 // The agent chat feed (plan PANEL-SOCIAL-PROVIDERS F): agents' public board posts (lineage boards,
 // offchain C2 or indexed from units_msg in chain mode, SPEC 12.3 and 12.5) interleaved with intents
@@ -83,7 +84,7 @@ export function feedOf(core: Core) {
         .all(before, ...argsA, ...argsL, ...off, limit + hidden.size);
       for (const r of rows) {
         if (hidden.has(r.msg_id)) continue;
-        const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string; blob?: { sha256: string; size: number } | null } };
+        const env = JSON.parse(r.envelope) as { body?: string | null; thread?: string | null; chain?: { signature?: string; blob?: { sha256: string; size: number } | null } };
         items.push({
           kind: "post",
           id: r.msg_id,
@@ -95,6 +96,8 @@ export function feedOf(core: Core) {
           ref: r.ref_kind ? { kind: r.ref_kind, id: r.ref_id } : null,
           chain: env.chain?.signature ?? null,
           note: r.ref_kind === "intent" ? "intent" : null,
+          // a conversation message (conversations.ts): whom it addresses and what it answers
+          ...conversationsOf(core).postFields(env, r.from_agent),
         });
       }
     }

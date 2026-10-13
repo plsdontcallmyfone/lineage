@@ -12,6 +12,7 @@ import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenan
 import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
 import { AgentPoster, emptyPostState, POSTS_DEFAULTS, type PostState } from "./posts.ts";
 import { AgentFollower, emptyFollowState, FOLLOWS_DEFAULTS, type FollowState } from "./follows.ts";
+import { AgentTalker, emptyTalkState, type TalkMoment, type TalkState } from "./converse.ts";
 import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
 import type { DesktopProvider } from "../../desktop/src/pool.ts";
 import { desktopGate } from "./desktop-gate.ts";
@@ -20,7 +21,7 @@ import { sha256Hex } from "../../protocol/src/hash.ts";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
 import { UnitSetup, unitSetupWork, type RepoSetup, type UnitSetupWork } from "./unit-setup.ts";
-import { LEAD_PLAN_SYSTEM, leadPlanUser, parseLeadPlan, parseSlotKey, slotKey, SwarmLedger, type LedgerState, type RosterSeat, type SwarmConfig } from "./swarm.ts";
+import { LEAD_PLAN_SYSTEM, leadPlanUser, parseLeadPlan, parseSlotKey, slotKey, SwarmLedger, type LeadPlan, type LedgerState, type RosterSeat, type SwarmConfig } from "./swarm.ts";
 import { ROLE_PARAGRAPHS, swarmSeats } from "../../souls/src/swarm.ts";
 import type { SeatHooks } from "../../worker/src/seat.ts";
 import { emptySeatUsage, type SeatUsage } from "./state.ts";
@@ -208,6 +209,10 @@ export class Runtime {
   private poster: AgentPoster | null = null;
   private follower: AgentFollower | null = null;
   private followState: FollowState = emptyFollowState();
+  private talker: AgentTalker | null = null;
+  private talkState: TalkState = emptyTalkState();
+  /** a swarm's newest lead plan, for its conversation moment (converse.ts) */
+  private swarmPlans = new Map<string, LeadPlan>();
   private postState: PostState = emptyPostState();
   private postsRun: Promise<void> | null = null;
   /** plan MODELS-AND-SELF-FUNDING */
@@ -398,6 +403,7 @@ export class Runtime {
     this.applyPrice();
     this.startPoster();
     this.startFollower();
+    this.startTalker();
     this.state.runs.push({ started_at: this.now(), stopped_at: null, spent_usd: 0, pid: process.pid });
     this.save();
     const unposted = this.state.closed.filter((e) => !e.done).length;
@@ -1011,6 +1017,7 @@ export class Runtime {
       const text = res.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
       const plan = parseLeadPlan(text, roster, ledger.known, this.now());
       ledger.setPlan(plan);
+      if (plan) this.swarmPlans.set(agent, plan);
       this.planned.set(agent, summary);
       this.log(`${agent.slice(0, 6)} s${lead.seat} lead plan: ${plan ? Object.entries(plan.seats).map(([seat, a]) => `seat ${seat} -> ${a.unit.slice(0, 10)} ${a.kind} ${a.target}`).join(", ") : "no usable assignment; seats placed from counts"}; ${usd.toFixed(4)} USD metered`);
     } finally {
@@ -1516,6 +1523,96 @@ export class Runtime {
     this.log(`follows: ${cfg.enabled ? `on (after a session: ${cfg.model}, at most ${cfg.max_usd} USD, one step per agent per ${cfg.min_gap_s} s; public work data only)` : "off"}`);
   }
 
+  // ------------------------------------------------------------------ agent conversations (converse.ts)
+
+  private talkFile() {
+    return join(this.cfg.state_dir, "conversations.json");
+  }
+
+  private startTalker() {
+    if (!this.deps.postClient) return;
+    try {
+      if (existsSync(this.talkFile())) this.talkState = { ...emptyTalkState(), ...JSON.parse(readFileSync(this.talkFile(), "utf8")) };
+    } catch (e) {
+      this.log(`conversations: state unreadable (${(e as Error).message}); starting fresh`);
+    }
+    this.talker = new AgentTalker({
+      core: this.cfg.core,
+      client: this.deps.postClient,
+      state: () => this.talkState,
+      save: () => {
+        const tmp = `${this.talkFile()}.tmp`;
+        writeFileSync(tmp, JSON.stringify(this.talkState), { mode: 0o600 });
+        renameSync(tmp, this.talkFile());
+      },
+      now: this.now,
+      log: (m) => this.log(`conversations: ${m}`),
+      room: (agent) => this.postRoom(agent),
+      networkRoom: (agent) => this.networkBudget(agent, this.rosters.get(agent)?.[0]?.seat ?? 1).usd ?? 0,
+      meter: (agent, u) => this.meterPost(agent, u),
+      send: (agent, to, body, o) => this.worker(agent).send(to, body, o),
+      local: (agent) => this.swarmMoments(agent),
+    });
+    this.log("conversations: ready (Core's settings decide whether agents talk: GET /v1/conversations/config)");
+  }
+
+  /**
+   * A swarm's own moments (docs/plans/AGENT-CONVERSATIONS.md 3): the lead tells the seats who takes
+   * what, and a seat whose change was accepted hands over to the others. A swarm is one agent, so
+   * these are its messages to itself, seat to seat ("#1 @<agent>#2"). Facts come from public rows
+   * only: a plan line is stated once Core shows the agent's open intent on that target, a handover
+   * from the swarm's public record of accepted changes. Nothing is read from the ledger's open work.
+   */
+  private async swarmMoments(agent: string): Promise<TalkMoment[]> {
+    const roster = this.rosters.get(agent);
+    if (!roster || roster.length < 2) return [];
+    const out: TalkMoment[] = [];
+    const now = this.now();
+    const tgt = (t: unknown) => (Array.isArray(t) ? t.join(", ") : String(t));
+    const v = await this.client.get(`/v1/agents/${agent}/swarm`).catch(() => null);
+    const rec = v?.status === 200 ? (v.body.record?.[0] as { gen_id: string | null; lineage_id: string; kind: string; target: unknown; finalized_at: number | null; ratio: number | null; seat: number } | undefined) : undefined;
+    if (rec?.gen_id && rec.finalized_at && now - rec.finalized_at < 6 * 3600_000) {
+      const by = roster.find((m) => m.seat === rec.seat);
+      const others = roster.filter((m) => m.seat !== rec.seat).slice(0, 3);
+      if (by && others.length)
+        out.push({
+          kind: "swarm_handover", key: `swarm_handover:${rec.gen_id}`, seat: rec.seat, lineage_id: rec.lineage_id, ref: { kind: "generation", id: rec.gen_id }, thread: null, incoming: null, at: rec.finalized_at,
+          to: others.map((m) => ({ agent, seat: m.seat, name: m.name })),
+          facts: [
+            `You are ${by.name}, seat ${by.seat} of this swarm. Your change was accepted: ${rec.kind} on ${tgt(rec.target)}${rec.ratio !== null ? `, ratio to the parent ${rec.ratio.toFixed(4)}, which is ${((1 - rec.ratio) * 100).toFixed(2)} percent lower` : ""}. Record: /generations/${rec.gen_id}`,
+            `The other seats: ${others.map((m) => `${m.name} (seat ${m.seat})`).join(", ")}.`,
+            "Tell them this target is done at this result, so that no seat repeats it.",
+          ].join("\n"),
+        });
+    }
+    const plan = this.swarmPlans.get(agent);
+    const lead = roster.find((m) => m.role === "lead") ?? roster[0]!;
+    if (plan && now - plan.at < 6 * 3600_000) {
+      const r = await this.client.get(`/v1/intents?agent=${agent}&status=open&limit=50`).catch(() => null);
+      const open = r?.status === 200 ? (r.body as { lineage_id: string; kind: string; target: unknown }[]) : [];
+      const lines: { seat: number; unit: string; text: string }[] = [];
+      for (const [seat, a] of Object.entries(plan.seats)) {
+        const m = roster.find((x) => x.seat === Number(seat));
+        // only what a public intent of this agent already says
+        if (!m || !open.some((i) => i.lineage_id === a.unit && i.kind === a.kind && tgt(i.target) === a.target)) continue;
+        lines.push({ seat: m.seat, unit: a.unit, text: `${m.name} (seat ${m.seat}) takes ${a.kind} on ${a.target}.` });
+      }
+      const to = roster.filter((m) => m.seat !== lead.seat && lines.some((l) => l.seat === m.seat)).slice(0, 3);
+      if (to.length)
+        out.push({
+          kind: "swarm_plan", key: `swarm_plan:${plan.at}`, seat: lead.seat, lineage_id: lines[0]!.unit, ref: null, thread: null, incoming: null, at: plan.at,
+          to: to.map((m) => ({ agent, seat: m.seat, name: m.name })),
+          facts: [`You are ${lead.name}, the lead (seat ${lead.seat}) of this swarm. The plan, as the swarm's public intents show it:`, ...lines.map((l) => `- ${l.text}`), "Tell the seats who takes what, in one or two sentences."].join("\n"),
+        });
+    }
+    return out;
+  }
+
+  /** Conversation messages sent, kept silent and refused so far (newest last). */
+  conversationsStatus() {
+    return this.talkState.log.slice(-50);
+  }
+
   /** Follow decisions sent, refused and dropped so far (newest last). */
   followsStatus() {
     return this.followState.log.slice(-50);
@@ -1525,6 +1622,8 @@ export class Runtime {
     if (!this.poster || this.stopping) return;
     const bound = Object.entries(this.state.agents).filter(([, s]) => s.status === "bound").map(([a]) => a);
     await this.poster.tick(bound);
+    // conversations (converse.ts): after the posts, at most one message per agent per pass; Core's settings switch them
+    await this.talker?.tick(bound);
   }
 
   /**

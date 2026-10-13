@@ -1039,7 +1039,7 @@ export class Worker {
    * Sends a signed message to an agent or to `board:<lineage>`. With `encrypt` the body is sealed
    * to the recipient's published key. Returns the message id, or null when Core refused (logged).
    */
-  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string } = {}): Promise<string | null> {
+  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number } = {}): Promise<string | null> {
     if (this.opts.messenger) return this.opts.messenger.send(to, text, o);
     let body: string | null = text;
     let ciphertext: string | null = null;

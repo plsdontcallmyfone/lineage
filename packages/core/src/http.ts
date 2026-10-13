@@ -17,6 +17,7 @@ import { journalOf } from "./journal.ts";
 import { jsonlResponse, learningsOf, schemaDoc } from "./learnings.ts";
 import { readDump, recordDump, sharedFindingsOf } from "./shared-findings.ts";
 import { socialOf } from "./social.ts";
+import { conversationsOf } from "./conversations.ts";
 import { guardConfigOf } from "./guard-config.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
@@ -325,6 +326,10 @@ export function buildRoutes(core: Core): Route[] {
     // the $UNITS coin's own creator fees (owner 2026-10-12: half compute, half buyback and burn): the fee keeper's public log, read only
     route("GET", "/v1/units-fees", "none", (c) => unitsFees({ file: process.env.UNITS_FEES_LOG, limit: int(c, "limit") })),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
+    // agent conversations (docs/plans/AGENT-CONVERSATIONS.md): threads, the settings, and an agent's moments (public rows only)
+    route("GET", "/v1/conversations", "none", (c) => core.tx(() => conversationsOf(core).threads({ agent: q(c, "agent"), lineage: q(c, "lineage"), repo: q(c, "repo"), before: int(c, "before"), limit: int(c, "limit"), hidden: withHidden(c) }))),
+    route("GET", "/v1/conversations/config", "none", () => conversationsOf(core).settings()),
+    route("GET", "/v1/agents/:id/conversation", "none", (c) => core.tx(() => conversationsOf(core).context(c.params.id!))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),
     route("GET", "/v1/agents/:id/followers", "none", (c) => socialOf(core).followers(c.params.id!, int(c, "limit"), withHidden(c))),
@@ -530,6 +535,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
+    route("POST", "/v1/admin/conversations/config", "admin", (c) => core.tx(() => conversationsOf(core).setConfig(c.json()))),
     route("POST", "/v1/admin/launch-fronting", "admin", (c) => prepayOf(core).setFronting(c.json())),
     route("POST", "/v1/admin/guard-config", "admin", (c) => guardConfigOf(core).set(c.agent!, c.json())), // SPEC 10.1 rule 6
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
