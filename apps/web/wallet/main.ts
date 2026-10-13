@@ -2333,7 +2333,7 @@ function creditsHtml(l: AgentLaunch) {
   const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
   const waiting = r?.waiting ?? (sp?.provider_balance_low ? "provider balance low" : null);
   return html`<div class="me-cr">
-      <div class="me-cr-st">${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}${mineRows.get(l.mint)?.hidden ? badge("hidden from listings", "") : ""}${waiting ? badge(String(waiting), "warn") : ""}</div>
+      <div class="me-cr-st">${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}${mineRows.get(l.mint)?.hidden ? badge("hidden from listings", "") : ""}</div>${waiting ? html`<p class="me-cr-why">${String(waiting)}</p>` : ""}
       <dl class="me-cr-k">
         <div><dt>Compute vault</dt><dd><b id="me-v-${l.agent}"><span class="faint">…</span></b>${r && typeof r.vault_usd === "number" ? html` <span class="faint">${usd(r.vault_usd)}</span>` : ""}</dd></div>
         <div><dt>Burn</dt><dd>${tbaOr(r && typeof r.burn_usd_per_h === "number" ? `${usd(r.burn_usd_per_h)}/h` : null)}</dd></div>
