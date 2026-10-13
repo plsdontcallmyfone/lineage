@@ -113,6 +113,7 @@ import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, type Fund
 import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
 import { checkedCoinUri, loadCoinOrigin, storeCoinImage, storeCoinLinks, type CoinOrigin } from "./coin-uri.ts";
 export { mountClaim } from "./claim.ts";
+export { mountBountyPost } from "./bounty-post.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
 import { applyLaunchPrefill, reportTweetLaunch } from "./tweet-ref.ts";

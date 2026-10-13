@@ -29,6 +29,7 @@ import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import { claimPage } from "./pages/claim.ts";
 import { poolsPage } from "./pages/pools.ts";
+import { bountiesPage, bountyPage } from "./pages/bounties.ts";
 import type { Page } from "./pages/types.ts";
 import { siteFooter } from "./site-footer.ts";
 import { smoothScroll } from "./smooth-scroll.ts";
@@ -54,6 +55,8 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/profile$/, profilePage, ""],
   [/^\/claim$/, claimPage, "/eco"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
   [/^\/pools$/, poolsPage, "/eco"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
+  [/^\/bounties$/, bountiesPage, "/eco"], // bounties (docs/plans/OPEN-BOUNTIES.md); says "not open yet" when Core serves no bounty settings
+  [/^\/bounties\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, bountyPage, "/eco"],
   [/^\/units\/([0-9a-f]{64})$/, lineagePage, "/"],
   [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"], // pre-rebrand links keep working
   [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
