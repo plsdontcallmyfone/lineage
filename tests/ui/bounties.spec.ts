@@ -80,7 +80,55 @@ test("any wallet posts a bounty: the form, what a short wallet needs, the exact 
   const usd = (await page.locator('[data-bounty-post] label:has(input[name="bo_reward"]) .eyebrow').innerText()).includes("dollars");
   const metricMin = board.units[0].metrics[0].min_improvement_bps as number;
   await form.locator('[name="bo_pct"]').fill(String(Math.max(10, metricMin / 100)));
-  await form.locator('[name="bo_days"]').fill("3");
+  // what posting does, in plain words, above the fields
+  await expect(page.locator("[data-bounty-intro]")).toContainText("the first verified change that meets it is paid");
+  // a repository is owner/repo with the unit after it; a unit without a public repository is not offered
+  const repos = await form.locator('[name="bo_unit"] option').allInnerTexts();
+  expect(repos.length).toBeGreaterThan(0);
+  for (const r of repos) expect(r).toMatch(/^[\w.-]+\/[\w.-]+ \([\w.-]+\)$/);
+  expect(repos.join(" ")).not.toMatch(/fixture/i);
+  // a metric is a human label with its raw name after it, and is explained under the field with a value Core measured
+  const first = (board.units as any[]).find((u) => /^https?:\/\//.test(u.repo));
+  const metrics = await form.locator('[name="bo_metric"] option').allInnerTexts();
+  expect(metrics.length).toBe(first.metrics.length);
+  metrics.forEach((m, i) => { expect(m).toContain(`(${first.metrics[i].name}`); expect(m.length).toBeGreaterThan(first.metrics[i].name.length + 8); });
+  const explain = page.locator("[data-metric-explain]");
+  await expect(explain.locator("[data-metric-value]")).toBeVisible({ timeout: 60_000 });
+  const shown = Number(await explain.locator("[data-metric-value]").getAttribute("data-metric-value"));
+  const unit = await (await request.get(`/api/lineages/${first.lineage_id}`)).json();
+  const gen = unit.height > 0 ? await (await request.get(`/api/generations/${unit.tip}`)).json() : null;
+  const served = [unit.calibration.metrics[first.metrics[0].name]?.base_value, ...((gen?.replays ?? []) as any[]).flatMap((r) => r.result?.metrics?.[first.metrics[0].name]?.cand ?? [])];
+  expect(served, "the value under the metric is one Core serves").toContain(shown);
+  // the required improvement in the metric's own terms follows what is typed
+  await form.locator('[name="bo_pct"]').fill("5");
+  await expect(explain.locator("[data-metric-example]")).toContainText("5% better means going from");
+  const goal = Number((await explain.locator("[data-metric-example]").innerText()).match(/ to ([\d,]+) or /)![1]!.replace(/,/g, ""));
+  expect(goal).toBe(first.metrics[0].direction === "higher" ? Math.ceil(shown * 1.05) : Math.floor(shown * 0.95));
+  const q = page.locator('[data-bounty-hint="bo_pct_hint"]');
+  await expect(page.locator("#bo_pct_hint")).toBeHidden();
+  await q.click();
+  await expect(page.locator("#bo_pct_hint")).toContainText("One verified change");
+  await q.click();
+  // the deadline: the site's segmented buttons inside the on-chain limits, a week first, the end in local time and when the reward returns
+  const dl = page.locator("[data-bounty-deadline]");
+  const days = [1, 3, 7, 14, 30].filter((d) => d * 86_400 >= board.escrow.min_ttl_s && d * 86_400 <= board.escrow.max_ttl_s);
+  await expect(dl.locator(".seg button")).toHaveCount(days.length + 1);
+  await expect(dl.locator("select")).toHaveCount(0);
+  if (days.includes(7)) await expect(dl.locator('.seg button[aria-pressed="true"]')).toHaveText("1 week");
+  const endOf = async () => Number(await dl.locator("[data-deadline-end]").getAttribute("data-deadline-end"));
+  const nowS = Math.floor(Date.now() / 1000);
+  if (days.includes(7)) expect(Math.abs((await endOf()) - nowS - 7 * 86_400)).toBeLessThan(120);
+  await expect(dl.locator("[data-deadline-line]")).toContainText("If nobody wins, the reward returns to your wallet from");
+  await expect(dl.locator('[name="bo_days_custom"]')).toHaveCount(0);
+  await dl.locator('.seg button', { hasText: "Custom" }).click();
+  await dl.locator('[name="bo_days_custom"]').fill("3");
+  expect(Math.abs((await endOf()) - nowS - 3 * 86_400)).toBeLessThan(120);
+  await dl.locator('[name="bo_days_custom"]').fill("100000");
+  await expect(dl.locator("[data-deadline-line]")).toContainText("Enter a number of days between");
+  await dl.locator('[name="bo_days_custom"]').fill("3");
+  // typed values survive the redraws
+  await expect(form.locator('[name="bo_pct"]')).toHaveValue("5");
+  await form.locator('[name="bo_pct"]').fill(String(Math.max(10, metricMin / 100)));
   await form.locator('[name="bo_note"]').fill("ui check");
   // the coin's whole supply: far more than any wallet holds
   const price = usd ? ((await (await request.get("/market/quote-usd")).json()).usd as number) : 0;

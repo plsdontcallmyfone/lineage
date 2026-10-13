@@ -5,6 +5,7 @@ import { html, raw, type Raw } from "../html.ts";
 import { market } from "../market.ts";
 import { empty, epochLink, stat } from "../ui.ts";
 import { bpsPct, span, targetWords } from "../bounty-words.ts";
+import { publicRepo } from "../metric-words.ts";
 import type { Page } from "./types.ts";
 
 export { bpsPct, span, targetWords };
@@ -87,6 +88,18 @@ a.bo-name:hover{text-decoration:underline}
 .bo-post .wl-form{display:grid;gap:12px}
 .bo-post label{display:grid;gap:5px;min-width:0}
 .bo-post .wl-row{margin-top:2px}
+.bo-post .bo-field{display:grid;gap:5px;min-width:0}
+.bo-post .bo-lab{display:flex;align-items:center;gap:6px}
+.bo-post .bo-q{width:18px;height:18px;padding:0;border:1px solid var(--border);border-radius:50%;background:var(--bg);color:var(--ts);font:500 11px/1 var(--sans);cursor:pointer}
+.bo-post .bo-q:hover,.bo-post .bo-q[aria-expanded="true"]{background:var(--tp);color:var(--bg);border-color:var(--tp)}
+.bo-post .bo-q:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.bo-post .seg{display:flex;flex-wrap:wrap;background:var(--bg3)}
+.bo-post .seg button{flex:1 1 auto;font:500 13px/1.4 var(--sans);white-space:nowrap}
+.bo-post .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.bo-post .wl-help b{font-weight:500;color:var(--tp)}
+.bo-explain{border-left:2px solid var(--border);padding:1px 0 1px 10px;display:grid;gap:4px}
+.bo-explain p{margin:0;font-size:12.5px;color:var(--ts);line-height:1.45}
+.bo-explain b{font-weight:500;color:var(--tp);font-variant-numeric:tabular-nums}
 .bo-sec{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);overflow:hidden;min-width:0}
 .bo-sec>h2{margin:0;padding:12px 16px;font-family:var(--display);font-size:16px;font-weight:500;letter-spacing:-.02em;border-bottom:1px solid var(--border)}
 .bo-sec>div.bo-b{padding:14px 16px;font-size:13.5px;color:var(--ts);line-height:1.5}
@@ -192,7 +205,8 @@ export async function bountiesPage(): Promise<Page> {
   }
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
-  const rows = res.bounties.map(known).sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || (a.state === "open" ? a.deadline - b.deadline : b.created_at - a.created_at));
+  // a bounty on a unit whose repository is not a public one (a test fixture) is not listed
+  const rows = res.bounties.map(known).filter((b) => !b.repo || publicRepo(b.repo)).sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || (a.state === "open" ? a.deadline - b.deadline : b.created_at - a.created_at));
   const open = rows.filter((b) => b.state === "open");
   const paid = rows.filter((b) => b.state === "paid");
   return {

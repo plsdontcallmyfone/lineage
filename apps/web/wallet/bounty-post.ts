@@ -16,6 +16,7 @@ import { ata, bounty, bountyPdas, launch, launchPdas, openBounty, openBountyPdas
 import { repoLabel } from "../src/fmt.ts";
 import { html, raw, type Raw } from "../src/html.ts";
 import { bpsPct, span, targetWords } from "../src/bounty-words.ts";
+import { daysLabel, deadlineChoices, improvementExample, metricValue, metricWords, publicRepo } from "../src/metric-words.ts";
 import { banner } from "../src/ui.ts";
 import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdReading } from "../src/usd.ts";
 import { BOUNTY_ACCOUNT_LEN, BOUNTY_LEDGER_LEN, ESCROW_BOUNTY_ACCOUNT_LEN, escrowTerms, planBounty, planEscrowBounty, type EscrowPlan, type Plan, type Terms } from "./bounty-plan.ts";
@@ -33,6 +34,10 @@ interface WalletReview { plan: OkEscrow; unit: Unit; metric: UnitMetric; balance
 /** What the wallet lacks for the reward it entered. */
 interface Short { coin: bigint; needCoin: bigint; lamports: bigint; needLamports: bigint }
 const WALLET = "wallet";
+/** What Core serves about a unit beyond the board: each metric's parser, the recipe's class, and measured values. */
+interface UnitDetail { cls: string | null; parser: Record<string, string>; height: number; base: Record<string, number>; tip: Record<string, number> | null }
+const DETAIL = new Map<string, UnitDetail | "loading" | null>();
+const CUSTOM = "custom";
 
 const COMPUTE_UNITS = 300_000;
 const PENDING = "units.bounty.terms";
@@ -51,7 +56,85 @@ const dec = () => B.chain?.state?.line_decimals ?? NET.p.quote.decimals ?? 6;
 const usdOf = (base: bigint) => fmtUsd(quoteToUsd(Number(base) / 10 ** dec()));
 const coins = (base: bigint) => `${units(base, dec())} ${qsym()}`;
 const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}${NET.p.explorer_cluster ? `?cluster=${NET.p.explorer_cluster}` : ""}`;
+/** Units a bounty can name: a unit whose repository is not a public one (a test fixture) is left out. */
+const targets = (): Unit[] => (B.board?.units ?? []).filter((u) => publicRepo(u.repo));
+const unitName = (u: { repo: string; recipe_name: string }) => `${publicRepo(u.repo) ?? repoLabel(u.repo)} (${u.recipe_name})`;
 const val = (name: string) => B.root?.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`)?.value.trim() ?? "";
+
+// ---------- the deadline and the metric, in plain words ----------
+
+/** The deadline in days: the selected choice, or the number typed under Custom. */
+function deadlineDays(): number {
+  const c = val("bo_deadline");
+  return c === CUSTOM || !c ? Number(val("bo_days_custom")) : Number(c);
+}
+const localTime = (unixS: number) => new Date(unixS * 1000).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+/** When the bounty ends and when the reward returns with no winner, in the viewer's local time. */
+function deadlineLine(days: number, lim: { minTtlS: number; maxTtlS: number; refundGraceS: number }, back: string): Raw {
+  const ttl = Math.round(days * 86_400);
+  if (!Number.isFinite(days) || ttl < lim.minTtlS || ttl > lim.maxTtlS) return html`Enter a number of days between ${span(lim.minTtlS)} and ${span(lim.maxTtlS)}.`;
+  const end = Math.floor(Date.now() / 1000) + ttl;
+  return html`Ends <b data-deadline-end="${end}">${localTime(end)}</b>. If nobody wins, the reward returns to ${back} from ${localTime(end + lim.refundGraceS)}.`;
+}
+
+/** The middle measurement (the lower of the two middle ones): always a number that was measured, never an average. */
+const median = (xs: number[]) => [...xs].sort((x, y) => x - y)[Math.floor((xs.length - 1) / 2)]!;
+/** Reads the unit from Core once: parsers, class, the values measured at its setup, and those of its newest generation's replays. */
+async function loadDetail(id: string) {
+  if (DETAIL.has(id)) return;
+  DETAIL.set(id, "loading");
+  const j = (path: string) => fetch(path, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const u = await j(`/api/lineages/${id}`);
+  let d: UnitDetail | null = null;
+  if (u?.recipe) {
+    const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+    d = { cls: typeof u.recipe.class === "string" ? u.recipe.class : null, height: Number(u.height) || 0, tip: null,
+      parser: Object.fromEntries(((u.recipe.metrics ?? []) as { name: string; parser?: string }[]).filter((m) => typeof m.parser === "string").map((m) => [m.name, m.parser!])),
+      base: Object.fromEntries(Object.entries((u.calibration?.metrics ?? {}) as Record<string, { base_value?: unknown }>).filter(([, v]) => num(v?.base_value)).map(([k, v]) => [k, v.base_value as number])) };
+    if (d.height > 0 && typeof u.tip === "string") {
+      const g = await j(`/api/generations/${u.tip}`);
+      const per = new Map<string, number[]>();
+      for (const r of (g?.replays ?? []) as { result?: { metrics?: Record<string, { cand?: unknown }> } }[])
+        for (const [name, m] of Object.entries(r.result?.metrics ?? {})) {
+          const cand = Array.isArray(m?.cand) ? m.cand.filter(num) : [];
+          if (cand.length) per.set(name, [...(per.get(name) ?? []), median(cand)]);
+        }
+      if (per.size) d.tip = Object.fromEntries([...per].map(([k, v]) => [k, median(v)]));
+    }
+  }
+  DETAIL.set(id, d);
+  refreshLines();
+}
+
+/** Under the Metric field: what is measured, the value Core last measured, and what the required improvement means in this metric's terms. */
+function metricExplain(unit: Unit, metric: UnitMetric, pctText: string): Raw {
+  const d = DETAIL.get(unit.lineage_id);
+  const det = d && d !== "loading" ? d : null;
+  const w = metricWords({ ...metric, parser: det?.parser[metric.name], cls: det?.cls });
+  const tip = det?.tip?.[metric.name], base = det?.base[metric.name];
+  const value = tip ?? base ?? null;
+  const measured: Raw = d === "loading" || d === undefined ? html`<p class="dim">Reading the latest measurement…</p>`
+    : value === null ? html``
+    : tip !== undefined ? html`<p>Last measured: <b data-metric-value="${String(value)}">${metricValue(value, w)}</b>, in the replays of generation ${det!.height}.</p>`
+    : html`<p>Measured when this unit was set up: <b data-metric-value="${String(value)}">${metricValue(value, w)}</b>. ${det!.height > 0 ? `${det!.height} ${det!.height === 1 ? "change has" : "changes have"} been accepted since.` : "No change has been accepted yet."}</p>`;
+  const typed = Number(pctText.replace("%", ""));
+  const pct = pctText && Number.isFinite(typed) && typed > 0 ? typed : metric.min_improvement_bps / 100;
+  const ex = improvementExample(value, pct, metric, w);
+  return html`<p><b data-metric-name>${metric.name}</b>: ${w.what[0]!.toLowerCase()}${w.what.slice(1)}</p>${measured}${ex ? html`<p data-metric-example>${pctText ? "" : "The smallest improvement this metric counts: "}${String(pct)}% better means going ${ex}, counted from that measurement.</p>` : ""}`;
+}
+
+/** Redraws the two explanation lines from the fields as they are now, without touching the fields (typing keeps its place). */
+function refreshLines() {
+  const el = B.root;
+  if (!el?.querySelector('[data-wallet-form="bounty-post"]')) return;
+  const unit = targets().find((u) => u.lineage_id === val("bo_unit"));
+  const metric = unit?.metrics.find((m) => m.name === val("bo_metric"));
+  const box = el.querySelector("[data-metric-explain]");
+  if (unit && metric && box) box.innerHTML = metricExplain(unit, metric, val("bo_pct")).s;
+  const line = el.querySelector<HTMLElement>("[data-deadline-line]");
+  const lim = val("bo_payer") === WALLET || !agentPath() ? B.ecfg?.settings : B.cfg;
+  if (line && lim) line.innerHTML = deadlineLine(deadlineDays(), lim, line.dataset.back ?? "its funder").s;
+}
 
 // ---------- terms kept until Core has mirrored the account ----------
 
@@ -153,7 +236,7 @@ const reviewWallet = () => act("Reading the chain", async () => {
   const byUsd = reading.ok;
   const input = {
     usd: byUsd ? Number(val("bo_reward").replace(/[$,\s]/g, "")) : null, unitsText: byUsd ? null : val("bo_reward"), priceUsd: reading.ok ? reading.usd : null, decimals: dec(),
-    hours: Number(val("bo_days")) * 24, nowS: Math.floor(Date.now() / 1000), lineageId: unit.lineage_id, metric, pct: Number(val("bo_pct").replace("%", "")), note: val("bo_note"),
+    hours: deadlineDays() * 24, nowS: Math.floor(Date.now() / 1000), lineageId: unit.lineage_id, metric, pct: Number(val("bo_pct").replace("%", "")), note: val("bo_note"),
     cfg: c.settings, walletCoin: held ?? 0n, walletLamports: BigInt(lamports), rent: { bounty: BigInt(rentBounty), vault: BigInt(rentVault) },
   };
   // the terms first, on their own; then the network fee at the current priority price; then what this wallet really holds against both
@@ -213,7 +296,7 @@ const reviewAgent = () => act("Reading the chain", async () => {
     const byUsd = reading.ok;
     const plan = planBounty({
       usd: byUsd ? Number(val("bo_reward").replace(/[$,\s]/g, "")) : null, unitsText: byUsd ? null : val("bo_reward"), priceUsd: reading.ok ? reading.usd : null, decimals: dec(),
-      hours: Number(val("bo_days")) * 24, nowS: Math.floor(Date.now() / 1000), lineageId: unit.lineage_id, metric, pct: Number(val("bo_pct").replace("%", "")), note: val("bo_note"),
+      hours: deadlineDays() * 24, nowS: Math.floor(Date.now() / 1000), lineageId: unit.lineage_id, metric, pct: Number(val("bo_pct").replace("%", "")), note: val("bo_note"),
       cfg: c, vaultBalance: balance, ledger,
       // the escrow is a token account of the same mint as the compute vault, so it costs what that account holds in rent
       rent: { bounty: rentBounty, vault: vaultAcct.lamports, ledger: rentLedger },
@@ -269,29 +352,45 @@ const box = (body: Raw): Raw => html`<section class="bo-how" data-bounty-post><h
 const status = (): Raw => html`<div role="status" aria-live="polite">${B.busy ? html`<p class="dim" data-bounty-busy>${B.busy}…</p>` : B.err ? banner("bad", "That did not work", B.err) : ""}</div>`;
 
 function formView(): Raw {
-  const board = B.board!, mine = agentPath() ? B.mine! : [];
+  const units = targets(), mine = agentPath() ? B.mine! : [];
   const wallet = anyWallet();
   const fromWallet = wallet && (val("bo_payer") === WALLET || !val("bo_payer") || !mine.length);
   const lim = fromWallet ? B.ecfg!.settings : B.cfg!;
-  const unitId = val("bo_unit") || board.units[0]?.lineage_id || "";
-  const unit = board.units.find((u) => u.lineage_id === unitId) ?? board.units[0];
+  const unitId = val("bo_unit") || units[0]?.lineage_id || "";
+  const unit = units.find((u) => u.lineage_id === unitId) ?? units[0];
   const metricName = unit?.metrics.some((m) => m.name === val("bo_metric")) ? val("bo_metric") : unit?.metrics[0]?.name;
   const metric = unit?.metrics.find((m) => m.name === metricName);
   const priced = usdReading().ok;
   if (!unit || !metric) return box(html`<p>No repository has a unit with a metric a bounty can name yet.</p>`);
-  return box(html`<form class="wl-form" autocomplete="off" data-wallet-form="bounty-post">
+  void loadDetail(unit.lineage_id);
+  const back = fromWallet ? "your wallet" : "the agent's compute balance";
+  const choices = deadlineChoices(lim.minTtlS, lim.maxTtlS);
+  const picked = val("bo_deadline") === CUSTOM || choices.days.includes(Number(val("bo_deadline"))) ? val("bo_deadline") : choices.first === null ? CUSTOM : String(choices.first);
+  const seg = (value: string, text: string) => html`<button type="button" data-bounty-days="${value}" aria-pressed="${picked === value ? "true" : "false"}">${text}</button>`;
+  return box(html`<p data-bounty-intro>You name an improvement and a reward. Agents compete; the first verified change that meets it is paid. If nobody does by the deadline, the reward returns to ${back}.</p>
+  <form class="wl-form" autocomplete="off" data-wallet-form="bounty-post">
     ${wallet && !mine.length ? html`<input type="hidden" name="bo_payer" value="${WALLET}">` : html`<label><span class="eyebrow">Paid from</span><select name="bo_payer" data-bounty-change>
       ${wallet ? html`<option value="${WALLET}"${fromWallet ? raw(" selected") : ""}>This wallet, ${short(me()!)}</option>` : ""}
       ${mine.map((l) => html`<option value="${l.agent}"${!fromWallet && l.agent === val("bo_payer") ? raw(" selected") : ""}>Compute balance of ${short(l.agent)}, ${repoLabel(l.repoUrl)}</option>`)}</select>
       <span class="wl-help">${fromWallet ? "The reward leaves this wallet and is held on chain until the bounty closes." : "The reward leaves this agent's compute balance and is held on chain until the bounty closes."}</span></label>`}
-    <label><span class="eyebrow">Repository</span><select name="bo_unit" data-bounty-change>${board.units.map((u) => html`<option value="${u.lineage_id}"${u.lineage_id === unit.lineage_id ? raw(" selected") : ""}>${repoLabel(u.repo)}, ${u.recipe_name}</option>`)}</select></label>
-    <label><span class="eyebrow">Metric</span><select name="bo_metric" data-bounty-change>${unit.metrics.map((m) => html`<option value="${m.name}"${m.name === metric.name ? raw(" selected") : ""}>${m.name} (${m.direction === "higher" ? "higher is better" : "lower is better"})</option>`)}</select></label>
-    <label><span class="eyebrow">Improvement required (%)</span><input name="bo_pct" inputmode="decimal" placeholder="${String(metric.min_improvement_bps / 100)}">
-      <span class="wl-help">In one verified change, measured by independent replays. This metric counts ${bpsPct(metric.min_improvement_bps)} or more.</span></label>
+    <label><span class="eyebrow">Repository</span><select name="bo_unit" data-bounty-change>${units.map((u) => html`<option value="${u.lineage_id}"${u.lineage_id === unit.lineage_id ? raw(" selected") : ""}>${unitName(u)}</option>`)}</select></label>
+    <label><span class="eyebrow">What should improve</span><select name="bo_metric" data-bounty-change>${unit.metrics.map((m) => html`<option value="${m.name}"${m.name === metric.name ? raw(" selected") : ""}>${metricWords(m).label}</option>`)}</select></label>
+    <div class="bo-explain" data-metric-explain aria-live="polite">${metricExplain(unit, metric, val("bo_pct"))}</div>
+    <div class="bo-field">
+      <div class="bo-lab"><label class="eyebrow" for="bo_pct">Improvement required (%)</label><button type="button" class="bo-q" data-bounty-hint="bo_pct_hint" aria-expanded="false" aria-controls="bo_pct_hint" aria-label="What improvement required means">?</button></div>
+      <input id="bo_pct" name="bo_pct" inputmode="decimal" placeholder="${String(metric.min_improvement_bps / 100)}">
+      <p class="wl-help" id="bo_pct_hint" data-bounty-hint-text hidden>One verified change has to make this much difference by itself, measured against the unit's best code at the time it is checked. Several small changes do not add up, and the unit's best keeps moving as other changes are accepted.</p>
+      <span class="wl-help">Independent replays measure it. This metric counts ${bpsPct(metric.min_improvement_bps)} or more.</span>
+    </div>
     <label><span class="eyebrow">${priced ? "Reward (US dollars)" : `Reward (${qsym()})`}</span><input name="bo_reward" inputmode="decimal">
       <span class="wl-help">${priced ? `Held as ${qsym()} at the price when you sign. ` : ""}Smallest reward ${priced ? usdOf(lim.minAmount) : coins(lim.minAmount)}.</span></label>
-    <label><span class="eyebrow">Deadline (days from now)</span><input name="bo_days" inputmode="decimal">
-      <span class="wl-help">Between ${span(lim.minTtlS)} and ${span(lim.maxTtlS)}.</span></label>
+    <div class="bo-field" data-bounty-deadline="${picked}">
+      <span class="eyebrow" id="bo_deadline_lab">Deadline</span>
+      <input type="hidden" name="bo_deadline" value="${picked}">
+      <div class="seg" role="group" aria-labelledby="bo_deadline_lab">${choices.days.map((d) => seg(String(d), daysLabel(d)))}${seg(CUSTOM, "Custom")}</div>
+      ${picked === CUSTOM ? html`<input name="bo_days_custom" inputmode="decimal" aria-label="Deadline in days from now" placeholder="Days from now">` : ""}
+      <span class="wl-help" data-deadline-line data-back="${back}">${deadlineLine(picked === CUSTOM ? Number(val("bo_days_custom")) : Number(picked), lim, back)}</span>
+    </div>
     <label><span class="eyebrow">Note (optional)</span><input name="bo_note" maxlength="280" placeholder="What you want faster or smaller, in a sentence"></label>
     <div class="wl-row"><button type="button" class="wl-btn primary" data-bounty-act="review"${B.busy ? raw(" disabled") : ""}>Review the cost</button></div>
   </form>${status()}${shortView()}`);
@@ -398,11 +497,30 @@ export async function mountBountyPost(root: HTMLElement) {
   B.done = null;
   B.err = null;
   root.addEventListener("click", (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-bounty-act]");
+    const t = e.target as HTMLElement;
+    const b = t.closest<HTMLElement>("[data-bounty-act]");
     if (b && !(b as HTMLButtonElement).disabled) void actions[b.dataset.bountyAct!]?.();
+    // the deadline choice: kept in the form's hidden field, then the form is drawn again around it
+    const day = t.closest<HTMLElement>("[data-bounty-days]");
+    const pick = root.querySelector<HTMLInputElement>('[name="bo_deadline"]');
+    if (day && pick) {
+      pick.value = day.dataset.bountyDays!;
+      render();
+      if (pick.value === CUSTOM) root.querySelector<HTMLInputElement>('[name="bo_days_custom"]')?.focus();
+    }
+    const q = t.closest<HTMLElement>("[data-bounty-hint]");
+    const hint = q ? root.querySelector<HTMLElement>(`#${q.dataset.bountyHint}`) : null;
+    if (q && hint) {
+      hint.hidden = !hint.hidden;
+      q.setAttribute("aria-expanded", String(!hint.hidden));
+    }
   });
   root.addEventListener("change", (e) => {
     if ((e.target as HTMLElement).closest("[data-bounty-change]")) render();
+  });
+  root.addEventListener("input", (e) => {
+    const n = (e.target as HTMLInputElement).name;
+    if (n === "bo_pct" || n === "bo_days_custom") refreshLines();
   });
   startDiscovery();
   restoreSession();
