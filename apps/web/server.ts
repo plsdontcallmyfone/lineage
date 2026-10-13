@@ -465,7 +465,8 @@ const server = Bun.serve({
     // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md 5): the gist proof, the wallet statement and the attestation request are
     // POSTs Core verifies itself (a session token and a wallet signature); forwarded unchanged with a body cap
     // the owner mark of a bounty's poster (docs/plans/OPEN-BOUNTIES.md 9) goes the same way: a session and a repository id, checked by Core
-    const feeClaim = /^\/api\/(fee-claims\/(?:proofs\/gist|wallet|attest)|bounties\/owner-proof(?:\/forget)?)$/.exec(p);
+    // and so does a request for a repository (docs/plans/OPEN-BOUNTIES.md 10): a statement the wallet signed
+    const feeClaim = /^\/api\/(fee-claims\/(?:proofs\/gist|wallet|attest)|bounties\/owner-proof(?:\/forget)?|repo-requests)$/.exec(p);
     if (feeClaim && req.method === "POST") {
       const body = await req.arrayBuffer();
       if (body.byteLength > 8 * 1024) return Response.json({ error: "too_large", message: "body too large" }, { status: 413 });

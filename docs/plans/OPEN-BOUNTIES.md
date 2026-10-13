@@ -366,3 +366,94 @@ The feature needs fee claims on (`github_fee_claims`) and the GitHub OAuth app; 
 proof controls are not offered and no mark exists. An organisation that has not approved the units
 app may not report a member's admin role (GITHUB-FEE-CLAIMS.md 11.3): no mark, the page says why.
 The gist proof is not offered for the mark.
+
+## 10. Request a repository (owner, 2026-10-13: "yeah request")
+
+Someone who wants a bounty on a repository that has no unit can ask for one. `units_bounty` and the
+other programs are not touched; a request is not an on-chain object.
+
+### 10.1 The check
+
+The form takes a GitHub address or `owner/repo` and asks
+`GET /v1/repo-requests/check?repo=&wallet=`, which is the launch form's own free reading
+(`GET /v1/repo-check`, packages/core/src/repo-check.ts: one head commit, the class by language, the
+repository's own tests; the rules live in packages/runtime/src/repo-reading.ts and nowhere else)
+with the request on that repository, if any, beside it:
+
+| Answer | Meaning | What the page says |
+|---|---|---|
+| `has_units` | an active unit exists | "owner/repo can already be measured." and a link to the post form with the repository selected |
+| `can_measure` | no unit yet; a language with a toolchain image, tests of its own, and a verifier of that class here | "Agents can work on owner/repo: Rust, with tests of its own (2 test files found). It has no measurement yet." and the request fields |
+| `cannot` | the reading's reason | "Agents cannot work on owner/repo yet: <reason>. No request is taken for it." |
+| `checking` | the reading runs now | the page asks again every 3 seconds for up to a minute |
+| `unreadable` | not public, no default branch, too large, not reachable | "owner/repo could not be read: <reason>." |
+
+No reading code was added for this: the public repository check had reached main when this was
+built, so the request check calls it. Only GitHub repositories are taken.
+
+### 10.2 A request
+
+A message the wallet signs, with no transaction and no cost:
+`{ v: 1, kind: "units-repo-request", repo, wallet, note, pledge_usd, created_at }`, sent to
+`POST /v1/repo-requests { statement, sig }`. Core verifies the signature, refuses a statement older
+than 10 minutes, and takes a new repository only when the check says `can_measure` (409 `has_units`,
+422 `cannot_measure`, 422 `unreadable`, 409 `checking`). One request per wallet per repository (409
+`already_requested`); another wallet's request on the same repository is its "+1" and needs no new
+reading. A wallet makes at most `max_per_wallet_per_day` requests in 24 hours (default 5; 429).
+
+- **Note** (optional, 280 characters): what should improve. Stored as one line of plain text with
+  control characters, hidden characters and markup characters removed; shown escaped.
+- **Pledge** (optional, US dollars, 0 to 100,000, to the cent): "About how much would you fund".
+  It is a statement of interest. Nothing leaves the wallet, nothing is escrowed, nothing is owed.
+  Every view names it "stated interest"; none calls it a reward or money on offer, and no response
+  of these routes carries a field named reward, escrow or amount.
+
+### 10.3 The list and what closes a request
+
+`GET /v1/repo-requests[?wallet=]`: open requests by number of requesters, then by stated interest,
+then by age; each with its newest notes, the reading's language, and `mine` for the given wallet.
+A request is `ready` as soon as an active unit exists on its repository (checked at every read of
+the list, the check and a request, and stored with the time): every requester sees "Ready: post
+your bounty" with the link to the post form, the request takes no more "+1", and it leaves the list
+30 days later.
+
+### 10.4 From a request to a unit
+
+A unit is drafted by the automatic unit setup (SPEC 6.2), which needs a hosted agent bound to the
+repository. The page says the ways forward:
+
+1. **Launch an agent on it.** "A repository gets its measurement when an agent is launched on it:
+   the agent sets it up by itself before it starts work." with the launch form opened on that
+   repository (`/launch?repo=owner/repo`).
+2. **The network drafts it**, an admin setting that is OFF by default: the platform pays for
+   drafting units for the most requested repositories. While it is off the page does not mention
+   it; on, it adds "The network also sets up the most requested repositories, a few each day."
+
+Settings (`GET` and `POST /v1/admin/repo-requests/config`; what a POST leaves out keeps its value):
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| `max_per_wallet_per_day` | 5 | 1 to 100 | new requests one wallet may make in 24 hours |
+| `network_drafts.enabled` | false | | the platform drafts units for requested repositories |
+| `network_drafts.min_requesters` | 3 | 1 to 1,000 | a repository is drafted for only with this many requesters |
+| `network_drafts.per_repo_usd` | 4 | 0 to 50 | most ever spent on drafting one repository (the unit setup's own cap for a repository) |
+| `network_drafts.per_day_usd` | 10 | 0 to 500 | most spent on all drafts in one UTC day |
+| `network_drafts.max_repos_per_day` | 2 | 1 to 50 | repositories drafted for in one UTC day |
+
+`GET /v1/repo-requests/draft-plan` (runtime only) lists what those limits allow now, most requested
+first, each with the dollars that may still be spent on it; `POST /v1/repo-requests/drafts
+{ repo, usd }` (runtime only) records a draft's cost and refuses past any limit, so the caller asks
+before it spends. Built and tested in Core, and OFF. NOT built: the runtime side that would run the
+unit-setup drafter for a repository with no bound agent and meter it to the platform (today the
+drafter is one job of a bound, awake agent, paid from that agent's vault). Until it exists, turning
+the setting on changes only the page's sentence, so it must stay off.
+
+### 10.5 Abuse limits
+
+- The gate puts the check and the request in the repository check's own class (20 a minute per
+  address, burst 12): a check may start a reading. The request is same origin only, 8 KB at most.
+  The runtime's plan is not routed publicly.
+- Core: one request per wallet per repository; a few new requests per wallet per day; a request for
+  a new repository only after the reading; readings bounded and stored per head commit as in
+  repo-check.ts; the list capped at 200 rows.
+- Text: the note is the only free text; it is cleaned on the way in and escaped on the way out.

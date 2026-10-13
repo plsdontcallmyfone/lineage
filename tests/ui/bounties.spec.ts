@@ -224,3 +224,34 @@ test("a bounty is marked as posted by an owner only where Core says so", async (
   for (const b of owned.slice(0, 3)) await expect(page.locator(`article[data-bounty="${b.bounty_id}"] [data-bounty-owner]`)).toContainText(`Posted by an owner of ${b.posted_by_owner.repository}`);
   await cleanPage(page);
 });
+
+// "Request a repository" (docs/plans/OPEN-BOUNTIES.md 10): on an open board the box is beside the post
+// form; a repository that already has a unit is sent to the post form and no request is offered for
+// it; requested repositories are listed with their interest named as interest. Nothing is signed here.
+test("Request a repository: the box, a repository that already has units, and the list", async ({ page, request }) => {
+  const board = await (await request.get("/api/bounties/board")).json().catch(() => null);
+  test.skip(!board || (!board.settings && !board.escrow), "the board is not open on this site");
+  const listed = await request.get("/api/repo-requests");
+  test.skip(!listed.ok(), "this site's Core does not serve repository requests yet");
+  const list = await listed.json();
+  await page.goto("/bounties");
+  const box = page.locator("[data-repo-request]");
+  await box.waitFor({ timeout: 90_000 });
+  await expect(box).toContainText("Want a bounty on a repository that is not in the list? Ask for it here.");
+  const unit = (board.units as any[]).find((u) => /^https:\/\/github\.com\//.test(u.repo));
+  if (unit) {
+    const name = (unit.repo as string).replace("https://github.com/", "");
+    await box.locator('[name="rq_repo"]').fill(name);
+    await box.locator('[data-request-act="check"]').click();
+    await expect(box.locator('[data-request-state="has_units"]')).toContainText("can already be measured", { timeout: 60_000 });
+    await expect(box.locator('[data-request-act="send"]')).toHaveCount(0);
+  }
+  await expect(page.locator("[data-repo-requests]")).toHaveCount(list.requests.length ? 1 : 0);
+  for (const r of (list.requests as any[]).slice(0, 3)) {
+    const row = page.locator(`[data-request="${r.name}"]`);
+    await expect(row.locator("[data-request-n]")).toHaveText(String(r.requesters));
+    await expect(row).toContainText("stated interest");
+  }
+  expect(await monoChrome(page), "monospace on UI chrome").toEqual([]);
+  await cleanPage(page);
+});

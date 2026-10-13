@@ -197,6 +197,13 @@ describe("social writes", () => {
     expect(classify("POST", "/api/fee-claims/waiting")).toEqual({ refuse: 405, why: "method" });
     expect(classify("GET", "/claim/octocat/Hello-World")).toEqual({ klass: "page", upstream: "web", cors: false, stream: false, sameOrigin: false });
     expect(classify("POST", "/claim/octocat/Hello-World")).toEqual({ refuse: 405, why: "method" });
+    // "Request a repository": one same-origin write and its check in the repository check's own class; the runtime's plan is not public
+    expect(classify("POST", "/api/repo-requests")).toEqual({ klass: "repocheck", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    for (const p of ["/v1/repo-requests", "/api/repo-requests/check", "/api/repo-requests/drafts", "/v1/repo-requests/drafts", "/api/admin/repo-requests/config"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    expect(classify("GET", "/api/repo-requests/check")).toEqual({ klass: "repocheck", upstream: "web", cors: true, stream: false, sameOrigin: false });
+    expect(classify("GET", "/v1/repo-requests/check")).toMatchObject({ klass: "repocheck", upstream: "core" });
+    expect(classify("GET", "/api/repo-requests")).toMatchObject({ klass: "api", upstream: "web" });
+    for (const p of ["/v1/repo-requests/draft-plan", "/api/repo-requests/draft-plan", "/v1/admin/repo-requests/config"]) expect(classify("GET", p)).toMatchObject({ refuse: 404 });
     // the owner mark of a bounty's poster: two same-origin writes through the web server; the public reads are plain reads
     for (const p of ["/api/bounties/owner-proof", "/api/bounties/owner-proof/forget"]) expect(classify("POST", p)).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
     for (const p of ["/v1/bounties/owner-proof", "/api/bounties/owners", "/api/admin/bounty-owners/config", "/v1/admin/bounty-owners/config"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });

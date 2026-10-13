@@ -79,3 +79,11 @@ export function deadlineChoices(minTtlS: number, maxTtlS: number): { days: numbe
   return { days, first: days.includes(7) ? 7 : days.filter((d) => d < 7).pop() ?? days[0] ?? null };
 }
 export const daysLabel = (d: number): string => (d === 1 ? "1 day" : d === 7 ? "1 week" : d === 14 ? "2 weeks" : `${d} days`);
+
+/** A pledge as typed, in US dollars to the cent; null when it is not a usable figure. */
+export function pledgeUsd(text: string, max = 100_000): number | null {
+  const t = text.replace(/[$,\s]/g, "");
+  if (!t) return 0;
+  const n = Number(t);
+  return /^\d+(\.\d+)?$/.test(t) && Number.isFinite(n) && n <= max ? Math.round(n * 100) / 100 : null;
+}

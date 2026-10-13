@@ -16,6 +16,7 @@ import { ata, bounty, bountyPdas, launch, launchPdas, openBounty, openBountyPdas
 import { repoLabel } from "../src/fmt.ts";
 import { html, raw, type Raw } from "../src/html.ts";
 import { bpsPct, span, targetWords } from "../src/bounty-words.ts";
+import { mountRepoRequest } from "./repo-request.ts";
 import { needOwnerMark, ownerBox, ownerRepo, wireOwnerBox } from "./bounty-owner.ts";
 import { daysLabel, deadlineChoices, improvementExample, metricValue, metricWords, publicRepo } from "../src/metric-words.ts";
 import { banner } from "../src/ui.ts";
@@ -528,6 +529,8 @@ export async function mountBountyPost(root: HTMLElement) {
     if (n === "bo_pct" || n === "bo_days_custom") refreshLines();
   });
   wireOwnerBox(root, render);
+  // "Request a repository" and the list of requested ones sit beside the form (repo-request.ts)
+  mountRepoRequest(document.getElementById("bo-request"), document.getElementById("bo-requests"));
   startDiscovery();
   restoreSession();
   onSession(() => {

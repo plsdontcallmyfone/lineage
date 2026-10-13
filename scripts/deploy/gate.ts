@@ -23,6 +23,9 @@
 //                             the social class; bodies capped at 8 KB
 //   GET  /api/fee-claims/waiting (and under /v1), /claim/<owner>/<name>   the fees waiting for a repository's owners: a public
 //                             read in the api and v1 classes, and the page of one repository in the page class
+//   POST /api/repo-requests    "Request a repository": a wallet-signed request for a unit on a repository that has none;
+//                             same origin only; the repocheck class (a new request starts a reading), bodies capped at 8 KB.
+//                             GET /api/repo-requests/check (and under /v1) is in that class too; the list is a plain read
 //   POST /api/bounties/owner-proof, /api/bounties/owner-proof/forget   "Posted by an owner" on a bounty: a fee-claim
 //                             session and a repository id; Core checks both; same origin only; the social class
 //   POST /api/tweet-launches   the launch page hands in the launch a reply bot's link led to (launch from a tweet);
@@ -169,6 +172,9 @@ export function classify(method: string, path: string): Route | { refuse: number
     // the owner mark of a bounty's poster (docs/plans/OPEN-BOUNTIES.md 9): the page hands Core a fee-claim session and a repository
     // id; Core verifies the session and reads the admin answer GitHub gave at that sign-in; same origin only
     if (path === "/api/bounties/owner-proof" || path === "/api/bounties/owner-proof/forget") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    // "Request a repository" (docs/plans/OPEN-BOUNTIES.md 10): a statement the wallet signed; Core verifies it, takes one per wallet
+    // per repository and a few per wallet per day; same origin only. Its class is the repository check's: a new request starts a reading
+    if (path === "/api/repo-requests") return { klass: "repocheck", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
     // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a reply bot's link led to; Core
     // stores it only for a launch it has read from the chain; same origin only
     if (path === "/api/tweet-launches") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
@@ -181,6 +187,10 @@ export function classify(method: string, path: string): Route | { refuse: number
   }
   // the repository check before a launch: a reading may fetch the repository, so it has a class of its own
   if (path === "/v1/repo-check" || path === "/api/repo-check") return { klass: "repocheck", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false };
+  // "Request a repository": its check is the same reading, so it shares that class; the list is a plain read. The runtime's
+  // draft plan is not a public route
+  if (path === "/v1/repo-requests/check" || path === "/api/repo-requests/check") return { klass: "repocheck", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false };
+  if (path === "/v1/repo-requests/draft-plan" || path === "/api/repo-requests/draft-plan") return { refuse: 404, why: "admin" };
   if (path.startsWith("/v1/")) {
     if (path.startsWith("/v1/admin")) return { refuse: 404, why: "admin" };
     return { klass: "v1", upstream: "core", cors: true, stream: path === "/v1/events", sameOrigin: false };

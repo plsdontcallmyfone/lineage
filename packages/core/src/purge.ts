@@ -92,6 +92,8 @@ export const RULES: Record<string, Rule> = {
   pool_mirror: "rows", pool_actions: "rows", pool_milestones: "rows", pool_settlements: "rows", fee_claim_attestations: "rows",
   // the owner mark of a bounty's poster (bounty-owners.ts): a wallet's proof for a repository, and the setting of how long it counts
   bounty_owner_marks: "rows", bounty_owner_kv: "keep",
+  // requests for a unit on a repository (repo-requests.ts): repositories and the wallets that asked; no launch owns them
+  repo_requests: "keep", repo_request_signers: "rows", repo_request_drafts: "keep", repo_request_kv: "keep",
   // swarms (swarms.ts): a seat's session link, heartbeat and the runtime's statement about it
   swarm_sessions: "rows", swarm_heartbeats: "rows", swarm_seat_state: "rows",
   // reports a service sends again on its next pass (one row holds every agent)

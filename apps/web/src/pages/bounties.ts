@@ -99,6 +99,16 @@ a.bo-name:hover{text-decoration:underline}
 .bo-post .seg button{flex:1 1 auto;font:500 13px/1.4 var(--sans);white-space:nowrap}
 .bo-post .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .bo-post .wl-help b{font-weight:500;color:var(--tp)}
+.bo-reqs{display:grid}
+.bo-req{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px 18px;align-items:center;padding:12px 16px;border-top:1px solid var(--border)}
+.bo-req:first-child{border-top:0}
+.bo-req-n{display:grid;gap:1px;text-align:right}
+.bo-req-n b{font-family:var(--display);font-size:17px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--tp)}
+.bo-req-n i{font-style:normal;font-size:11.5px;color:var(--tt)}
+.bo-req-a{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;justify-content:flex-end;font-size:12.5px}
+.bo-req-mine{font-size:12.5px;font-weight:500;color:var(--tp)}
+.bo-req-foot{margin:0;padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--tt)}
+@media (max-width:760px){.bo-req{grid-template-columns:minmax(0,1fr) auto}.bo-req>.min0{grid-column:1/-1}.bo-req-n{text-align:left}.bo-req-a{grid-column:1/-1;justify-content:flex-start}}
 .bo-owned{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:12.5px;color:var(--tp);font-weight:500}
 .bo-owned svg{flex:none;color:var(--accent)}
 .bo-card[hidden]{display:none}
@@ -256,8 +266,8 @@ export async function bountiesPage(): Promise<Page> {
       </div>${res.escrow ? escrowRules(res.escrow) : ""}${res.settings && !res.escrow ? rules(res.settings) : ""}</div>
       <div class="bo-cols">
         <div class="bo-list">${anyOwned ? html`<div class="seg bo-filter" role="group" aria-label="Which bounties to show" data-bounty-filter>
-            <button type="button" data-bo-filter="all" aria-pressed="true">All</button><button type="button" data-bo-filter="owned" aria-pressed="false">Posted by an owner</button></div>` : ""}${rows.length ? rows.map((b) => bountyCard(b, byAgent, nowS)) : empty("No bounty yet", "The first bounty posted shows here with its reward and its deadline.")}</div>
-        <aside class="bo-side"><div id="bo-post" class="bo-post"></div>${how()}</aside>
+            <button type="button" data-bo-filter="all" aria-pressed="true">All</button><button type="button" data-bo-filter="owned" aria-pressed="false">Posted by an owner</button></div>` : ""}${rows.length ? rows.map((b) => bountyCard(b, byAgent, nowS)) : empty("No bounty yet", "The first bounty posted shows here with its reward and its deadline.")}<div id="bo-requests"></div></div>
+        <aside class="bo-side"><div id="bo-post" class="bo-post"></div><div id="bo-request" class="bo-post"></div>${how()}</aside>
       </div>
     </div>`,
     mount: (root) => {
