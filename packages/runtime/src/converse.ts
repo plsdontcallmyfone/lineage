@@ -163,10 +163,10 @@ export interface TalkerDeps {
   save: () => void;
   now: () => number;
   log: (m: string) => void;
-  /** USD the agent's vault can pay for a model call right now, or 0 */
-  room: (agent: string) => number;
-  /** USD the agent may spend on network compute right now (platform-funded attempts), or 0 */
-  networkRoom?: (agent: string) => number;
+  /** USD the agent's vault can pay for a message right now (0 with the reason when it cannot) */
+  room: (agent: string) => { usd: number; why: string | null };
+  /** USD a message may spend on network compute for an agent the network covers (0 with the reason) */
+  networkRoom?: (agent: string) => { usd: number; why: string | null };
   meter: (agent: string, u: Usage) => void;
   /** posts on a board as the agent; returns the message id or null */
   send: (agent: string, to: string, body: string, o: { ref?: { kind: string; id: string }; thread?: string; kind: number }) => Promise<string | null>;
@@ -227,17 +227,21 @@ export class AgentTalker {
     const local = ctx.settings.swarm !== false && this.d.local ? await this.d.local(agent) : [];
     const moment = [...ctx.moments, ...local].find((m) => !done.includes(m.key) && (m.to.length > 0 || m.person));
     if (!moment) return; // nothing new happened: silence
-    if (ctx.budget && !ctx.budget.ok) return void this.note(agent, `waits (${ctx.budget.why})`);
+    // from here a moment exists: every reason for not speaking is said in the log (once per cause per agent per hour)
+    const has = `has something to say (${moment.kind}) but did not speak`;
+    // an answer to a person has its own limits in Core (one per sender per window, a daily count); the pace between agents does not hold it
+    if (!moment.person && ctx.budget && !ctx.budget.ok) return void this.note(agent, `${has}: ${ctx.budget.why}`);
     const why = this.refuse(agent, ctx);
-    if (why) return void this.note(agent, `waits (${why})`);
+    if (why) return void this.note(agent, `${has}: ${why}`);
     const cap = ctx.settings.max_usd_per_message;
     const vault = this.d.room(agent);
-    if (vault < cap) {
-      const net = ctx.settings.network_compute === true ? (this.d.networkRoom?.(agent) ?? 0) : 0;
-      if (net < cap) return void this.note(agent, `waits (its vault cannot pay for a message: ${vault.toFixed(4)} USD of room, a message needs ${cap})`);
+    if (vault.usd < cap) {
+      const net = ctx.settings.network_compute === true ? (this.d.networkRoom?.(agent) ?? { usd: 0, why: "this runtime has no network compute" }) : null;
+      if (!net || net.usd < cap)
+        return void this.note(agent, `${has}: its vault cannot pay for a message (${vault.why ?? `${vault.usd.toFixed(4)} USD of room, a message needs ${cap}`}); ${net ? `network compute: ${net.why ?? `${net.usd.toFixed(4)} USD of room`}` : "messages on network compute are not allowed (setting network_compute)"}`);
     }
     const soul = await this.soul(agent);
-    if (!soul) return; // no voice to write in
+    if (!soul) return void this.note(agent, `${has}: it has no soul to write in (its launcher published none)`);
     // one call per moment, whatever it returns (it already cost)
     done.push(moment.key);
     if (done.length > 400) done.splice(0, done.length - 400);
@@ -268,11 +272,14 @@ export class AgentTalker {
     );
   }
 
-  private noted = new Map<string, string>();
-  /** A waiting reason, logged once per agent until it changes. */
+  private noted = new Map<string, number>();
+  /** Why an agent with a moment did not speak: logged once per cause per agent per hour. */
   private note(agent: string, m: string): void {
-    if (this.noted.get(agent) === m) return;
-    this.noted.set(agent, m);
-    this.d.log(`${agent.slice(0, 6)} conversation ${m}`);
+    const k = `${agent}|${m.replace(/\d+(\.\d+)?/g, "#")}`; // the same cause with other figures is the same cause
+    const now = this.d.now();
+    if (now - (this.noted.get(k) ?? -Infinity) < 3_600_000) return;
+    this.noted.set(k, now);
+    if (this.noted.size > 2000) for (const [x, t] of this.noted) if (now - t >= 3_600_000) this.noted.delete(x);
+    this.d.log(`${agent.slice(0, 6)} ${m}`);
   }
 }

@@ -151,7 +151,7 @@ export class Talk {
   private settings() {
     const s = conversationsOf(this.core).settings() as Record<string, unknown>;
     return { activity: s.people_activity !== false, people: s.people === true, min_lamports: s.people_min_lamports as number, max_bytes: s.people_max_bytes as number, reply: s.people_reply === true, blocked: new Set((s.people_blocked as string[]) ?? []),
-      window_s: s.people_reply_window_s as number, per_day: s.people_replies_per_day as number, lookback_s: s.lookback_s as number };
+      window_s: s.people_reply_window_s as number, per_day: s.people_replies_per_day as number, max_age_s: (s.people_reply_max_age_s as number | undefined) ?? 86_400 };
   }
 
   private treasury(agent: string): string | null {
@@ -256,7 +256,8 @@ export class Talk {
     if (!s.reply) return [];
     const answered = new Set(this.repliesOf(agent, 0).map((x) => x.re));
     const seen = new Set<string>();
-    return this.forAgent(agent, this.core.now() - s.lookback_s * 1000, 50).filter((m) => {
+    // a message that arrived before replies were switched on is still answered, once, while it is younger than people_reply_max_age_s
+    return this.forAgent(agent, this.core.now() - s.max_age_s * 1000, 50).filter((m) => {
       if (answered.has(m.id.slice(0, 16)) || seen.has(m.wallet)) return false;
       seen.add(m.wallet);
       return this.replyStop(agent, m.wallet) === null;

@@ -160,6 +160,32 @@ describe("conversations in Core", () => {
     expect((await expectOk<any>(e.anon.get(`/v1/conversations?agent=${b.id}`))).threads).toEqual([]);
   });
 
+  test("mainnet 2026-10-13: an agent alone on its repository greets running agents elsewhere and tells them its newest change; a run of changes is one moment", async () => {
+    const e = (env = await setup({ verifiers: 4 }));
+    const a = await withSoul(e, "Wren Halvard");
+    const far = await withSoul(e, "Odo Brack");
+    e.core.db.query("UPDATE agents SET target_repo = 'https://github.com/example/elsewhere', target_repo_id = 'elsewhere' WHERE agent_id = ?").run(far.id);
+    e.core.db.query("INSERT INTO lineages (lineage_id, repo_id, snapshot_id, recipe_id, calib_id, gen0, tip, height, status, created_at) SELECT ?, 'elsewhere', snapshot_id, recipe_id, calib_id, gen0, tip, 0, 'active', created_at FROM lineages LIMIT 1").run("e".repeat(64));
+    enable(e, { ...FREE, cross_repo: false });
+    expect(await momentsOf(e, a)).toEqual([]); // the rule as it ran on mainnet: nobody on its repository, nothing to say, ever
+    enable(e, { cross_repo: true });
+    let m = await momentsOf(e, a);
+    expect(m.map((x) => [x.kind, x.to.map((t: any) => t.name)])).toEqual([["greeting", ["Odo Brack"]]]);
+    expect(m[0].facts).toContain("you are the only agent on that repository");
+    expect(m[0].facts).toContain("Odo Brack works on example/elsewhere");
+    await expectOk(say(e, a, [far], "Odo, I am Wren, on example/fx. What does your unit measure?"));
+    // three accepted changes in a row on one unit: one moment, about the newest, to the agent it has talked with
+    e.core.db.query("DELETE FROM lineages WHERE lineage_id = ?").run("e".repeat(64)); // the stand-in unit has no repository row: gone before replays are assigned
+    await finalCandidate(e, a, "a1", 900);
+    await finalCandidate(e, a, "a2", 800);
+    const last = await finalCandidate(e, a, "a3", 700);
+    m = await momentsOf(e, a);
+    expect(m.filter((x) => x.kind === "accepted").map((x) => [x.ref.id, x.to.map((t: any) => t.name)])).toEqual([[last.gen_id, ["Odo Brack"]]]);
+    expect(m[0].facts).toContain("Your newest accepted change");
+    await expectOk(say(e, a, [far], "Odo, ir is lower again on fx.", { ref: { kind: "generation", id: last.gen_id! } }));
+    expect((await momentsOf(e, a)).filter((x) => x.kind === "accepted")).toEqual([]); // the older two are never announced after it
+  });
+
   test("threads: who said what to whom, grouped by reply, newest thread first; the feed carries the address", async () => {
     const e = (env = await setup({ verifiers: 0 }));
     const a = await withSoul(e, "Wren Halvard");

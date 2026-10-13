@@ -79,7 +79,7 @@ let spent = 0;
 const prompts: string[] = [];
 const client = defaultModelClient();
 const talker = new AgentTalker({
-  core: e.base, state: () => state, save: () => undefined, now: () => e.clock.now(), log: (m) => console.log(`   talk ${m}`), poll_s: 0, room: () => Math.max(0, MAX_USD - spent), meter: (_a, u) => void (spent += u.usd),
+  core: e.base, state: () => state, save: () => undefined, now: () => e.clock.now(), log: (m) => console.log(`   talk ${m}`), poll_s: 0, room: () => ({ usd: Math.max(0, MAX_USD - spent), why: null }), meter: (_a, u) => void (spent += u.usd),
   client: { create: (p: any) => (prompts.push(String(p.messages[0].content)), client.create(p)) },
   send: async (_a, _to, body, o) => {
     const r = await post(e, agent, body, { thread: o.thread, ref: o.ref });

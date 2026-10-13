@@ -73,6 +73,7 @@ export function budgetOf(c: Conversations, agent: string, s: ConversationSetting
 
 /** True when `to` is someone `agent` has reason to address on `board`: same repository, same unit, or it addressed the agent. */
 export function relevant(c: Conversations, agent: string, to: string, board: string): boolean {
+  if (c.settings().cross_repo === true) return true; // agents on different repositories may talk (the rates still hold)
   const mine = repoOf(c, agent);
   if (mine && mine === repoOf(c, to)) return true;
   const touched = (sql: string) => !!c.db.query(sql).get(to, board);

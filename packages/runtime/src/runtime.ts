@@ -582,13 +582,15 @@ export class Runtime {
    * max_debit_per_epoch left this epoch; for an OpenRouter-routed model, what OpenRouter's known
    * balance still covers; and only with global_cap_scope "all", the global window.
    */
-  budget(agent: string, o: { sandbox?: boolean; cap?: number; seat?: number } = {}): { usd: number } | { usd: null; why: string; vault: boolean; short?: boolean } {
+  budget(agent: string, o: { sandbox?: boolean; cap?: number; seat?: number; reserved?: boolean } = {}): { usd: number } | { usd: null; why: string; vault: boolean; short?: boolean } {
     const key = slotKey(agent, o.seat ?? 1);
     const v = this.vaults.get(agent);
     if (!v) return { usd: null, why: "vault unknown", vault: false };
     if (!v.awake) return { usd: null, why: "asleep", vault: true };
     if (!this.applyPrice()) return { usd: null, why: `waiting for a quote price (${this.price?.why(this.now()) ?? "none"})`, vault: false };
-    const avail = v.balance - this.owed(agent) - this.reservedLine(agent);
+    // `reserved: false` (a conversation message, converse.ts): what running attempts hold is not subtracted. An attempt
+    // reserves its whole remaining cap, so a working agent would otherwise never have room for a message of a few cents.
+    const avail = v.balance - this.owed(agent) - (o.reserved === false ? 0n : this.reservedLine(agent));
     let line = avail;
     if (this.limits.maxDebitPerEpoch !== null) {
       let epochOwed = 0n;
@@ -608,7 +610,7 @@ export class Runtime {
     if (sw && sw.seat_epoch_max_usd !== null) epochLeft = Math.min(epochLeft, sw.seat_epoch_max_usd - (this.usageOf(agent).seats?.[String(o.seat)]?.usd ?? 0));
     const g = this.cfg.global_cap_scope === "all" ? this.globalLeft() : Infinity;
     const route = this.routeOf(key);
-    const pr = route?.via === "openrouter" ? this.providerRoom() : null;
+    const pr = route?.via === "openrouter" ? (o.reserved === false ? (this.deps.providerBalance?.room() ?? null) : this.providerRoom()) : null;
     const prov = pr === null ? Infinity : pr;
     const usd = Math.min(o.cap ?? this.cfg.attempt_max_usd, fromVault, epochLeft, g, prov);
     if (Number.isNaN(usd)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
@@ -1570,8 +1572,8 @@ export class Runtime {
       },
       now: this.now,
       log: (m) => this.log(`conversations: ${m}`),
-      room: (agent) => this.postRoom(agent),
-      networkRoom: (agent) => this.networkBudget(agent, this.rosters.get(agent)?.[0]?.seat ?? 1).usd ?? 0,
+      room: (agent) => this.messageRoom(agent),
+      networkRoom: (agent) => this.messageNetworkRoom(agent),
       meter: (agent, u) => this.meterPost(agent, u),
       send: (agent, to, body, o) => this.worker(agent).send(to, body, o),
       local: (agent) => this.swarmMoments(agent),
@@ -1661,6 +1663,32 @@ export class Runtime {
     if (!(Number.isFinite(r) && r > 0)) return 0;
     if (reserve !== undefined && reserve > 0 && r >= reserve) this.holds.set(agent, { usd: reserve, until: this.now() + 300_000, via: this.routeOf(agent)?.via ?? null });
     return r;
+  }
+
+  /**
+   * USD a conversation message may spend from `agent`'s vault now, and why not when it is 0. Unlike an
+   * attempt's budget it does not subtract what running attempts reserve (an attempt holds its whole
+   * remaining cap; a message costs cents and is billed like any model call), so a funded agent that is
+   * working can speak. Caps still hold: the vault after what it owes, the epoch caps, the global cap,
+   * the provider's balance.
+   */
+  messageRoom(agent: string): { usd: number; why: string | null } {
+    const b = this.budget(agent, { sandbox: false, cap: Infinity, reserved: false });
+    return b.usd !== null && Number.isFinite(b.usd) && b.usd > 0 ? { usd: b.usd, why: null } : { usd: 0, why: b.usd === null ? b.why : "nothing left under its caps" };
+  }
+
+  /**
+   * USD a message may spend on network compute for an agent the network covers (platform-funded
+   * attempts; the conversation setting `network_compute` allows it): the network cap's remainder and
+   * the provider's balance. It is not held to the size of a useful attempt, and running attempts'
+   * reserves are not subtracted.
+   */
+  messageNetworkRoom(agent: string): { usd: number; why: string | null } {
+    if (!this.covered(agent)) return { usd: 0, why: "the network does not cover this agent's compute" };
+    if (!this.applyPrice()) return { usd: 0, why: "waiting for a quote price" };
+    const prov = this.deps.providerBalance?.room() ?? Infinity;
+    const usd = Math.min(this.networkCapLeft(), prov === null ? Infinity : prov);
+    return usd > 0 ? { usd, why: null } : { usd: 0, why: prov <= 0 ? "the provider balance is empty" : "the network compute cap is reached" };
   }
 
   /** A post's model call: into the agent's usage (billed to its vault with the epoch) and the global cap. */

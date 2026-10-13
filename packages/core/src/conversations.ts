@@ -38,6 +38,12 @@ export const CONVERSATION_DEFAULTS = {
   max_mentions: 2,
   /** only events newer than this many seconds are moments (nothing older is answered when it is switched on) */
   lookback_s: 6 * 3600,
+  /**
+   * agents on different repositories may talk: an agent with nobody else on its repository greets
+   * other running agents once, and tells the agents it has talked with about its newest accepted
+   * change. Off: only agents on the same repository or unit, or one that addressed the sender.
+   */
+  cross_repo: true,
   // limits (conversation-limits.ts): messages one agent may send, and all agents of one repository together
   per_agent_hour: 2,
   per_agent_day: 6,
@@ -70,6 +76,8 @@ export const CONVERSATION_DEFAULTS = {
   people_reply_window_s: 3600,
   /** replies to people per agent per day */
   people_replies_per_day: 6,
+  /** a person's message older than this is not answered any more (one switched on later still answers what arrived within it) */
+  people_reply_max_age_s: 86_400,
   /** wallets whose messages are neither shown nor given to an agent */
   people_blocked: [] as string[],
   // the moments, each switchable
@@ -102,6 +110,7 @@ export const CONVERSATION_RANGES: Record<string, [number, number, "int" | "num"]
   people_max_bytes: [40, 500, "int"],
   people_reply_window_s: [60, 7 * 86_400, "int"],
   people_replies_per_day: [0, 500, "int"],
+  people_reply_max_age_s: [60, 30 * 86_400, "int"],
 };
 /** Defaults added by other modules of the feature (limits). */
 export const CONVERSATION_EXTRA_DEFAULTS: Record<string, unknown> = {};
@@ -464,7 +473,11 @@ export class Conversations {
 
     // accepted: this agent's change was accepted on a target where another agent's final candidate failed
     if (s.enabled && s.accepted) {
-      for (const g of this.db.query<Gen, [string, number]>(`SELECT ${GEN} FROM generations WHERE author = ? AND entry_type = 'patch' AND reverted_by IS NULL AND accepted_at >= ? ORDER BY accepted_at DESC LIMIT 20`).all(agent, since)) {
+      // one moment per unit, about its newest accepted change: eleven changes in a row are not eleven messages
+      const newest = new Set<string>();
+      for (const g of this.db.query<Gen, [string, number]>(`SELECT ${GEN} FROM generations WHERE author = ? AND entry_type = 'patch' AND reverted_by IS NULL AND accepted_at >= ? ORDER BY accepted_at DESC, height DESC LIMIT 40`).all(agent, since)) {
+        if (newest.has(g.lineage_id)) continue;
+        newest.add(g.lineage_id);
         if (sent.refs.has(g.gen_id)) continue;
         const failed = this.db
           .query<{ author: string; reason: string | null; target: string; finalized_at: number }, [string, string, string, number]>(
@@ -472,7 +485,15 @@ export class Conversations {
           )
           .all(g.lineage_id, g.kind ?? "", agent, g.accepted_at - 7 * DAY)
           .filter((c) => canon(c.target) === canon(g.target) && c.finalized_at <= g.accepted_at + 60_000 && isAgent(c.author));
-        if (!failed.length) continue;
+        if (!failed.length) {
+          // nobody failed on this target: with cross_repo, the agents it has talked with hear about it
+          const known = s.cross_repo ? this.talkedWith(agent).filter(isAgent) : [];
+          if (!known.length) continue;
+          const to = this.mentions(known, s.max_mentions);
+          const facts = [`Your newest accepted change: ${this.genFact(g)}`, `You have talked with ${to.map((x) => this.say(x.agent)).join(" and ")} before; they work on other code.`, "Tell them in one or two sentences what the record shows, in plain words. Ask one question about their work if you have one."].join("\n");
+          moments.push({ kind: "accepted", key: `accepted:${g.gen_id}`, lineage_id: g.lineage_id, to, ref: { kind: "generation", id: g.gen_id }, thread: null, facts, incoming: null, at: g.accepted_at });
+          continue;
+        }
         const to = this.mentions(failed.map((c) => c.author), s.max_mentions);
         const facts = [
           `Your change: ${this.genFact(g)}`,
@@ -489,7 +510,10 @@ export class Conversations {
     // stale: another agent's accepted change moved the tip under this agent's public intent
     if (s.enabled && s.stale) {
       type I = { intent_id: string; lineage_id: string; kind: string; target: string; closed_at: number; created_at: number };
+      const seenUnit = new Set<string>();
       for (const i of this.db.query<I, [string, number]>("SELECT intent_id, lineage_id, kind, target, closed_at, created_at FROM intents WHERE agent = ? AND shadow = 0 AND public_status = 'stale' AND closed_at >= ? ORDER BY closed_at DESC LIMIT 20").all(agent, since)) {
+        if (seenUnit.has(i.lineage_id)) continue; // the newest stale intent of a unit only
+        seenUnit.add(i.lineage_id);
         const g = this.db.query<Gen, [string, number, number]>(`SELECT ${GEN} FROM generations WHERE lineage_id = ? AND entry_type = 'patch' AND author IS NOT NULL AND accepted_at <= ? AND accepted_at >= ? ORDER BY accepted_at DESC, height DESC LIMIT 1`).get(i.lineage_id, i.closed_at, i.created_at);
         // said once per generation that moved the unit (the claim on the same intent refers to the intent)
         if (!g || !isAgent(g.author) || sent.refs.has(g.gen_id)) continue;
@@ -547,11 +571,25 @@ export class Conversations {
     }
 
     // greeting: the first time, to the other agents on its repository
-    if (s.enabled && s.greeting && !sent.any && peers.length) {
+    // with cross_repo, an agent alone on its repository greets other running agents (the ones with the newest accepted work first)
+    const elsewhere = !peers.length && s.cross_repo ? this.runningElsewhere(agent) : [];
+    if (s.enabled && s.greeting && !sent.any && (peers.length || elsewhere.length)) {
       const lin = this.db
         .query<{ lineage_id: string }, [string]>("SELECT l.lineage_id FROM lineages l LEFT JOIN generations g ON g.lineage_id = l.lineage_id WHERE l.repo_id = ? GROUP BY l.lineage_id ORDER BY MAX(g.accepted_at) DESC LIMIT 1")
         .get(me.target_repo_id ?? "");
-      if (lin) {
+      if (lin && !peers.length) {
+        const to = this.mentions(elsewhere, s.max_mentions);
+        const facts = [
+          `You are ${this.say(agent)}. You work on ${repoShort(me.target_repo)}, and you are the only agent on that repository. This is your first message to agents that work on other repositories.`,
+          ...to.map((x) => {
+            const r = this.launched(x.agent);
+            const g = this.db.query<Gen, [string]>(`SELECT ${GEN} FROM generations WHERE author = ? AND entry_type = 'patch' AND reverted_by IS NULL ORDER BY accepted_at DESC LIMIT 1`).get(x.agent);
+            return `${this.say(x.agent)} works on ${repoShort(r?.target_repo)}.${g ? ` Latest: ${this.genFact(g)}` : " No accepted generation yet."}`;
+          }),
+          "Greet them by name in one or two sentences, say what you work on, and ask one question about their work. Promise nothing.",
+        ].join("\n");
+        moments.push({ kind: "greeting", key: "greeting", lineage_id: lin.lineage_id, to, ref: null, thread: null, facts, incoming: null, at: now });
+      } else if (lin) {
         const to = this.mentions(peers, s.max_mentions);
         const facts = [
           `You are ${this.say(agent)}. You work on ${repoShort(me.target_repo)}. This is your first message to the other agents on this repository.`,
@@ -574,6 +612,25 @@ export class Conversations {
       .filter((m) => m.to.length || m.person);
     out.moments = allowed.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || b.at - a.at).slice(0, 12);
     return out;
+  }
+
+  /** Agents this one exchanged conversation messages with in the last week, most recent first. */
+  talkedWith(agent: string): string[] {
+    const out: string[] = [];
+    const add = (a: string) => a !== agent && !out.includes(a) && out.push(a);
+    for (const r of this.rows(" AND received_at >= ?", [this.core.now() - 7 * DAY], 600)) {
+      const t = parseTalk((JSON.parse(r.envelope) as { body?: string | null }).body ?? null);
+      if (!t) continue;
+      if (r.from_agent === agent) t.to.forEach((x) => add(x.agent));
+      else if (t.to.some((x) => x.agent === agent)) add(r.from_agent);
+    }
+    return out;
+  }
+
+  /** Running agents on other repositories (talk.ts running: bound, with a unit, awake or covered), newest accepted work first. */
+  private runningElsewhere(agent: string): string[] {
+    const last = (a: string) => this.db.query<{ t: number | null }, [string]>("SELECT MAX(accepted_at) AS t FROM generations WHERE author = ?").get(a)?.t ?? 0;
+    return talkOf(this.core).running().map((a) => a.agent).filter((a) => a !== agent).sort((a, b) => last(b) - last(a));
   }
 
   private openIntents(lineage: string) {

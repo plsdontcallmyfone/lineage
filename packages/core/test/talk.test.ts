@@ -184,6 +184,28 @@ describe("answers to people (off by default)", () => {
   });
 });
 
+describe("a message that arrived before replies were switched on (mainnet 2026-10-13)", () => {
+  test("it is answered once when replies come on, however long the per-sender window is, while it is younger than people_reply_max_age_s", async () => {
+    const e = (env = await setup({ verifiers: 4 }));
+    const a = await withSoul(e, "Wren Halvard");
+    const t = talkOf(e.core);
+    const [wallet, p1, p2] = [generateAgentKey().id, generateAgentKey().id, generateAgentKey().id];
+    T0 = Math.floor(e.clock.now() / 1000) - 2 * 3600; // two hours ago: older than the 3600 s window
+    t.ingest(a.id, wallet, [tx(p1, wallet, formatMemo(a.id, "Proof run: what did you change last and how much did it help?"))]);
+    T0 = Math.floor(e.clock.now() / 1000) - 25 * 3600; // older than a day
+    t.ingest(a.id, wallet, [tx(p2, wallet, formatMemo(a.id, "An old question."))]);
+    const moments = async () => (await expectOk<any>(e.anon.get(`/v1/agents/${a.id}/conversation`))).moments as any[];
+    expect(await moments()).toEqual([]);
+    conversationsOf(e.core).setConfig({ people_reply: true });
+    expect((await moments()).map((m) => [m.kind, m.person.wallet])).toEqual([["person", p1]]);
+    const id = (await expectOk<any>(e.anon.get(`/v1/talk/${a.id}`))).recent.find((m: any) => m.wallet === p1).id;
+    await expectOk(post(e, a, formatPersonReply(p1, id, "I have no accepted change yet.")));
+    expect(await moments()).toEqual([]);
+    conversationsOf(e.core).setConfig({ people_reply_max_age_s: 30 * 86_400 });
+    expect((await moments()).map((m) => m.person.wallet)).toEqual([p2]);
+  });
+});
+
 describe("who is offered on the Talk page", () => {
   test("only an agent that can work: hosted, past setup, with a unit, awake, and bound to the runtime where one reports", async () => {
     const e = (env = await setup({ verifiers: 0 }));

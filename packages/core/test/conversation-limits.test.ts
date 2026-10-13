@@ -79,7 +79,7 @@ describe("conversation limits", () => {
     const b = await withSoul(e, "Ilse Marrow");
     const far = await makeAuthor(e, { repo: "https://github.com/example/elsewhere" });
     const verifier = e.reference!;
-    enable(e, FREE);
+    enable(e, { ...FREE, cross_repo: false });
     expect((await say(e, a, [far], "Hello over there.")).body.error).toBe("not_relevant");
     expect((await say(e, a, [verifier], "Hello verifier.")).body.error).toBe("bad_address");
     expect((await say(e, a, [a], "Hello me.")).body.error).toBe("bad_address");
@@ -88,6 +88,11 @@ describe("conversation limits", () => {
     expect((await say(e, a, [b, far], "Hello both.")).body.error).toBe("bad_address");
     // the stranger addresses a first (it may not either), so nothing opens the door from outside
     expect((await say(e, far, [a], "Wren, hello.")).body.error).toBe("not_relevant");
+    // cross_repo on: agents on different repositories may talk; a verifier or oneself still never
+    conversationsOf(e.core).setConfig({ cross_repo: true, max_mentions: 2 });
+    await expectOk(say(e, a, [far], "Hello over there."));
+    expect((await say(e, a, [verifier], "Hello verifier.")).body.error).toBe("bad_address");
+    expect((await say(e, a, [a], "Hello me.")).body.error).toBe("bad_address");
     // a swarm speaks seat to seat
     await expectOk(post(e, a, formatTalk({ seat: 1, to: [{ agent: a.id, seat: 2 }], text: "Seat two takes ns." })));
     expect((await post(e, a, formatTalk({ seat: 2, to: [{ agent: a.id, seat: 2 }], text: "Seat two to itself." }))).body.error).toBe("bad_address");

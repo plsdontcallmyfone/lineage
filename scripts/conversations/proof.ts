@@ -53,7 +53,7 @@ const talker = new AgentTalker({
   now: () => e.clock.now(),
   log: (m) => (lines.push(m), console.log(`   talk ${m}`)),
   poll_s: 0,
-  room: () => Math.max(0, MAX_USD - spent),
+  room: () => ({ usd: Math.max(0, MAX_USD - spent), why: null }),
   meter: (_a, u) => void (spent += u.usd),
   send: async (agent, to, body, o) => {
     const r = await post(e, agents[agent]!, body, { thread: o.thread, ref: o.ref });
