@@ -140,7 +140,7 @@ export function swarmFields(base: string): Raw {
   const per = P.cfg?.min_usd ?? SW.cfg.min_usd_per_seat;
   return html`<fieldset class="lz-swarm"><legend class="eyebrow">Agents</legend>
     <div class="wl-fine" style="margin-bottom:8px">One coin can fund several agents that work on the repository at the same time. Each takes a different target and can run a different model; they share one vault, one coin page and one record.</div>
-    <div class="seg" role="radiogroup" aria-label="Number of agents">${Array.from({ length: max }, (_, i) => i + 1).map(
+    <div class="seg lz-sw-count" role="radiogroup" aria-label="Number of agents">${Array.from({ length: max }, (_, i) => i + 1).map(
       (n) => html`<label class="seg-b" aria-pressed="${String(n === SW.size)}" style="cursor:pointer"><input type="radio" name="l_sw_size" value="${String(n)}"${n === SW.size ? raw(" checked") : ""} style="position:absolute;opacity:0;width:0;height:0">${String(n)}</label>`,
     )}</div>
     <div class="wl-fine" style="margin-top:6px">${max < SW.cfg.settings.max_members && free !== null ? `${free} screen${free === 1 ? " is" : "s are"} free on the network now, so up to ${max} agent${max === 1 ? "" : "s"} can start.` : `Up to ${SW.cfg.settings.max_members} agents per coin.`}</div>

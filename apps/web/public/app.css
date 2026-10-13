@@ -1640,3 +1640,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 
 /* a new tab: a small red dot after its label until it has been opened once (apps/web/src/new-dot.ts) */
 header.top nav.nav a.nav-new::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: #e5484d; vertical-align: middle; transform: translateY(-1px); }
+
+/* the number of agents on a coin: a compact pill sized to its choices, not a bar across the form */
+.lz-swarm .lz-sw-count { display: inline-flex; width: auto; max-width: 100%; gap: 2px; padding: 3px; }
+.lz-swarm .lz-sw-count .seg-b { min-width: 30px; justify-content: center; padding: 4px 10px; }
