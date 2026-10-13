@@ -16,6 +16,7 @@
 //        [--image <png, jpeg or webp, at most 256 KB>] [--twitter <url>] [--telegram <url>] [--website <url>]
 //        [--vibe "<short hint>"] [--identity units|token]   (units: the GitHub account option, its fee in the plan)
 //        [--repo <github url>]   the repository (default keis/base58)
+//        [--fee-route]           tick "Route ... of this agent's fees to the owners of owner/repo" on step "The work" (the pool box stays unticked)
 //        [--swarm <n>] [--seat-model <provider/id>]   one coin, n agents (docs/plans/SWARMS.md): the Agents field of step
 //                               "The agent" is set to n (refused, nothing signed, when the site does not offer that size to
 //                               this wallet), agents 2 and up on --seat-model when given, credits Core's minimum once per agent
@@ -125,6 +126,7 @@ async function main() {
   if (SEED.identity !== "units" && SEED.identity !== "token") throw new Error("--identity is units or token");
   const SWARM = Number(arg("swarm", "1"));
   const SEAT_MODEL = arg("seat-model") ?? null;
+  const FEE_ROUTE = process.argv.includes("--fee-route");
   if (!Number.isInteger(SWARM) || SWARM < 1 || SWARM > 16) throw new Error("--swarm is a number of agents from 1 to 16");
   mkdirSync(OUT, { recursive: true });
   const STATE_FILE = join(OUT, "LIVE-LAUNCH.json");
@@ -197,7 +199,7 @@ async function main() {
     check("costs: the first transaction, simulated by this script, succeeds and spends exactly the fee and rent the page shows for it", !one.err && spent1 === want1, `simulated ${spent1} lamports, the page's fee + rent ${want1}${one.err ? `; error ${JSON.stringify(one.err)} ${(one.logs ?? []).slice(-3).join(" | ")}` : ""}`);
     check("limits: the first transaction uses at most two thirds of its fixed compute limit", !!one.unitsConsumed && one.unitsConsumed * 3 <= rows[0]!.units * 2, `${one.unitsConsumed} of ${rows[0]!.units}`);
     // 2. the SOL purchase, alone (the first group of the transaction that carries it)
-    const at = rows.findIndex((r) => r.groups[0] === "sol-to-units");
+    const at = rows.findIndex((r) => r.groups.includes("sol-to-units"));
     if (at < 0) {
       // no purchase in the plan: the launch takes its $UNITS from the wallet (the quote coin on its pool, a wallet short of SOL that holds them)
       S.verify.purchase = null;
@@ -213,8 +215,11 @@ async function main() {
     const budget = d.instructions.filter((ix: any) => String(ix.programId).startsWith("ComputeBudget"));
     // on the curve: create the launcher's $UNITS account if missing, then buy_v3 (two instructions). On the PumpSwap pool: that
     // account, a temporary wrapped SOL account (create with seed, initialize), buy_v2, close (five; the second is a System instruction)
-    const onPool = String(body[1]?.programId) === "11111111111111111111111111111111";
-    const ixs = [...budget, ...body.slice(0, onPool ? 5 : 2)].map((ix: any) => ({ programId: ix.programId, keys: ix.accounts, data: ix.data }));
+    // (a fee route's instructions may come before the purchase in the same transaction: the purchase starts at its token account instruction)
+    const sysAt = body.findIndex((ix: any, i: number) => i > 0 && String(ix.programId) === "11111111111111111111111111111111" && String(body[i - 1].programId).startsWith("ATokenGPv"));
+    const onPool = sysAt >= 0;
+    const from = onPool ? sysAt - 1 : Math.max(0, body.findIndex((ix: any) => String(ix.programId).startsWith("ATokenGPv")));
+    const ixs = [...budget, ...body.slice(from, from + (onPool ? 5 : 2))].map((ix: any) => ({ programId: ix.programId, keys: ix.accounts, data: ix.data }));
     const { blockhash } = await rpc.getLatestBlockhash();
     const alone = await sim(Buffer.from(unsignedWire(compileMessage(launcher, ixs, blockhash))).toString("base64"));
     const spent2 = alone.accounts?.[0] ? before - BigInt(alone.accounts[0].lamports) : null;
@@ -363,16 +368,28 @@ async function main() {
       await shot("1-coin");
       await page.click('[data-act="lz-next"]');
       await page.fill('[name="l_repo"]', SEED.repo);
-      await page.locator("#w-work .lz-rec, #w-work .banner").first().waitFor({ timeout: 90_000 });
+      // a repository agents already work on shows its recipes; one with no unit yet shows the repository check's line alone
+      await page.locator('#w-work .lz-rec, #w-work .banner, #w-repocheck:not([data-kind="checking"])').first().waitFor({ timeout: 120_000 });
+      await page.locator('#w-repocheck:not([data-kind="checking"])').waitFor({ timeout: 120_000 }).catch(() => {});
+      S.repo_check = { kind: await page.locator("#w-repocheck").getAttribute("data-kind").catch(() => null), line: await text("#w-repocheck") };
       // the optional extras (fee share, repository pool) are unticked when an instance shows them: a plain launch
       await page.locator('[name="l_fee_on"], [name="l_pool_join"]').first().waitFor({ timeout: 6_000 }).catch(() => {});
       for (const n of ["l_fee_on", "l_pool_join"]) {
         const box = page.locator(`[name="${n}"]`);
+        if (n === "l_fee_on" && FEE_ROUTE) {
+          // the box is enabled once the page has looked the repository up on GitHub
+          await page.waitForFunction(() => (document.querySelector('[name="l_fee_on"]') as HTMLInputElement | null)?.disabled === false, null, { timeout: 60_000 }).catch(() => {});
+          S.fee_route_box = { text: await text("#w-fee-text"), note: await text("#w-fee-note"), pool_box_ticked_by_default: await page.locator('[name="l_pool_join"]').isChecked().catch(() => null) };
+          await box.check();
+          S.fee_route_box.note_ticked = await text("#w-fee-note");
+          check("wizard, Work: the fee route box is ticked and names the repository; the pool box is unticked by default", (await box.isChecked()) && S.fee_route_box.pool_box_ticked_by_default === false, `${S.fee_route_box.text} | ${S.fee_route_box.note_ticked}`);
+          continue;
+        }
         if ((await box.count()) && (await box.isChecked())) await box.uncheck();
       }
       S.work_step = (await text("#w-work")).slice(0, 1500);
       const recipes = await page.locator("#w-work .lz-rec .lz-rec-h a").allInnerTexts();
-      check("wizard, Work: the repository is recognised and a recipe is offered", recipes.length > 0, `recipes ${recipes.join(", ")}`);
+      check("wizard, Work: the repository is recognised: a recipe is offered, or the repository check says the agent sets up its measurement first", recipes.length > 0 || S.repo_check.kind === "setup", `recipes ${recipes.join(", ") || "none"}; repository check (${S.repo_check.kind}): ${S.repo_check.line}`);
       await shot("2-work");
       await page.click('[data-act="lz-next"]');
       // the soul is written with nothing typed and nothing pressed (owner 2026-10-12): the step has one optional field, Vibe
@@ -573,6 +590,13 @@ async function main() {
       let track: Record<string, string> = {};
       while (Date.now() < until) {
         track = Object.fromEntries((await page.locator("[data-track]").evaluateAll((els: HTMLElement[]) => els.map((e) => [e.dataset.track!, `${e.dataset.state}: ${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 200)}`]))) as [string, string][]);
+        // the launched screen's progress list (launch-progress.ts): each step and its state, and the status line under it
+        const steps = (await page.locator("#w-progress-list [data-step-key]").evaluateAll((els: HTMLElement[]) => els.map((e) => `${e.dataset.stepKey} ${e.dataset.state}: ${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 200)}`)).catch(() => [])) as string[];
+        if (steps.length) {
+          S.progress_list = { steps, status_line: (await text("#w-progress-list .lp-now")).slice(0, 400), at: new Date().toISOString() };
+          S.progress_first ??= S.progress_list;
+        }
+        if (steps.length && steps.every((x) => / done:/.test(x))) break;
         if (track.session?.startsWith("ok") || track.session?.startsWith("bad")) break;
         await new Promise((r) => setTimeout(r, 5000));
       }
