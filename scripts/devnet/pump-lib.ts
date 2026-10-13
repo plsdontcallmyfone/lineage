@@ -182,7 +182,7 @@ export async function curveCreatorFee(rpc: Rpc, mint: string): Promise<bigint> {
 }
 
 /** The keeper's crank: pump.fun's sweep + collect (and the pool's once it exists), then crank_pump_fees. Permissionless. */
-export async function pumpCrank(rpc: Rpc, o: { payer: Signer; agent: string; mint: string; lineMint: string }): Promise<SentTx> {
+export async function pumpCrank(rpc: Rpc, o: { payer: Signer; agent: string; mint: string; lineMint: string; table?: LookupTable | null }): Promise<SentTx> {
   const v = await pumpVenue(rpc, o.mint, o.lineMint);
   // an agent with a GitHub fee route or a pool membership needs its trailing accounts while the feature is on
   // (GitHub route first, then the pool), or the program refuses the crank (MissingRouteAccounts)
@@ -195,7 +195,8 @@ export async function pumpCrank(rpc: Rpc, o: { payer: Signer; agent: string; min
     if (poolA) routes.push(...pools.crankRouteKeys(o.agent, decodePool(poolA.data).repoId, o.lineMint, T22));
   }
   const ixs = pumpCrankIxs({ payer: o.payer.id, agent: o.agent, agentMint: o.mint, lineMint: o.lineMint, lineTokenProgram: T22, pool: v.kind === "pool" ? v.pool : undefined, routes });
-  return sendTx(rpc, o.payer, ixs, { computeUnits: 400_000 });
+  // `table` (launchTable below): a routed agent whose coin has graduated does not fit the packet without it (sendTx refuses it with its size)
+  return sendTx(rpc, o.payer, ixs, { computeUnits: 400_000, table: o.table });
 }
 
 /** The creator PDA's $UNITS account, where pump.fun's collects pay and crank_pump_fees reads. */
