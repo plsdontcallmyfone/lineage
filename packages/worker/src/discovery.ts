@@ -316,6 +316,14 @@ export async function toolLoop(o: {
   log: (m: string) => void;
   /** called after every model call with the number of turns taken and the task's spend so far */
   onTurn?: (turn: number, usd: number) => void;
+  /** called after a turn's tools ran: a line the model reads with their results (a pace or budget notice), or null */
+  note?: (turn: number, usd: number) => string | null;
+  /**
+   * While a tool runs longer than this many seconds, the last request is sent again asking for one
+   * token, so the 5 minute prompt cache does not expire under a slow tool (a trial calibration): the
+   * next turn then reads the prefix instead of writing all of it again. 0 or absent: off.
+   */
+  keepAliveS?: number;
   /** returns a tool result, or { done } to stop with a value */
   handle: (name: string, input: Record<string, unknown>) => Promise<string | { done: unknown }>;
 }): Promise<{ value: unknown; usd: number; turns: number }> {
@@ -327,6 +335,8 @@ export async function toolLoop(o: {
       o.log(`${o.who}: spend cap reached (${usd.toFixed(4)} USD this task, ${o.ledger.total().toFixed(4)} USD in the ledger)`);
       return { value: null, usd, turns: turn };
     }
+    // the prompt cache entry is written (or refreshed) when a request starts, not when its answer ends
+    const sentAt = Date.now();
     const msg = await o.client.beta.messages
       .stream({
         model: o.model,
@@ -351,6 +361,31 @@ export async function toolLoop(o: {
     }
     const calls = msg.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
     if (!calls.length) return { value: null, usd, turns: turn + 1 };
+    // the request as sent, for the cache keep-alive while a slow tool runs
+    const sent = { model: o.model, thinking: { type: "adaptive" as const }, output_config: { effort: o.effort }, cache_control: { type: "ephemeral" as const }, system: o.system, tools: o.tools, messages: [...messages] };
+    let lastCallAt = sentAt;
+    let pinging = false;
+    let pingOk = true;
+    const timer = o.keepAliveS
+      ? setInterval(() => {
+          if (pinging || !pingOk || Date.now() - lastCallAt < o.keepAliveS! * 1000) return;
+          pinging = true;
+          lastCallAt = Date.now();
+          // through stream(): the routed client offers nothing else; a throw of any kind only turns the keep-alive off
+          Promise.resolve()
+            .then(() => o.client.beta.messages.stream({ ...sent, max_tokens: 1 }).finalMessage())
+            .then((r) => {
+              const k = o.ledger.record(o.who, r.model ?? o.model, r.usage);
+              usd += k.usd;
+              o.log(`${o.who}: cache keep-alive ${k.usd.toFixed(4)} USD (${k.cache_read_tokens} cache read, ${k.cache_write_tokens} cache write)`);
+            })
+            .catch((e) => {
+              pingOk = false; // a request shape the API refused is not sent again
+              o.log(`${o.who}: cache keep-alive failed: ${String((e as Error).message).slice(0, 160)}`);
+            })
+            .finally(() => (pinging = false));
+        }, Math.min(15_000, o.keepAliveS * 250))
+      : null;
     messages.push({ role: "assistant", content: msg.content });
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     let done: { done: unknown } | null = null;
@@ -366,8 +401,10 @@ export async function toolLoop(o: {
         results.push({ type: "tool_result", tool_use_id: c.id, is_error: true, content: (err as Error).message });
       }
     }
+    if (timer) clearInterval(timer);
     if (done) return { value: done.done, usd, turns: turn + 1 };
-    messages.push({ role: "user", content: results });
+    const note = o.note?.(turn + 1, usd) ?? null;
+    messages.push({ role: "user", content: note ? [...results, { type: "text", text: note }] : results });
   }
   o.log(`${o.who}: turn limit reached`);
   return { value: null, usd, turns: o.maxTurns };

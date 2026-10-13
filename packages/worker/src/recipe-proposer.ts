@@ -3,13 +3,14 @@ import { randomBytes } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import { H, sha256Hex, type Calibration, type Recipe } from "@units/protocol";
-import { UNITS_HOME, calibrate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree, RecipeError, type LoadedRecipe } from "@units/sandbox";
+import { UNITS_HOME, calibrate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree, runContainer, runnableImage, RecipeError, type LoadedRecipe } from "@units/sandbox";
 import { CoreClient, type SigningKey } from "../../core/src/client.ts";
 import { calibCommitment } from "../../core/src/recipe-proposals.ts";
 import { duplicateUnit, headroomError } from "../../core/src/more-units.ts";
 import { toolLoop, withBuiltTree, type SpendLedger } from "./discovery.ts";
 import { ToolBox } from "./proposers/anthropic.ts";
 import type { ProposeContext } from "./proposers/types.ts";
+import { candidateLine, multiPackage, repoStructure, structureSection, type ImageFacts } from "./repo-structure.ts";
 import { calibrationReason, equivalenceReason, errorReason, historyLines, oneLine, reasonLine, reasonWords, type TrialOutcome, type TrialReason } from "./trial-reason.ts";
 
 // Agent-proposed recipes (SPEC 6.2), worker side.
@@ -228,15 +229,51 @@ export function classNotes(cls: string): string {
 /** Model turns one draft may take. */
 const MAX_TURNS = 30;
 
+/** Turns a draft may take before its first trial; after them the loop tells the model to trial what it has. */
+export const FIRST_TRIAL_TURNS = 12;
+
+const probed = new Map<string, ImageFacts>();
+
+/**
+ * What the class image holds, read from it once (one short container, no network, no model): the
+ * toolchain version it runs and build tools it lacks. A recipe that asks for another toolchain
+ * version or a system library the image does not have fails its trial; knowing it first is free.
+ */
+export async function imageFacts(image: string, cls: Recipe["class"]): Promise<ImageFacts> {
+  const have = probed.get(image);
+  if (have) return have;
+  const version: Record<string, string> = { rust: "rustc -V", solana: "rustc -V", go: "go version", python: "python3 -V", zig: "zig version", cpp: "cc --version | head -1" };
+  const cmd = `${version[cls] ?? "true"} 2>/dev/null; for t in pkg-config cmake; do command -v $t >/dev/null 2>&1 || echo "MISSING $t"; done; [ -e /usr/include/openssl/ssl.h ] || echo "MISSING OpenSSL headers"`;
+  const r = await runContainer({ image: runnableImage(image), cmd, cwd: "/", mounts: [], network: false, env: { PATH: "/usr/local/cargo/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" }, limits: { cpus: 1, memory_mb: 512, pids: 64, wall_s: 60, disk_mb: 64 }, timeout_s: 60, job: "image-facts" });
+  const lines = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  const facts: ImageFacts = { toolchain: /\b(\d+\.\d+(?:\.\d+)?)\b/.exec(lines.find((l) => !l.startsWith("MISSING ")) ?? "")?.[1] ?? null, missing: lines.filter((l) => l.startsWith("MISSING ")).map((l) => l.slice(8)) };
+  if (r.exit === 0 || facts.toolchain) probed.set(image, facts);
+  return facts;
+}
+
+/** What the model reads with a turn's tool results while no trial has run: the turn budget before the first trial, then every third turn. */
+export function paceNote(o: { turn: number; usd: number; capUsd: number; trials: number; firstTrialTurns: number }): string | null {
+  if (o.trials > 0 || o.turn < o.firstTrialTurns || (o.turn - o.firstTrialTurns) % 3 !== 0) return null;
+  return `Pace: ${o.turn} turns and ${o.usd.toFixed(2)} of ${o.capUsd.toFixed(2)} USD are used and no trial has run. Stop reading. Write recipe.yml and the overlay files now from what you know and call trial_calibrate: its report costs no model spend and says exactly what is wrong. A draft that ends without a trial leaves nothing to build on.`;
+}
+
+/** The note of a draft the loop submits itself: what was measured, from the passing trial's own report. */
+export function autoNote(t: Pick<DraftTarget, "repo" | "commit">, report: string): string {
+  const facts = report.split("\n").filter((l) => /^(build ok|metric |equivalence:|headroom:)/.test(l)).join("; ");
+  return oneLine(`Recipe for ${t.repo} at ${t.commit.slice(0, 7)}. Its last trial calibration passed in the sandbox and the draft was not changed after it; the drafting model reached its limit before writing a note, so this note is that trial's report: ${facts}`, 1800);
+}
+
 /** The prompt section of a draft that follows drafts which did not pass: what each trial failed on, and that the files are already there. */
 export function historySection(history: DraftHistory[], keptFiles: string[] = []): string {
   const lines = historyLines(history);
-  const last = history.flatMap((d) => d.trials).filter((t) => !t.ok && t.reason).at(-1);
+  const all = history.flatMap((d) => d.trials);
+  const last = all.filter((t) => !t.ok && t.reason).at(-1);
+  const passed = all.at(-1)?.ok === true;
   if (!lines.length && !keptFiles.length) return "";
   return `
 
 EARLIER DRAFTS of this recipe did not pass. This was measured in the sandbox already; do not find it out again:
-${lines.length ? lines.join("\n") : "- no trial was reached: the earlier draft spent its budget reading the repository"}${last ? `\nLast time this failed because: ${reasonLine(last.reason!)}. Fix exactly that first.` : "\nLast time no trial ran at all. Read less and trial early."}${keptFiles.length ? `\nThe draft directory already holds the previous draft (${keptFiles.join(", ")}); your first message shows the files. Keep what worked and change what failed; replace the approach only when the reason above shows it cannot work.` : ""}`;
+${lines.length ? lines.join("\n") : "- no trial was reached: the earlier draft spent its budget reading the repository"}${passed ? "\nThe last trial PASSED, and the draft ended before it was submitted. Change nothing: call trial_calibrate on the files as they are, then submit." : last ? `\nLast time this failed because: ${reasonLine(last.reason!)}. Fix exactly that first.` : "\nLast time no trial ran at all. Read less and trial early."}${keptFiles.length ? `\nThe draft directory already holds the previous draft (${keptFiles.join(", ")}); your first message shows the files. Keep what worked and change what failed; replace the approach only when the reason above shows it cannot work.` : ""}`;
 }
 
 /** The model a recipe is drafted with when the caller names none (a registry id; routed like every Claude call). */
@@ -259,6 +296,10 @@ export class RecipeDrafter {
       /** a harness directory the draft's overlay starts as a copy of (an additional unit: the repository's own unit's overlay), so a many-file harness is changed, not retyped */
       seedOverlay?: string | null;
       maxTrials?: number;
+      /** model turns before the first trial after which the loop tells the model to trial what it has (default FIRST_TRIAL_TURNS; 4 when the draft resumes an earlier one) */
+      firstTrialTurns?: number;
+      /** what the class image holds (imageFacts); read from the image when absent. Tests pass it to run without a sandbox */
+      image?: ImageFacts | null;
       /** earlier drafts of this recipe and why each trial failed: the prompt starts from them, so the model does not find them out again */
       history?: DraftHistory[];
       /** the directory of the last draft that did not pass (recipe.yml and overlay/): this draft starts as a copy of it */
@@ -360,6 +401,14 @@ export class RecipeDrafter {
     }
     const seeded = !prev && this.o.seedOverlay && existsSync(this.o.seedOverlay) ? (cpSync(this.o.seedOverlay, join(this.o.dir, "overlay"), { recursive: true }), Bun.spawnSync(["find", join(this.o.dir, "overlay"), "-type", "f"]).stdout.toString().split("\n").filter(Boolean).map((f) => relative(join(this.o.dir, "overlay"), f)).sort()) : [];
     const box = new ToolBox({ tree: repoTree } as unknown as ProposeContext, 0);
+    // the free structural pass (repo-structure.ts): for a repository of several packages the prompt names ONE to
+    // measure, with how it is fetched, built and tested alone. An additional unit has its own section instead.
+    const image = this.o.image === undefined ? await imageFacts(t.image, t.class).catch(() => undefined) : (this.o.image ?? undefined);
+    const structure = this.o.more ? null : repoStructure(repoTree, t.class, image);
+    const multi = multiPackage(structure) && structure!.candidates[0]!.eligible;
+    if (structure?.candidates.length) this.o.log(`recipe-drafter: structure: ${structure.candidates.length} package${structure.candidates.length === 1 ? "" : "s"}${multi ? `; told to measure ${structure.candidates[0]!.name} (${structure.candidates[0]!.path}), then ${structure.candidates.slice(1, 4).map((c) => c.name).join(", ")}` : ""}${image ? `; image toolchain ${image.toolchain ?? "not read"}${image.missing.length ? `, without ${image.missing.join(", ")}` : ""}` : ""}`);
+    const one = structure && !multi && structure.candidates.length === 1 && (structure.candidates[0]!.risks.length || structure.candidates[0]!.notes.length) ? `\n\nA free reading of the checkout found one package:\n${candidateLine(structure.candidates[0]!, 0)}${image?.toolchain ? `\nThe image runs toolchain ${image.toolchain}${structure.toolchain ? `; the repository asks for ${structure.toolchain}` : ""}${image.missing.length ? `; it does NOT have ${image.missing.join(", ")}` : ""}.` : ""}` : "";
+    const firstTrialTurns = this.o.firstTrialTurns ?? (prev ? 4 : FIRST_TRIAL_TURNS);
     const maxTrials = this.o.maxTrials ?? 4;
     let trials = 0;
     const outcomes: TrialOutcome[] = [];
@@ -367,6 +416,7 @@ export class RecipeDrafter {
     let spent = 0;
     let beforeTrial: { turns: number; usd: number } | null = null;
     let lastOk: string | null = null; // draft digest of the last ok trial
+    let lastOkText = ""; // and its report
     const digest = () => {
       const files = [join(this.o.dir, "recipe.yml")];
       const ov = join(this.o.dir, "overlay");
@@ -399,11 +449,13 @@ ${Object.entries(ex.overlay)
 
 If the repository cannot have a recipe as it stands, do not force one: call give_up with impossible true. That is the case when it has no tests of its own that run offline on a CPU, when its code needs a GPU or other hardware, or when nothing it computes is deterministic. Never write tests for it yourself and never fake a metric.
 
-Work efficiently: read only what you need (the library module and its tests), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials.${this.o.more ? moreSection(this.o.more) : ""}${seeded.length ? `\n\nYour overlay already holds a copy of the format reference's harness files (${seeded.join(", ")}): keep the ones your recipe uses, and replace or add files with write_overlay_file. Every file in the overlay is part of your recipe.` : ""}${historySection(this.o.history ?? [], Object.keys(kept))}`;
+Work efficiently: read only what you need (the library module and its tests; a line range of a long file, never a generated table), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials and ${this.o.capUsd.toFixed(2)} USD of model spend for the whole draft; plan to reach your first trial within ${firstTrialTurns} turns.${this.o.more ? moreSection(this.o.more) : ""}${seeded.length ? `\n\nYour overlay already holds a copy of the format reference's harness files (${seeded.join(", ")}): keep the ones your recipe uses, and replace or add files with write_overlay_file. Every file in the overlay is part of your recipe.` : ""}${structureSection(structure, image)}${one}${historySection(this.o.history ?? [], Object.keys(kept))}`;
     const keptText = Object.entries(kept).map(([p, c]) => `--- ${p} ---\n${c}`).join("\n");
     const first = Object.keys(kept).length
       ? `Your draft already holds the previous draft's files, shown below${keptText.length > 60_000 ? " (the largest are cut here; write a file again to change it)" : ""}. Do not start over: fix what the last trial reported, change only what that needs, then call trial_calibrate.\n${keptText.length > 60_000 ? Object.entries(kept).map(([p, c]) => `--- ${p} ---\n${c.length > 6000 ? `${c.slice(0, 6000)}\n[... ${c.length - 6000} more characters]` : c}`).join("\n") : keptText}`
-      : this.o.more ? `Start by listing the repository to find what the existing units do not measure, then draft the additional recipe for ${t.repo}.` : `Start by listing the repository, then draft the recipe for ${t.repo}.`;
+      : this.o.more ? `Start by listing the repository to find what the existing units do not measure, then draft the additional recipe for ${t.repo}.`
+      : multi ? `Start with package 1 of the list, ${structure!.candidates[0]!.name}: read its manifest (${structure!.candidates[0]!.path}/) and the part of its public API a benchmark will call, then write the recipe and harness for it and trial.`
+      : `Start by listing the repository, then draft the recipe for ${t.repo}.`;
     const res = await toolLoop({
       client: this.o.client,
       model: this.o.model ?? DRAFT_MODEL,
@@ -420,6 +472,13 @@ Work efficiently: read only what you need (the library module and its tests), wr
         turn = n;
         spent = usd;
       },
+      note: (n, usd) => {
+        const note = paceNote({ turn: n, usd, capUsd: this.o.capUsd, trials, firstTrialTurns });
+        if (note) this.o.log(`recipe-drafter: told to trial now (${n} turns, ${usd.toFixed(4)} USD, no trial yet)`);
+        return note;
+      },
+      // a trial calibration can outlast the 5 minute prompt cache: on the site a 7 minute trial made the next turn write 107,802 tokens again (0.59 USD)
+      keepAliveS: 240,
       handle: async (name, input) => {
         switch (name) {
           case "list_files":
@@ -465,6 +524,7 @@ Work efficiently: read only what you need (the library module and its tests), wr
             // the first line is the one a runtime keeps in its journal: it says why
             this.o.log(`recipe-drafter: trial ${trials} ${rep.ok ? "ok" : `not ok: ${rep.reason ? reasonLine(rep.reason) : "no reason recorded"}`} (${Math.round(seconds)} s)\n${rep.text}`);
             lastOk = rep.ok ? digest() : null;
+            if (rep.ok) lastOkText = rep.text;
             return `${rep.ok ? "TRIAL OK" : `TRIAL NOT OK\nwhy: ${rep.reason ? reasonLine(rep.reason) : "see below"}`}\n${rep.text}`;
           }
           case "submit":
@@ -482,11 +542,18 @@ Work efficiently: read only what you need (the library module and its tests), wr
     const before_trial = beforeTrial ?? { turns: res.turns, usd: res.usd };
     if (v?.note !== undefined) return { submitted: true, note: v.note, usd: res.usd, turns: res.turns, trials, outcomes, before_trial };
     if (v?.gave_up !== undefined) return { submitted: false, usd: res.usd, turns: res.turns, trials, reason: v.gave_up || "the drafter gave up without a reason", impossible: v.impossible === true, outcomes, before_trial };
-    // no decision of the model: the loop ended at its spend cap, its turn limit or a refusal. The reason
-    // names the last trial's failure in fixed words (the raw cause stays in `outcomes`)
+    // no decision of the model: the loop ended at its spend cap, its turn limit or a refusal.
+    // A draft whose last trial passed and that was not changed since is complete: it meets the one condition
+    // of submit, and only the model's note is missing. It is proposed with the trial's own report as its note,
+    // not thrown away (measured 2026-10-13: a first trial that passed after 397 s ended a draft at its cap).
+    if (lastOk && lastOk === digest()) {
+      this.o.log(`recipe-drafter: the last trial passed and the draft is unchanged: submitted by the loop (no budget was left for the model's note)`);
+      return { submitted: true, note: autoNote(t, lastOkText), usd: res.usd, turns: res.turns, trials, outcomes, before_trial };
+    }
+    // The reason names the last trial's failure in fixed words (the raw cause stays in `outcomes`)
     const stop: DraftStop = trials >= maxTrials ? "trials" : res.turns >= MAX_TURNS ? "turns" : "spend";
     const last = outcomes.filter((o) => !o.ok && o.reason).at(-1);
-    const ended = stop === "trials" ? `none of its ${maxTrials} trials passed` : stop === "turns" ? "it used all its turns" : "it reached its spend limit";
+    const ended = stop === "trials" ? `it used its ${maxTrials} trials` : stop === "turns" ? "it used all its turns" : "it reached its spend limit";
     const reason = last ? `${reasonWords(last.n, last.reason!)}, and ${ended}` : trials ? `the draft was not submitted, and ${ended}` : `${ended} before its first trial (${res.turns} turn${res.turns === 1 ? "" : "s"})`;
     return { submitted: false, usd: res.usd, turns: res.turns, trials, reason, outcomes, stop, before_trial };
   }

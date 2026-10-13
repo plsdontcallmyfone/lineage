@@ -65,6 +65,8 @@ test("config check", () => {
   expect(unitSetupError({ enabled: false, draft_max_usd: 1, max_drafts: 2 })).toBeNull();
   expect(unitSetupError({ draft_max_usd: 0 })).toContain("draft_max_usd");
   expect(unitSetupError({ max_drafts: 0 })).toContain("max_drafts");
+  expect(unitSetupError({ first_trial_turns: 8 })).toBeNull();
+  expect(unitSetupError({ first_trial_turns: 0 })).toContain("first_trial_turns");
 });
 
 const REPO = "https://github.com/acme/thing";

@@ -170,5 +170,7 @@ describe("how a reason is said", () => {
     expect(historySection([{ draft: 1, trials: [] }])).toBe("");
     expect(historySection([{ draft: 1, trials: [] }], ["recipe.yml"])).toContain("Last time no trial ran at all");
     expect(historySection([])).toBe("");
+    // a draft that ended after a trial that passed: nothing is to be fixed
+    expect(historySection([{ draft: 1, trials: [{ n: 1, ok: true, seconds: 397, reason: null }] }], ["recipe.yml"])).toContain("The last trial PASSED, and the draft ended before it was submitted. Change nothing: call trial_calibrate on the files as they are, then submit.");
   });
 });

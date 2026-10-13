@@ -1,0 +1,109 @@
+{
+  "at": "2026-10-13T17:08:47.397Z",
+  "label": "after-rustcrypto-formats",
+  "repo": "https://github.com/RustCrypto/formats",
+  "reference": "gorbagana-chain",
+  "draft_max_usd": 1,
+  "max_drafts": 1,
+  "unit_setup": {},
+  "seconds": 209,
+  "model_usd": 0.6112262770000001,
+  "drafts": 1,
+  "drafts_usd": 0.6112262770000001,
+  "per_draft": [
+    {
+      "turns": 11,
+      "trials": 2,
+      "turns_before_first_trial": 7,
+      "usd_before_first_trial": 0.4416
+    }
+  ],
+  "first_trial_logged": [
+    {
+      "turns": 7,
+      "usd_before_fee": 0.4186
+    }
+  ],
+  "trials": [
+    {
+      "draft": 1,
+      "n": 1,
+      "ok": true,
+      "seconds": 23,
+      "reason": null
+    },
+    {
+      "draft": 1,
+      "n": 2,
+      "ok": true,
+      "seconds": 20,
+      "reason": null
+    }
+  ],
+  "last_reason": null,
+  "impossible": null,
+  "public_sentences": [
+    "setting up: reading rustcrypto/formats",
+    "setting up: drafting the unit for rustcrypto/formats (draft 1 of 1)",
+    "setting up: verifiers are calibrating the unit drafted for rustcrypto/formats (0 of 2 measured)"
+  ],
+  "runway_detail": null,
+  "proposal": {
+    "name": "formats",
+    "recipe_id": "b8083d222beb08d2f692653fd8d4dcd695e9297d315d5aa22b68586f4e7d39bf",
+    "allowed_paths": [
+      "base16ct/src/**"
+    ],
+    "prepare": [
+      "RUSTUP_TOOLCHAIN=1.89.0 cargo tree --locked -p base16ct -e normal,build,dev --features alloc > /dev/null"
+    ],
+    "build": [
+      "RUSTUP_TOOLCHAIN=1.89.0 cargo build --release --locked --offline -p base16ct --features alloc --lib --examples --tests"
+    ],
+    "test": "RUSTUP_TOOLCHAIN=1.89.0 cargo test --release --locked --offline -p base16ct --features alloc --no-fail-fast --lib --tests 2>&1",
+    "metrics": [
+      "encode_ir",
+      "decode_ir",
+      "display_ir"
+    ],
+    "note": "Unit: base16ct, the workspace's top-ranked crate. It is a constant-time hex encoder and decoder with no dependencies, 381 lines of scalar code that never branches on the data, and 11 integration tests of its own. Every command uses -p base16ct --features alloc, because one of the tests and the *_vec / encode_string functions need that feature. There are three cachegrind instruction-count metrics, each with an --inputs-only fixed command. encode_ir covers lower/upper encode, encode_str and encode_string. decode_ir covers lower/upper/mixed decode, including inputs with a bad character, plus decode_vec. display_ir covers HexDisplay in the {}, {:x} and {:X} formats, which currently writes the output one byte at a time through the formatter. The inputs are seeded and sized like digests and keys (16 to 64 bytes) or like messages (up to 4 KiB). In the trial, calibration took 12 s, run-to-run variation was 0 and the equivalence digests were identical. The work outside the library is 23%, 35% and 7% of the three counts. The equivalence harness prints the output of every public function for: all byte values, every pair of characters, odd lengths, invalid characters, output buffers that are too short or too long, Display/Debug text including padding, and the error texts. Patches may only change base16ct/src/**."
+  },
+  "calibration": {
+    "status": "accepted",
+    "reason": null,
+    "unit": "5a44659afc13b23a23eb28628816fee72aee66bf6845a15f0a00216c831c0b36",
+    "stable_tests": 11,
+    "metrics": {
+      "decode_ir": {
+        "base_value": 84733680,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 29298815
+      },
+      "display_ir": {
+        "base_value": 42740366,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 3051669
+      },
+      "encode_ir": {
+        "base_value": 23274025,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 5407016
+      }
+    }
+  },
+  "log": [
+    "4s 6iPzuT drafts the unit for rustcrypto/formats at 13a0390 (rust; draft 1 of 1, cap 1.0000 USD)",
+    "83s 6iPzuT recipe-drafter: trial 1/4 (after 7 turns, 0.4186 USD)",
+    "106s 6iPzuT recipe-drafter: trial 1 ok (23 s)",
+    "137s 6iPzuT recipe-drafter: trial 2/4 (after 10 turns, 0.5455 USD)",
+    "156s 6iPzuT recipe-drafter: trial 2 ok (20 s)",
+    "163s 6iPzuT recipe-drafter: draft ended after 11 turns and 2 trials; 7 turns and 0.4416 USD before the first trial",
+    "163s 6iPzuT proposed the unit formats for rustcrypto/formats (proposal 33fd831314a2, 0.6112 USD); the verifiers calibrate it now",
+    "163s 6iPzuT unit draft done: 0.6112 USD model spend, 43 sandbox s, cost 3099135000 base units"
+  ],
+  "secrets_in_output": false,
+  "note": "drafts, drafts_usd and trials were filled in from this file's own log lines: the script read the runtime's state under the address as typed, and Core keeps it in lower case (fixed in the script after this run)"
+}

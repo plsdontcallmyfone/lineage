@@ -269,7 +269,7 @@ export class Runtime {
       freeSlot: () => !this.stopping && this.running.size < this.slots(),
       budget: (agent, cap) => this.budget(agent, { cap }),
       run: (agent, maxUsd, job) => this.runSetup(agent, maxUsd, job),
-    }, deps.unitSetup ?? unitSetupWork({ core: cfg.core, state_dir: cfg.state_dir, model: cfg.unit_setup?.model, max_trials: cfg.unit_setup?.max_trials }));
+    }, deps.unitSetup ?? unitSetupWork({ core: cfg.core, state_dir: cfg.state_dir, model: cfg.unit_setup?.model, max_trials: cfg.unit_setup?.max_trials, first_trial_turns: cfg.unit_setup?.first_trial_turns }));
     this.more = new MoreUnits(cfg.more_units, {
       core: this.client,
       log: (m) => this.log(m),

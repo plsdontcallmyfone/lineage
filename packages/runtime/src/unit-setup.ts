@@ -7,7 +7,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import { SpendLedger, type SpendEntry } from "../../worker/src/discovery.ts";
 import { claudeRoute, routedSdk } from "../../worker/src/proposers/claude-route.ts";
 import type { Meter } from "../../worker/src/proposers/types.ts";
-import { DRAFT_MODEL, RecipeDrafter, describeUnits, ensureRecipe, submitProposal, type DraftHistory, type MoreContext } from "../../worker/src/recipe-proposer.ts";
+import { DRAFT_MODEL, FIRST_TRIAL_TURNS, RecipeDrafter, describeUnits, ensureRecipe, submitProposal, type DraftHistory, type MoreContext } from "../../worker/src/recipe-proposer.ts";
 import { RecipeBook } from "../../worker/src/recipes.ts";
 import { oneLine, reasonLine, type TrialOutcome } from "../../worker/src/trial-reason.ts";
 
@@ -20,7 +20,9 @@ import { oneLine, reasonLine, type TrialOutcome } from "../../worker/src/trial-r
 //   2. has ONE bound, awake agent of that repository draft the recipe with a model (the drafter of
 //      packages/worker/src/recipe-proposer.ts: it reads the checkout, writes recipe.yml and the overlay
 //      harness, trial-calibrates in the real sandbox and may submit only a stable draft), metered to
-//      that agent's compute vault like an authoring attempt;
+//      that agent's compute vault like an authoring attempt. For a repository of several packages the
+//      drafter first ranks them for free (packages/worker/src/repo-structure.ts) and is told to write
+//      the recipe for ONE small, self-contained package and to reach a first trial early;
 //   3. submits the proposal to Core as that agent; the network's verifiers then calibrate it (commit
 //      and reveal), and when they agree Core creates the unit and turns every agent of the repository
 //      `active`. This runtime only watches.
@@ -50,9 +52,11 @@ export interface UnitSetupConfig {
   recheck_s?: number;
   /** trial calibrations per draft */
   max_trials?: number;
+  /** model turns a draft may take before its first trial; after them the loop tells the model to trial what it has (default 12) */
+  first_trial_turns?: number;
 }
 
-export const UNIT_SETUP_DEFAULTS = { enabled: true, model: DRAFT_MODEL, draft_max_usd: 1.5, max_drafts: 3, repo_max_usd: 4, retry_s: 600, recheck_s: 21_600, max_trials: 4 };
+export const UNIT_SETUP_DEFAULTS = { enabled: true, model: DRAFT_MODEL, draft_max_usd: 1.5, max_drafts: 3, repo_max_usd: 4, retry_s: 600, recheck_s: 21_600, max_trials: 4, first_trial_turns: FIRST_TRIAL_TURNS };
 
 export function unitSetupError(v: unknown): string | null {
   if (v === undefined) return null;
@@ -61,7 +65,7 @@ export function unitSetupError(v: unknown): string | null {
   if (c.enabled !== undefined && typeof c.enabled !== "boolean") return "unit_setup.enabled is true or false";
   if (c.model !== undefined && !(typeof c.model === "string" && /^[a-z0-9][a-z0-9.-]{1,63}$/.test(c.model))) return "unit_setup.model is a model registry id";
   for (const k of ["draft_max_usd", "repo_max_usd"]) if (c[k] !== undefined && !(typeof c[k] === "number" && (c[k] as number) > 0 && (c[k] as number) <= 50)) return `unit_setup.${k} is above 0 and at most 50 USD`;
-  for (const k of ["max_drafts", "max_trials"]) if (c[k] !== undefined && !(Number.isInteger(c[k]) && (c[k] as number) >= 1 && (c[k] as number) <= 20)) return `unit_setup.${k} is a whole number from 1 to 20`;
+  for (const k of ["max_drafts", "max_trials", "first_trial_turns"]) if (c[k] !== undefined && !(Number.isInteger(c[k]) && (c[k] as number) >= 1 && (c[k] as number) <= 20)) return `unit_setup.${k} is a whole number from 1 to 20`;
   for (const k of ["retry_s", "recheck_s"]) if (c[k] !== undefined && !(typeof c[k] === "number" && (c[k] as number) >= 1)) return `unit_setup.${k} is at least 1 second`;
   return null;
 }
@@ -222,7 +226,7 @@ export function recipeName(repo: string, taken: Set<string>): string {
 }
 
 /** The production work: git for reading, the recipe drafter with the routed model for drafting. */
-export function unitSetupWork(o: { core: string; state_dir: string; model?: string; max_trials?: number; client?: Anthropic; book?: RecipeBook }): UnitSetupWork {
+export function unitSetupWork(o: { core: string; state_dir: string; model?: string; max_trials?: number; first_trial_turns?: number; client?: Anthropic; book?: RecipeBook }): UnitSetupWork {
   const anon = new CoreClient(o.core, null);
   const model = o.model ?? UNIT_SETUP_DEFAULTS.model;
   return {
@@ -290,6 +294,7 @@ export function unitSetupWork(o: { core: string; state_dir: string; model?: stri
         history: job.history,
         resume: job.resume && job.resume.startsWith(root) ? job.resume : null,
         maxTrials: o.max_trials ?? UNIT_SETUP_DEFAULTS.max_trials,
+        firstTrialTurns: job.resume ? undefined : o.first_trial_turns,
         onSandbox: (s) => job.meter.sandbox(s),
         log: job.log,
       });

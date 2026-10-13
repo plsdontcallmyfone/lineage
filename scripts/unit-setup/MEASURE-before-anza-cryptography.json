@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-13T17:01:44.614Z",
+  "label": "before-anza-cryptography",
+  "repo": "https://github.com/anza-xyz/cryptography",
+  "reference": "gorbagana-chain",
+  "draft_max_usd": 1.5,
+  "max_drafts": 1,
+  "unit_setup": {},
+  "seconds": 197,
+  "model_usd": 1.5651958899999998,
+  "drafts": 1,
+  "drafts_usd": 1.5651958899999998,
+  "per_draft": [
+    {
+      "turns": 26,
+      "trials": 0,
+      "turns_before_first_trial": 26,
+      "usd_before_first_trial": 1.5652
+    }
+  ],
+  "first_trial_logged": [],
+  "trials": [],
+  "last_reason": "draft 1 of 1 did not pass: it reached its spend limit before its first trial (26 turns)",
+  "impossible": null,
+  "public_sentences": [
+    "setting up: reading anza-xyz/cryptography",
+    "setting up: drafting the unit for anza-xyz/cryptography (draft 1 of 1)",
+    "unit setup for anza-xyz/cryptography stopped after 1 draft and 1.57 USD: draft 1 of 1 did not pass: it reached its spend limit before its first trial (26 turns)"
+  ],
+  "runway_detail": null,
+  "proposal": null,
+  "calibration": null,
+  "log": [
+    "4s HdJceo drafts the unit for anza-xyz/cryptography at 3efe73c (rust; draft 1 of 1, cap 1.5000 USD)",
+    "192s HdJceo recipe-drafter: spend cap reached (1.4836 USD this task, 1.4836 USD in the ledger)",
+    "192s HdJceo recipe-drafter: draft ended after 26 turns and 0 trials; 26 turns and 1.5652 USD before the first trial",
+    "192s unit setup for anza-xyz/cryptography: draft 1 of 1 did not pass: it reached its spend limit before its first trial (26 turns); no draft left",
+    "192s HdJceo unit draft done: 1.5652 USD model spend, 0 sandbox s, cost 7825980000 base units"
+  ],
+  "secrets_in_output": false
+}

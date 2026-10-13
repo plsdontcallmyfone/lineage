@@ -1,0 +1,101 @@
+{
+  "at": "2026-10-13T17:55:02.017Z",
+  "label": "final-anza-cryptography",
+  "repo": "https://github.com/anza-xyz/cryptography",
+  "reference": "gorbagana-chain",
+  "draft_max_usd": 1.3,
+  "max_drafts": 1,
+  "unit_setup": {},
+  "seconds": 1112,
+  "model_usd": 1.3839443579999997,
+  "drafts": 1,
+  "drafts_usd": 1.021084282,
+  "per_draft": [
+    {
+      "turns": 14,
+      "trials": 1,
+      "turns_before_first_trial": 13,
+      "usd_before_first_trial": 0.9361
+    }
+  ],
+  "first_trial_logged": [
+    {
+      "turns": 13,
+      "usd_before_fee": 0.8873
+    }
+  ],
+  "trials": [
+    {
+      "draft": 1,
+      "at": 1791914796661,
+      "n": 1,
+      "ok": true,
+      "seconds": 299,
+      "reason": null
+    }
+  ],
+  "last_reason": null,
+  "impossible": null,
+  "public_sentences": [
+    "setting up: reading anza-xyz/cryptography",
+    "setting up: drafting the unit for anza-xyz/cryptography (draft 1 of 1)",
+    "setting up: verifiers are calibrating the unit drafted for anza-xyz/cryptography (0 of 2 measured)"
+  ],
+  "runway_detail": null,
+  "proposal": {
+    "name": "cryptography",
+    "recipe_id": "78b91ab513e62d9804143a02fb9869fe512ef0018ec1e1db40c2a909bb4c2069",
+    "allowed_paths": [
+      "syscall/solana-bn254/src/**"
+    ],
+    "prepare": [
+      "RUSTUP_TOOLCHAIN=1.89.0 cargo tree --locked -p solana-bn254 -e normal,build,dev > /dev/null"
+    ],
+    "build": [
+      "RUSTUP_TOOLCHAIN=1.89.0 cargo build --release --locked --offline -p solana-bn254 --lib --examples --tests"
+    ],
+    "test": "RUSTUP_TOOLCHAIN=1.89.0 cargo test --release --locked --offline -p solana-bn254 --no-fail-fast --lib --tests 2>&1",
+    "metrics": [
+      "poseidon_ir",
+      "curve_ir",
+      "pairing_ir"
+    ],
+    "note": "The recipe measures solana-bn254 (syscall/solana-bn254), the BN254 field, curve, pairing and Poseidon arithmetic behind Solana's alt_bn128 and sol_poseidon syscalls. It has no dependencies of its own, and on arm64 it runs only its portable backend: the ADX and AVX-512 paths are x86_64 only and chosen at compile time. There are three cachegrind instruction-count metrics, each with an --inputs-only fixed command: circom Poseidon hashes over widths 2 to 13 (227M instructions), G1/G2 scalar multiplication by full 256-bit scalars with syscall encode/decode (272M), and pairing checks over 2 to 5 pairs (150M). Inputs come only from a seeded splitmix64, and less than 0.5% of each count is harness work. In the trial all three counts gave identical results on both runs (cv 0). 243 upstream tests pass, run through libtest with --lib --tests. The equivalence harness prints, on seeded inputs: Poseidon digests for valid inputs, wrong-length inputs and unreduced inputs. It prints G1/G2 decoding in both byte orders, covering valid, random and flagged encodings. It prints addition, negation, multiplication by edge scalars (0, 1, r, r\u00b11, 2^256-1), subgroup checks, pairings and Gt pow/square/inverse. Patches may only change syscall/solana-bn254/src. The in-source test modules are protected blocks, and tests, examples, benches, manifests, the lockfile and toolchain files are protected paths."
+  },
+  "calibration": {
+    "status": "accepted",
+    "reason": null,
+    "unit": "332846538efe43bb647c2413bb11c9c074bce319af2e44164a201ebede78721a",
+    "stable_tests": 243,
+    "metrics": {
+      "curve_ir": {
+        "base_value": 272031729,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 256850
+      },
+      "pairing_ir": {
+        "base_value": 145970133,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 249112
+      },
+      "poseidon_ir": {
+        "base_value": 227215921,
+        "cv": 0,
+        "enabled": true,
+        "fixed_value": 928974
+      }
+    }
+  },
+  "log": [
+    "4s 3K4QB5 drafts the unit for anza-xyz/cryptography at 3efe73c (rust; draft 1 of 1, cap 1.3000 USD)",
+    "156s 3K4QB5 recipe-drafter: trial 1/4 (after 13 turns, 0.8873 USD)",
+    "455s 3K4QB5 recipe-drafter: trial 1 ok (299 s)",
+    "462s 3K4QB5 recipe-drafter: draft ended after 14 turns and 1 trial; 13 turns and 0.9361 USD before the first trial",
+    "462s 3K4QB5 proposed the unit cryptography for anza-xyz/cryptography (proposal 8111d0bffc56, 1.0211 USD); the verifiers calibrate it now",
+    "462s 3K4QB5 unit draft done: 1.0211 USD model spend, 300 sandbox s, cost 5405425000 base units"
+  ],
+  "secrets_in_output": false,
+  "note": "Run with the code of the commit except the note that gen is a reserved word in edition 2024, added after. model_usd is the draft (drafts_usd, 1.0211 USD) plus 0.3629 USD of an authoring attempt the agent started on the new unit before this script stopped the runtime; the script now stops it at once. The cache keep-alive fired 240 s after the request was sent and read 91,417 cached tokens for 0.0183 USD before the fee."
+}

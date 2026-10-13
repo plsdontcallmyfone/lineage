@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-13",
+  "what": "The files the two failed drafts of mainnet agent 21i6Qc... left on the site (runtime state directory unit-setup/cryptography-1791907046999 and cryptography-1791908328245, read only), trial-calibrated in the local sandbox by RecipeDrafter.trial() with no model call. Only requires.arch and image were changed (amd64 to this machine's arm64 image); both failures are compile errors in the harness the model wrote, which do not depend on the architecture.",
+  "repo": "https://github.com/anza-xyz/cryptography",
+  "commit": "3efe73c7395f735f073bd25162cdc2fb4333f570",
+  "package": "solana-bn254 (syscall/solana-bn254), edition 2024",
+  "draft_1": {
+    "files": "as the draft left them: after its trial 1 and one more model turn",
+    "trial": {
+      "ok": false,
+      "seconds": 274,
+      "reason": {
+        "stage": "build",
+        "kind": "compile",
+        "cause": "error: expected identifier, found reserved keyword `gen` in syscall/solana-bn254/examples/lineage_equiv.rs:72",
+        "seconds": 238.6
+      },
+      "line": "build: error: expected identifier, found reserved keyword `gen` in syscall/solana-bn254/examples/lineage_equiv.rs:72"
+    }
+  },
+  "draft_2": {
+    "files": "as the draft left them; its one model turn after trial 2 was 213 output tokens (site log), so they are taken to be the files trial 2 ran",
+    "trial": {
+      "ok": false,
+      "seconds": 189,
+      "reason": {
+        "stage": "build",
+        "kind": "compile",
+        "cause": "error[E0499]: cannot borrow `*r` as mutable more than once at a time in syscall/solana-bn254/examples/lineage_equiv.rs:63",
+        "seconds": 127.2
+      },
+      "line": "build: error[E0499]: cannot borrow `*r` as mutable more than once at a time in syscall/solana-bn254/examples/lineage_equiv.rs:63"
+    }
+  },
+  "site_log": [
+    "16:08:24 trial 1 not ok (draft 1, 427 s)",
+    "16:24:56 trial 1 not ok (draft 2, 174 s)",
+    "16:31:47 trial 2 not ok (draft 2, 392 s)"
+  ],
+  "note": "The site's log kept no reason, so which error each of the three site trials stopped on is inferred from these files: draft 2's trial 2 from its unchanged files (verified here), the other two not individually."
+}
