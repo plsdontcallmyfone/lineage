@@ -309,3 +309,11 @@ test("the repository check before a launch has its own class, through Core or th
   expect(l.take("1.2.3.4", "repocheck").ok).toBe(false);
   expect(l.take("1.2.3.4", "v1").ok).toBe(true);
 });
+
+// Talk and agent conversations (docs/plans/AGENT-CONVERSATIONS.md): read routes only. A person's message is a
+// transaction their wallet sends to the chain, so nothing new is written through the gate.
+test("talk and conversations: the pages' reads pass, and there is nothing to post", () => {
+  for (const p of ["/talk", "/api/talk", "/api/talk/CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo", "/api/conversations", "/api/conversations/config"]) expect(classify("GET", p)).toMatchObject({ upstream: "web" });
+  for (const p of ["/v1/talk", "/v1/conversations", "/v1/agents/CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo/conversation"]) expect(classify("GET", p)).toMatchObject({ upstream: "core" });
+  for (const p of ["/api/talk", "/v1/talk", "/api/conversations", "/v1/admin/conversations/config", "/api/admin/conversations/config"]) expect(classify("POST", p)).toMatchObject({ refuse: expect.any(Number) });
+});
