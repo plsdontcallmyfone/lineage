@@ -110,7 +110,12 @@ export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string
     log(`dry run: simulation ${sim.err ? `failed ${JSON.stringify(sim.err)}` : "ok"}`);
     return { signature: sig, sent: false };
   }
-  const sim = await rpc.simulate(signed);
+  // the wallet's blockhash can be newer than what this RPC node has seen yet: wait for it a few seconds before giving up
+  let sim = await rpc.simulate(signed);
+  for (let i = 0; i < 8 && JSON.stringify(sim.err ?? "").includes("BlockhashNotFound"); i++) {
+    await new Promise((r) => setTimeout(r, 750));
+    sim = await rpc.simulate(signed);
+  }
   if (sim.err) throw new Error(`simulation failed: ${JSON.stringify(sim.err)}\n${(sim.logs ?? []).slice(-8).join("\n")}`);
   const { lastValidBlockHeight } = await rpc.getLatestBlockhash();
   const r = await sendWire(rpc, signed, lastValidBlockHeight, (s) => log(`  ${s}`));
