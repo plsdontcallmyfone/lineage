@@ -115,6 +115,7 @@ import { checkedCoinUri, loadCoinOrigin, storeCoinImage, storeCoinLinks, type Co
 export { mountClaim } from "./claim.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
+import { applyLaunchPrefill, reportTweetLaunch } from "./tweet-ref.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
@@ -1044,6 +1045,7 @@ async function launchSign() {
     }
     S.launched = { agent: d.agent, mint: d.mint.id, sig, sigs, deposit: d.deposit, mode: "bundle" };
     S.draft = null;
+    reportTweetLaunch(d.agent.id, d.mint.id, d.args.repoUrl); // a launch opened from a reply bot's link tells Core its id (tweet-ref.ts)
     launchKeys.mint = launchKeys.agent = null;
     storedImage = null;
     soulFor = soulBusy = null;
@@ -2817,6 +2819,7 @@ export async function mountLaunch(root: HTMLElement) {
     repoIn.dispatchEvent(new Event("input", { bubbles: true }));
   }
   if (S.gate !== "ok") return;
+  applyLaunchPrefill(S.root); // a reply bot's link may also carry ?name=, ?ticker=, ?vibe= and its single-use id (tweet-ref.ts)
   // the pump.fun venue registers its initial buy with launch fronting (pump-venue.ts)
   registerPumpInitialBuy({ lineMint, linePool, creatorFeeBps: () => S.lc?.pumpCreatorFeeBps ?? 0n, quoteSeed: () => NET.p.pump_quote_seed ?? "swap" });
   await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadModels().then(() => set("w-models", modelsBody()))]);

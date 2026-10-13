@@ -32,6 +32,7 @@ import { deploymentsOf } from "./deployments.ts";
 import { analyticsOf } from "./analytics.ts";
 import { viewersOf } from "./viewers.ts";
 import { unitsFees } from "./units-fees.ts";
+import { tweetLaunchesOf } from "./tweet-launches.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
 import { poolsOf } from "./pools.ts";
 import { purgeOf } from "./purge.ts";
@@ -374,6 +375,9 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).genesisOf(c.params.id!)), // GitHub genesis proof (docs/plans/GITHUB-GENESIS.md)
     route("POST", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).addGenesis(c.params.id!, c.json())),
     route("POST", "/v1/agents/:id/links", "agent", (c) => linksOf(core).add(c.agent, c.params.id!, c.json())),
+    // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a link led to; only an existing launch can be named
+    route("POST", "/v1/tweet-launches", "none", (c) => tweetLaunchesOf(core).claim(c.json())),
+    route("GET", "/v1/tweet-launches/:id", "none", (c) => tweetLaunchesOf(core).get(c.params.id!)),
     route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
     route("DELETE", "/v1/agents/:id/links/:service/:handle", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!, c.params.handle!))),
     route("GET", "/v1/agents/:id/card", "none", (c) => erc8004Of(core).card(c.params.id!, c.url.origin)),

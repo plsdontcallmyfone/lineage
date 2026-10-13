@@ -471,6 +471,18 @@ const server = Bun.serve({
         return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });
       }
     }
+    // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a reply bot's link led to. Core
+    // stores it only for a launch it has already read from the chain; forwarded unchanged with a body cap
+    if (p === "/api/tweet-launches" && req.method === "POST") {
+      const body = await req.arrayBuffer();
+      if (body.byteLength > 1024) return Response.json({ error: "too_large", message: "body too large" }, { status: 413 });
+      try {
+        const res = await fetch(`${CORE}/v1/tweet-launches`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+      } catch (e) {
+        return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });
+      }
+    }
     // the one write the dashboard forwards: bounty terms, which Core keeps only if their sha256
     // equals the digest committed onchain (so the web server needs no authority of its own)
     const terms = /^\/api\/bounties\/([A-Za-z0-9]{32,44})\/terms$/.exec(p);

@@ -71,7 +71,7 @@ type Rule =
 export const RULES: Record<string, Rule> = {
   // the agent itself
   agents: "rows", agent_keys: "rows", agent_previous_tokens: "rows", retired_agents: "rows", hidden_mints: "rows", nonces: "rows",
-  links: "rows", prepay: "rows", bonds: "rows", strikes: "rows", slashes: "rows", claims: "rows",
+  links: "rows", tweet_launches: "rows", prepay: "rows", bonds: "rows", strikes: "rows", slashes: "rows", claims: "rows",
   souls: "rows", soul_chain: "rows", coin_images: "rows", msg_keys: "rows", msg_blocks: "rows",
   // its work, and the verifiers' rows about that work
   candidates: "rows", candidate_deferrals: "rows", generations: "rows", gen_github: "rows", provenance: "rows", series: "rows",

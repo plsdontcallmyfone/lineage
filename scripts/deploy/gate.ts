@@ -21,6 +21,8 @@
 //   POST /api/fee-claims/proofs/gist, /api/fee-claims/wallet, /api/fee-claims/attest   the Claim page (GitHub fee
 //                             claims): Core checks the gist, the wallet's signature and the session; same origin only;
 //                             the social class; bodies capped at 8 KB
+//   POST /api/tweet-launches   the launch page hands in the launch a reply bot's link led to (launch from a tweet);
+//                             same origin only; the social class
 //   GET, POST /runtime/bind/:agent   the hosted runtime's bind endpoint (packages/runtime/src/bind.ts):
 //                             the runtime key a hosted launch rotates to, and the owner-signed rotation
 //                             it co-signs; POST same origin only (a browser sends no Origin on a
@@ -146,6 +148,9 @@ export function classify(method: string, path: string): Route | { refuse: number
     // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md 5): the gist proof, the wallet statement and the attestation request.
     // Core verifies each (the gist's owner, the wallet's signature, the session); small JSON bodies; same origin only
     if (/^\/api\/fee-claims\/(proofs\/gist|wallet|attest)$/.test(path)) return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a reply bot's link led to; Core
+    // stores it only for a launch it has read from the chain; same origin only
+    if (path === "/api/tweet-launches") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
     return { refuse: 405, why: "method" };
   }
   if (method !== "GET" && method !== "HEAD") return { refuse: 405, why: "method" };
