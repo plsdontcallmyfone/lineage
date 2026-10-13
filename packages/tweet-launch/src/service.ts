@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { signRequest, type AgentKey } from "../../protocol/src/index.ts";
 import type { Config } from "./config.ts";
 import { checkRepo, type ReadRepo } from "./github.ts";
 import { limited, prune, record } from "./limits.ts";
@@ -45,6 +46,8 @@ export interface Deps {
   sleep: (ms: number) => Promise<void>;
   log: (line: string) => void;
   newRef?: () => string;
+  /** the key that signs which tweet a link answers (config core_key_file); none: nothing is registered */
+  coreKey?: AgentKey | null;
 }
 
 export const newRef = () => randomBytes(16).toString("base64url");
@@ -58,6 +61,31 @@ export function launchLink(appUrl: string, repo: string, ref: string, f: { name:
   if (f.vibe) q.set("vibe", f.vibe);
   q.set("tl", ref);
   return `${appUrl}/launch?${q.toString().replace(/%2F/g, "/")}`;
+}
+
+const HANDLE = /^[A-Za-z0-9_]{1,15}$/;
+
+/**
+ * Tells Core which tweet a link answers (POST <core_url>/tweet-links, signed with the bot's key): the tweet that asked, its
+ * author, the author of the post it replied to when that is someone else, and the repository. Core serves it to the launch page
+ * and to the agent's pages. False when there is no key, X gave no handle, or Core did not take it; the link works either way.
+ */
+export async function registerLink(cfg: Config, d: Pick<Deps, "fetch" | "now" | "log" | "coreKey">, r: Request): Promise<boolean> {
+  if (!d.coreKey || !r.handle || !HANDLE.test(r.handle) || !/^[1-9][0-9]{0,19}$/.test(r.mention_id)) return false;
+  const url = new URL(`${cfg.core_url}/tweet-links`);
+  const body = JSON.stringify({ ref: r.ref, repo: r.repo, tweet_id: r.mention_id, handle: r.handle, under_handle: r.under_handle && HANDLE.test(r.under_handle) ? r.under_handle : null, hours: cfg.link_hours });
+  const nonce = `${d.now()}-${randomBytes(6).toString("hex")}`;
+  try {
+    const res = await d.fetch(url, {
+      method: "POST", signal: AbortSignal.timeout(20_000), body,
+      headers: { "content-type": "application/json", "x-lineage-agent": d.coreKey.id, "x-lineage-nonce": nonce, "x-lineage-sig": signRequest(d.coreKey, "POST", url.pathname, body, nonce) },
+    });
+    if (!res.ok) d.log(`Core did not register the tweet of a link (HTTP ${res.status}): the link is given without it`);
+    return res.ok;
+  } catch (e) {
+    d.log(`Core could not be told the tweet of a link (${(e as Error).message}): the link is given without it`);
+    return false;
+  }
 }
 
 const canon = (repo: string) => repo.replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "").toLowerCase();
@@ -170,7 +198,7 @@ export async function runOnce(cfg: Config, d: Deps, o: { send: boolean }): Promi
           text = noTestsReply(label);
         } else {
           const ref = (d.newRef ?? newRef)();
-          req = { ref, mention_id: m.id, author_id: m.author_id, repo: label, created_at: d.now(), reply_id: null, status: "open", outcome: null, agent: null, mint: null, follow_up_id: null };
+          req = { ref, mention_id: m.id, author_id: m.author_id, repo: label, handle: m.username, under_handle: m.replied_to && m.replied_to.author_id !== m.author_id ? m.replied_to.username : null, created_at: d.now(), reply_id: null, status: "open", outcome: null, agent: null, mint: null, follow_up_id: null };
           text = linkReply(m.username, label, launchLink(cfg.app_url, label, ref, cmd));
         }
       }
@@ -182,6 +210,8 @@ export async function runOnce(cfg: Config, d: Deps, o: { send: boolean }): Promi
     s.answered[m.id] = { at: d.now(), did: why, reply_id: null };
     if (req) s.requests[req.ref] = req;
     save();
+    // Core hears which tweet the link answers before anyone can open it; never in a dry run
+    if (req && o.send) req.registered = await registerLink(cfg, d, req);
     const id = await post({ kind: "reply", mention_id: m.id, why, in_reply_to: m.id, text }, m.author_id);
     s.answered[m.id]!.reply_id = id;
     if (req) req.reply_id = id;

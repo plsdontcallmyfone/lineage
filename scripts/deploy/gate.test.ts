@@ -195,6 +195,14 @@ describe("social writes", () => {
     // launch from a tweet: the launch page's one write
     expect(classify("POST", "/api/tweet-launches")).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
     expect(classify("POST", "/api/tweet-launches/AAAAAAAAAAAAAAAAAAAAAA")).toEqual({ refuse: 405, why: "method" });
+    // "Started from a tweet": the launch page resolves a link's id, a plain read in the
+    // api and v1 classes (their rate limits); the bot's signed statement of a link never passes the gate
+    for (const path of ["/tweet-links/AAAAAAAAAAAAAAAAAAAAAA"]) {
+      expect(classify("GET", `/api${path}`)).toEqual({ klass: "api", upstream: "web", cors: true, stream: false, sameOrigin: false });
+      expect(classify("GET", `/v1${path}`)).toEqual({ klass: "v1", upstream: "core", cors: true, stream: false, sameOrigin: false });
+    }
+    for (const path of ["/api/tweet-links", "/v1/tweet-links", "/api/tweet-links/AAAAAAAAAAAAAAAAAAAAAA"]) expect(classify("POST", path)).toEqual({ refuse: 405, why: "method" });
+    for (const m of ["PUT", "DELETE", "PATCH"]) expect(classify(m, "/v1/tweet-links/AAAAAAAAAAAAAAAAAAAAAA")).toEqual({ refuse: 405, why: "method" });
     expect(classify("POST", "/v1/admin/social/hide")).toEqual({ refuse: 405, why: "method" });
   });
 

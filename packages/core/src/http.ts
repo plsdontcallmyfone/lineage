@@ -401,6 +401,9 @@ export function buildRoutes(core: Core): Route[] {
     // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a link led to; only an existing launch can be named
     route("POST", "/v1/tweet-launches", "none", (c) => tweetLaunchesOf(core).claim(c.json())),
     route("GET", "/v1/tweet-launches/:id", "none", (c) => tweetLaunchesOf(core).get(c.params.id!)),
+    // where a launch started: the reply bot's signed statement of the tweet a link answers, and the public read of it
+    route("POST", "/v1/tweet-links", "agent", (c) => tweetLaunchesOf(core).register(c.agent, c.json())),
+    route("GET", "/v1/tweet-links/:id", "none", (c) => tweetLaunchesOf(core).resolve(c.params.id!)),
     route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
     route("DELETE", "/v1/agents/:id/links/:service/:handle", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!, c.params.handle!))),
     route("GET", "/v1/agents/:id/card", "none", (c) => erc8004Of(core).card(c.params.id!, c.url.origin)),

@@ -227,3 +227,42 @@ of a reply with a link, duplicate-content refusals of the fixed sentences, a rep
 reply, a real token refresh and whether the refresh token changes), the systemd unit on the server,
 and the round trip with a real launch on mainnet (in the proof the page's hand-in was made by a
 script from the page, not by a launch).
+
+## 9. "Started from a tweet"
+
+Owner, 2026-10-13: "add like a link to tweet as well, like mention it's from a tweet."
+
+A launch opened from the bot's link says so and links the tweet:
+
+- Launch page, above the form on every step: `Started from a tweet by @<asker>, under a tweet by
+  @<author above>.` with "a tweet by @<asker>" as the link (new tab). Review has the same as a row:
+  `Started from` / `A tweet by @<asker>, under a tweet by @<author above>`.
+
+The linked tweet is the one that asked (the `@unitsdotgg launch` post): `https://x.com/<asker>/status/<id>`.
+The author of the post it replied to is named when that is another account; a quoted post is not named.
+
+Where the fact comes from. Nothing is read from the address: the link still carries only the
+repository, the optional coin fields and the id. When the bot makes a link it tells Core which tweet
+the link answers, in a request signed with a key of its own, before the reply is posted:
+`POST /v1/tweet-links { ref, repo, tweet_id, handle, under_handle, hours }` (table `tweet_links`). Core
+accepts it only from a key it was started with (`UNITS_TWEET_LAUNCH_KEYS`, a comma separated list of
+public keys) or the admin key; an id is written once, and an id a launch has already used cannot be
+registered afterwards. One public read serves it and nothing more than the repository, the handle, the
+tweet's address and the handle above it:
+
+- `GET /v1/tweet-links/:id` for the launch page: `{ origin }`, null unless the link is open
+  (registered, not past `link_hours`, not used by a launch). The page shows the line only when Core answers and the
+  repository in the form is the link's; it leaves when another repository is typed.
+
+So a crafted address shows nothing (an id Core does not know), a real id pasted onto a link for
+another repository shows nothing, and a launch cannot claim a tweet that did not ask for its
+repository. What remains true by design (section 5): the id is public, so anyone who opens the link
+and launches on that repository gets the line; that launch did start from that tweet's link.
+
+The bot's side: `core_key_file` in the config names the key (a Solana keypair JSON, mode 600; make one
+with `bun packages/worker/src/main.ts keygen --out <file>`, which prints the public key for
+`UNITS_TWEET_LAUNCH_KEYS`). It is not a wallet and signs no transaction. The site's gate passes no such
+write, so `core_url` must then be Core itself (`http://127.0.0.1:9660/v1` on the site's machine).
+Without a key, or when Core refuses or is away, the link is given as before and no line is shown.
+State per link now also holds the asker's handle, the handle above and whether Core took the
+statement. Links made before this (none were posted) have no row in Core and show nothing.

@@ -12,6 +12,11 @@ export interface Request {
   author_id: string;
   /** owner/name as GitHub spells it */
   repo: string;
+  /** the asker's handle and, when the mention replied to another account's post, that account's; absent on links made before 2026-10-13 */
+  handle?: string | null;
+  under_handle?: string | null;
+  /** true once Core took the signed statement of which tweet this link answers (the launch page and the agent's pages show it) */
+  registered?: boolean;
   /** ms, when the link was made */
   created_at: number;
   /** the bot's reply with the link; null until X returned its id */

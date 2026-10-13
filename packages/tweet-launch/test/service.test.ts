@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateAgentKey } from "../../core/src/protocol.ts";
 import { bare, expectOk } from "../../core/test/helpers.ts";
+import { tweetLaunchesOf } from "../../core/src/tweet-launches.ts";
 import { DEFAULTS, loadCredentials, parseConfig, type Config, type Creds, type OAuth2Creds } from "../src/config.ts";
 import { MOCK_CLIENT, MOCK_OAUTH1, mockOAuth2, startMockX, type MockX } from "../src/mock-x.ts";
 import { NO_REPO, NOT_PUBLIC } from "../src/replies.ts";
@@ -435,5 +436,58 @@ describe("the link round trip", () => {
     const r = await w.run();
     expect(r.actions.map((x) => x.kind)).toEqual(["expired"]);
     expect(w.store.load().requests[w.refs[1]!]!.outcome).toBe("expired");
+  });
+});
+
+// Where a launch started (owner 2026-10-13): the bot tells Core, signed with its own key, which tweet
+// each link answers, before the reply goes out.
+describe("the tweet a link answers", () => {
+  test("with a key Core knows: the asking tweet, its author and the author above it are registered; the launch page can resolve the id", async () => {
+    const e = bare();
+    closers.push(() => e.close());
+    const key = generateAgentKey();
+    tweetLaunchesOf(e.core).writers.add(key.id);
+    const w = world({ core: `${e.base}/v1`, cfg: { link_hours: 2 } });
+    w.deps.coreKey = key;
+    w.clock.t = e.clock.now();
+    const parent = w.x.add({ text: "minbpe is neat https://t.co/a", author_id: "8", urls: ["https://github.com/karpathy/minbpe"] });
+    const m1 = w.ask("@bob @unitsdotgg launch", { replied_to: parent.id });
+    // a reply to one's own post names nobody above it
+    const own = w.x.add({ text: "my repo github.com/keis/base58", author_id: "7" });
+    const m2 = w.ask("@unitsdotgg launch", { replied_to: own.id });
+    // a dry run registers nothing
+    await w.run(false);
+    expect(e.core.db.query("SELECT COUNT(*) AS n FROM tweet_links").get()).toEqual({ n: 0 });
+    w.refs.splice(0);
+    await w.run();
+    const [r1, r2] = w.refs as [string, string];
+    expect(w.store.load().requests[r1]).toMatchObject({ handle: "ann", under_handle: "bob", registered: true });
+    expect(w.store.load().requests[r2]).toMatchObject({ handle: "ann", under_handle: null, registered: true });
+    expect(await expectOk<any>(e.anon.get(`/v1/tweet-links/${r1}`))).toEqual({ origin: { repo: "karpathy/minbpe", handle: "ann", tweet_url: `https://x.com/ann/status/${m1}`, under_handle: "bob" } });
+    expect(await expectOk<any>(e.anon.get(`/v1/tweet-links/${r2}`))).toEqual({ origin: { repo: "keis/base58", handle: "ann", tweet_url: `https://x.com/ann/status/${m2}`, under_handle: null } });
+    // the link in the reply still says nothing about the author or the tweet
+    expect(w.x.posted[0]!.text).toContain(`/launch?repo=karpathy/minbpe&tl=${r1}`);
+  });
+
+  test("without a key, with a key Core does not know, or with Core away: the link is still given, nothing is registered", async () => {
+    const e = bare();
+    closers.push(() => e.close());
+    const w = world({ core: `${e.base}/v1` });
+    w.clock.t = e.clock.now();
+    w.ask("@unitsdotgg launch github.com/karpathy/minbpe");
+    await w.run();
+    w.deps.coreKey = generateAgentKey();
+    w.ask("@unitsdotgg launch github.com/keis/base58");
+    await w.run();
+    const away = world({ cfg: {} });
+    away.deps.coreKey = generateAgentKey();
+    away.ask("@unitsdotgg launch github.com/karpathy/minbpe");
+    await away.run();
+    expect(w.x.posted.length).toBe(2);
+    expect(away.x.posted.length).toBe(1);
+    expect(Object.values(w.store.load().requests).map((r) => r.registered ?? false)).toEqual([false, false]);
+    expect(away.store.load().requests[away.refs[0]!]!.registered).toBe(false);
+    expect(e.core.db.query("SELECT COUNT(*) AS n FROM tweet_links").get()).toEqual({ n: 0 });
+    expect(await expectOk<any>(e.anon.get(`/v1/tweet-links/${w.refs[0]}`))).toEqual({ origin: null });
   });
 });

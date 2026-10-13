@@ -36,6 +36,7 @@ export function launchSkeleton(): Raw {
     <div id="w-gate"></div>
     <div id="lz-conn"></div>
     <div id="lz-nav">${stepNav(0, 0)}</div>
+    <div id="lz-origin" hidden></div>
     <form class="wl-form lz-form" data-wallet-form="launch" autocomplete="off">
       ${card(0, "The coin", "What people see: the token's name and ticker, a short description, its image and optional links.", html`
         <div class="wl-2">

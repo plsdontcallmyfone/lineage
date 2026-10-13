@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { keyFromSolanaJson, type AgentKey } from "../../protocol/src/index.ts";
 import type { LimitConfig } from "./limits.ts";
 
 // Settings and credentials (docs/plans/TWEET-LAUNCH.md 3, 6). Every number here is a setting; the
@@ -15,6 +16,13 @@ export interface Config extends LimitConfig {
   app_url: string;
   /** where Core's API is read (GET <core_url>/tweet-launches/<id>); default <app_url>/api */
   core_url: string;
+  /**
+   * A key file (a Solana keypair JSON, mode 600) the bot signs one statement per link with: which tweet the link answers, so the
+   * launch page and the agent's pages can say "Started from a tweet". Core must be started with its public key in
+   * UNITS_TWEET_LAUNCH_KEYS and `core_url` must be Core itself (the site's gate passes no such write). Empty (default): nothing
+   * is registered and those lines are not shown. It is not a wallet: it holds nothing and signs no transaction.
+   */
+  core_key_file: string;
   state_dir: string;
   credentials_file: string;
   x_base: string;
@@ -46,6 +54,7 @@ export const DEFAULTS: Config = {
   handle: "unitsdotgg",
   app_url: "https://app.units.gg",
   core_url: "",
+  core_key_file: "",
   market_url: "",
   state_dir: join(homedir(), ".local/state/units-tweet-launch"),
   credentials_file: join(homedir(), ".config/units/x.env"),
@@ -97,6 +106,7 @@ export function parseConfig(raw: unknown): Config {
   for (const [k, lo, hi] of ints) if (!Number.isInteger(c[k]) || (c[k] as number) < lo || (c[k] as number) > hi) throw new Error(`config: ${k} is a whole number from ${lo} to ${hi}`);
   if (typeof c.state_dir !== "string" || !c.state_dir.startsWith("/")) throw new Error("config: state_dir is an absolute path");
   if (typeof c.credentials_file !== "string" || !c.credentials_file.startsWith("/")) throw new Error("config: credentials_file is an absolute path");
+  if (typeof c.core_key_file !== "string" || (c.core_key_file && !c.core_key_file.startsWith("/"))) throw new Error("config: core_key_file is an absolute path, or empty");
   return c;
 }
 
@@ -144,6 +154,14 @@ export function loadCredentials(file: string): Creds | null {
     return { kind: "oauth1", api_key: g("X_API_KEY")!, api_secret: g("X_API_SECRET")!, access_token: g("X_ACCESS_TOKEN")!, access_token_secret: g("X_ACCESS_TOKEN_SECRET")! };
   }
   return null;
+}
+
+/** The key the bot signs its statements to Core with, or null when none is set. Refused when anyone but its owner can read it. */
+export function loadCoreKey(file: string): AgentKey | null {
+  if (!file) return null;
+  if (!existsSync(file)) throw new Error(`the Core key file ${file} does not exist`);
+  if (statSync(file).mode & 0o077) throw new Error(`the Core key file ${file} can be read by other users: chmod 600 it`);
+  return keyFromSolanaJson(JSON.parse(readFileSync(file, "utf8")));
 }
 
 /** The config as it may be printed: it holds no secret, the credentials file is only named. */

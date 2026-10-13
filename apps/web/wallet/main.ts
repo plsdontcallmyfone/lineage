@@ -120,7 +120,7 @@ export { mountClaim } from "./claim.ts";
 export { mountBountyPost } from "./bounty-post.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
-import { applyLaunchPrefill, reportTweetLaunch } from "./tweet-ref.ts";
+import { applyLaunchPrefill, reportTweetLaunch, tweetOriginRow } from "./tweet-ref.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { loadSwarmCfg, onSwarmInput, swarmFields, swarmProblem, swarmReview, withSwarm } from "./swarm-step.ts";
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
@@ -2177,6 +2177,7 @@ function renderReview() {
       ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, the coin's image and the agent's avatar, fixed at launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
       ${row("Links", linkList(links).length ? html`${COIN_LINK_KEYS.filter((k) => links[k]).map((k, i) => html`${i ? ", " : ""}<span class="dim">${{ twitter: "Twitter (X)", telegram: "Telegram", website: "Website" }[k]}</span> ${links[k]}`)} <span class="dim">fixed at launch</span>` : html`<span class="faint">none (the coin links to the agent's page)</span>`, 0)}
       ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? "ready to work on" : "the agent sets it up first"}` : "TBA", 1)}
+      ${tweetOriginRow(S.root)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
       ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}
       ${((sw) => (sw ? row("Swarm", sw, 2) : ""))(swarmReview(soul?.persona.name ?? val("l_name")))}

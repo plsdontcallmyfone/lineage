@@ -4,6 +4,13 @@
 // landed, hands the id to Core with the agent and coin so the bot can answer in the thread. It sends
 // nothing else and launches nothing: every field stays editable and the launch needs the wallet's
 // approval like any other.
+//
+// "Started from a tweet" (owner 2026-10-13): the page asks Core which tweet the id answers and shows one
+// line above the form, and a row in Review, only when Core knows the id (the bot registered it with its
+// own key, it is still open and unused) and its repository is the one in the form. An address alone
+// shows nothing: no handle or tweet is ever read from it.
+import { html, type Raw } from "../src/html.ts";
+import { originFor, originLine, originReviewRow, repoKey, resolveTweetLink, type TweetOrigin } from "../src/tweet-origin.ts";
 
 export const TWEET_REF = /^[A-Za-z0-9_-]{22}$/;
 const KEY = "units.tweet_ref";
@@ -35,7 +42,39 @@ export function readPrefill(search: string): Prefill {
   };
 }
 
-const repoKey = (url: string) => url.trim().replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "").toLowerCase();
+/** What Core confirmed for this page's link; null until it answered, and for an id it does not know. */
+let confirmed: TweetOrigin | null = null;
+const formRepo = (root: ParentNode | null | undefined) => root?.querySelector<HTMLInputElement>('[name="l_repo"]')?.value ?? "";
+
+/** The line above the form: there only for a confirmed link whose repository is the one typed in the form right now. */
+function paintOrigin(root: ParentNode) {
+  const el = root.querySelector<HTMLElement>("#lz-origin");
+  if (!el) return;
+  const o = originFor(confirmed, formRepo(root));
+  const want = o ? originLine(o).s : "";
+  if (el.innerHTML !== want) el.innerHTML = want;
+  el.hidden = !o;
+}
+
+/** The Review step's row for a launch opened from a confirmed link; nothing otherwise. */
+export function tweetOriginRow(root: ParentNode | null | undefined): Raw {
+  const o = originFor(confirmed, formRepo(root));
+  return o ? originReviewRow(o) : html``;
+}
+
+/**
+ * Asks Core which tweet the link's id answers and shows the line when it is confirmed. The line follows the repository field:
+ * it leaves when another repository is typed and returns with the link's own.
+ */
+export async function showTweetOrigin(root: ParentNode, ref: string, f?: typeof fetch): Promise<TweetOrigin | null> {
+  confirmed = null;
+  paintOrigin(root);
+  const o = await resolveTweetLink(ref, f);
+  confirmed = o;
+  paintOrigin(root);
+  if (o) for (const ev of ["input", "change"]) (root as Partial<EventTarget>).addEventListener?.(ev, (e) => ((e.target as HTMLInputElement | null)?.name === "l_repo" ? paintOrigin(root) : undefined));
+  return o;
+}
 
 /** Fills the empty Name, Ticker and Vibe fields from the address and keeps the link's id for this tab. */
 export function applyLaunchPrefill(root: ParentNode | null | undefined, search: string = location.search): Prefill {
@@ -52,6 +91,8 @@ export function applyLaunchPrefill(root: ParentNode | null | undefined, search: 
   fill("l_symbol", p.ticker);
   fill("s_vibe", p.vibe);
   const repo = new URLSearchParams(search).get("repo");
+  confirmed = null;
+  if (p.ref && repo && typeof document !== "undefined") void showTweetOrigin(root, p.ref);
   if (p.ref && repo) {
     try {
       sessionStorage.setItem(KEY, JSON.stringify({ ref: p.ref, repo: repoKey(repo) }));
