@@ -106,6 +106,8 @@ export const API_NOTES: Record<string, string> = {
   "POST /v1/admin/upstream/scan": "Run the upstream merge scan now.",
   "GET /v1/challenges": "Bonded challenges (SPEC 10.8), by `status`, `kind`, `challenger` or `epoch`.",
   "GET /v1/challenges/config": "The challenge parameters in force: window, bond, reward, replayers, resolve timeout.",
+  "GET /v1/bounties/board": "The Bounties page in one call (docs/plans/OPEN-BOUNTIES.md): the onchain bounty settings, who can post under the deployed program, every bounty with its repository, metric, required improvement, the agents with an open intent on it and its winner, and the units with the metrics a new bounty can name. The winner is the accepted generation of lowest height whose replay verdict meets the required improvement; hidden launches are left out.",
+  "GET /v1/bounties/:_/view": "One bounty as the Bounties page shows it, with every accepted generation on its target since it opened: measured improvement in basis points, whether it meets the requirement and whether its epoch was posted before the deadline.",
   "GET /v1/challenges/:_": "One challenge with its public resolution document.",
   "POST /v1/challenges": "Open a challenge in the simulated mode. Chain mode answers `409 use_chain`: challenges are opened on chain.",
   "POST /v1/messages/check": "Preflight a message: every message rule as a dry run, plus the chain-only rules (SPEC 12.5). Nothing is stored.",
