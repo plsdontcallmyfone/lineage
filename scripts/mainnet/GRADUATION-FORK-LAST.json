@@ -1,0 +1,633 @@
+{
+ "started": "2026-10-13T16:15:00.718Z",
+ "fork": "http://127.0.0.1:9690",
+ "program": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+ "mainnet_slot_of_the_copy": 456499743,
+ "replaced_on_the_fork": {
+  "BsPrUoUz2k2cUtXLZcm4ggbXM38pK5QDBoWrXxDKdQU2": "PoolConfig: keeper (bytes 8 to 39) replaced by a stand-in key",
+  "2U9JStvCctQ8pUz8LKX9RwcDgG63THvY9trgu4r7GpVL": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key",
+  "4WeywLMS3QnSJRRkREfsbfDrVZTr2WCg1ofjXEDoY1Ey": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key",
+  "C8T2dUYUfYiTPoSLumhFQP8dWtNHM21YYXd9tXcLKkYx": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key"
+ },
+ "written_into_the_fork": {
+  "p3Kd4a6VMWrxVXRJoi6z9UGPaFdpTmJ6ukZKBJihDo7": "the trader's $UNITS token account: 300000000 $UNITS that no trade bought (a copy of 8rTTTBkcaRTTxYMkhAkr93Wvok8P2AKaSY25wGB2CfBz with the owner and the amount replaced)"
+ },
+ "coins": {
+  "pump_fun_migrates_and_the_keeper_records": {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "mint": "F2j1B7WfAWceMKWpXAddynuYquhvdAtw9e1r712qGZAS",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "repo_url": "https://github.com/karpathy/minbpe"
+  },
+  "the_keeper_migrates_and_records": {
+   "agent": "ALGNQFPtKjY7jmL27RNFa9M7UAFnz91VCHa5sh8QFnyh",
+   "mint": "AFixtuZr34wHT5JaMb4hQ2147NZuu32b1FtX9oNeUmLV",
+   "repo_id": "9e58ae623483821e5c7536969b54c72637d97201470b32cc5600098063b34af1",
+   "repo_url": "https://github.com/morluto/rea"
+  },
+  "the_other_member_of_the_pool": {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "mint": "EArgzU8BNN24s1NcVJX2XT2bgUBDysSiPYF4828r93Sp",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "repo_url": "https://github.com/karpathy/minbpe"
+  }
+ },
+ "shots": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots",
+ "keeper_transactions": [
+  {
+   "what": "the record alone, after somebody else migrated",
+   "instructions": "record_pump_graduation",
+   "form": "legacy",
+   "bytes": 361,
+   "fee_lamports": 5001,
+   "compute_units": 26384,
+   "payer_lamports_on_the_fork": "5001",
+   "payer_lamports_at_mainnet_rent": "5001",
+   "of_which_neither_fee_nor_rent": "0",
+   "accounts_created": [],
+   "signature": "52YZZrgGnv5CVAy6h6WeLX5JW3AMxEwJm3wZ4csKfCy6Jb4tXJUgEJ7GHsDGUET9hBApm3GBSKefGMLazYtAnFdh"
+  },
+  {
+   "what": "the migration and the record in one transaction",
+   "instructions": "migrate_v2 and record_pump_graduation",
+   "form": "legacy",
+   "bytes": 1169,
+   "fee_lamports": 5001,
+   "compute_units": 405722,
+   "payer_lamports_on_the_fork": "25375402",
+   "payer_lamports_at_mainnet_rent": "22519682",
+   "of_which_neither_fee_nor_rent": "14798161",
+   "accounts_created": [
+    {
+     "bytes": 287,
+     "rent_mainnet": "2108200"
+    },
+    {
+     "bytes": 82,
+     "rent_mainnet": "1066800"
+    },
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    },
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    },
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    }
+   ],
+   "signature": "4vUdkFV4C4WCopiNDitHQrwLJN3fCBZCKYstQU1FRpLSG5cEu7ojQrJZxfWjEH5AyUtgb6mXii3rtGjPrdtFpT8t"
+  }
+ ],
+ "fork_clock": {
+  "chain_time_at_start": 1792000423,
+  "seconds_ahead_of_this_machine": 92314
+ },
+ "local_site": {
+  "dashboard": "http://127.0.0.1:9666",
+  "indexer": "http://127.0.0.1:9668",
+  "core": "http://127.0.0.1:9667",
+  "logs": "/var/folders/mb/hl6jk0yn0915hbgg6vznn7h80000gn/T/units-graduation-fork-2urszx"
+ },
+ "screenshots": {
+  "on_its_curve": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/1-on-its-curve.png",
+  "curve_complete_no_pool": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/2-curve-complete-no-pool.png",
+  "migrated_not_recorded": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/3-migrated-not-recorded.png",
+  "recorded": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/4-recorded.png",
+  "recorded_phone": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/4-recorded-390.png",
+  "explorer": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/5-explorer.png",
+  "after_pool_trades": "/private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/grad/fork/shots/6-after-pool-trades.png"
+ },
+ "pages": {
+  "on_its_curve": {
+   "badge": "Bonding curve",
+   "phase": "curve",
+   "venue": "pump.fun bonding curve 6r4J…wSrL",
+   "amountInput": true,
+   "tradeButtons": [
+    "Buy",
+    "Sell",
+    "10 UNITS",
+    "100 UNITS",
+    "500 UNITS",
+    "1,000 UNITS"
+   ],
+   "chart": true,
+   "tradeRows": 0,
+   "error": false,
+   "noHorizontalScroll": true
+  },
+  "curve_complete_no_pool": {
+   "badge": "Curve complete, pool opening",
+   "phase": "complete",
+   "venue": "Curve complete This coin's curve is complete. Trading moves to its pool shortly.",
+   "amountInput": false,
+   "tradeButtons": [],
+   "chart": true,
+   "tradeRows": 0,
+   "error": false,
+   "noHorizontalScroll": true
+  },
+  "migrated_not_recorded": {
+   "badge": "Graduated, PumpSwap",
+   "phase": "graduated",
+   "venue": "PumpSwap pool HHF5…sB1L",
+   "amountInput": true,
+   "tradeButtons": [
+    "Buy",
+    "Sell",
+    "10 UNITS",
+    "100 UNITS",
+    "500 UNITS",
+    "1,000 UNITS"
+   ],
+   "chart": true,
+   "tradeRows": 0,
+   "error": false,
+   "noHorizontalScroll": true
+  },
+  "recorded": {
+   "badge": "Graduated, PumpSwap",
+   "phase": "graduated",
+   "venue": "PumpSwap pool HHF5…sB1L",
+   "amountInput": true,
+   "tradeButtons": [
+    "Buy",
+    "Sell",
+    "10 UNITS",
+    "100 UNITS",
+    "500 UNITS",
+    "1,000 UNITS"
+   ],
+   "chart": true,
+   "tradeRows": 0,
+   "error": false,
+   "noHorizontalScroll": true
+  },
+  "after_pool_trades": {
+   "badge": "Graduated, PumpSwap",
+   "phase": "graduated",
+   "venue": "PumpSwap pool HHF5…sB1L",
+   "amountInput": true,
+   "tradeButtons": [
+    "Buy",
+    "Sell",
+    "10 UNITS",
+    "100 UNITS",
+    "500 UNITS",
+    "1,000 UNITS"
+   ],
+   "chart": true,
+   "tradeRows": 0,
+   "error": false,
+   "noHorizontalScroll": true
+  }
+ },
+ "quote_usd": {
+  "quote": "UNITS",
+  "ok": true,
+  "usd": 0.0002512239608217294,
+  "read_at": 1792000426,
+  "age_s": 0,
+  "max_age_s": 300,
+  "quote_mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+  "pair_mint": "So11111111111111111111111111111111111111112",
+  "pair": "SOL",
+  "pair_per_quote": 0.0000023346090623043255,
+  "pair_usd": 107.6085777606655,
+  "sol_usd": 107.6085777606655,
+  "venue": "pool",
+  "account": "8swjg8ZxS6HNNMTMzymHgUpQeHTLQaSEbSgW7A3L1ieX",
+  "sources": {
+   "pair_per_quote": "the quote coin's PumpSwap pool (vault balances)",
+   "pair_usd": "Jupiter Price API V3"
+  }
+ },
+ "migration_by_another_key": {
+  "fee_lamports": 5000,
+  "payer_lamports_at_mainnet_rent": "22519681",
+  "compute_units": 375560
+ },
+ "pool_opening": {
+  "base": "201900000000000",
+  "quote": "23081031647580",
+  "virtual_quote": "5838942851329",
+  "spot": 0.1432391010347152,
+  "indexer_price_while_complete": 0.1432391010347152,
+  "indexer_price_once_migrated": 0.1432391010347152
+ },
+ "second_migrate_v2_on_a_migrated_coin": "accepted and changes nothing",
+ "price_across_the_move": {
+  "after_the_completing_buy": 0.1432391010347152,
+  "completing_buy_average": 0.0366889790504235,
+  "first_pool_trade": 0.14269656932715197,
+  "difference": 0.0037875950326702323,
+  "after_the_completing_buy_usd": 0.000036006719523010496,
+  "first_pool_trade_usd": 0.00003587034065100239
+ },
+ "holders_after": {
+  "holders": 1,
+  "listed": 1,
+  "trader": "797779837757629"
+ },
+ "explorer_page_errors": [],
+ "routed_crank_after_graduation": {
+  "fees": "45526612",
+  "to_compute": "25494903",
+  "to_protocol": "13657984",
+  "to_pool": "6373725",
+  "form": "v0",
+  "bytes": 1108,
+  "exact": true
+ },
+ "rounds_to_fund_the_cross_holding": 7,
+ "core_keeper_step": {
+  "pools": 1,
+  "actions": [
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "prepare",
+    "signature": "4ikPk6PJB8EdycgNCRaABxNFh6rUJCRWaQaapuJKSVoM7hTykRQBGoh4iAMKPNPB5UvdgNwPX8N8GhBDaAQQU2KC"
+   },
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "cross_buy",
+    "signature": "4p1H3dmFtRPbbteLYmGCF8BVNuAnt2UGV8oJvYzPNsS7mup5YbHcvXGVmkr56cjHhEc5RUtcgezs6H3SuAa2thoE"
+   }
+  ]
+ },
+ "pool_buyback_of_the_graduated_coin": {
+  "settled_buyback_due": "208364680",
+  "allocation": [
+   "208364680",
+   "833458720"
+  ],
+  "bought_base_units": "1399306941",
+  "on_pumpswap": true,
+  "actions": [
+   "pay",
+   "buyback",
+   "buyback"
+  ]
+ },
+ "cost": {
+  "record_alone": {
+   "what": "the record alone, after somebody else migrated",
+   "instructions": "record_pump_graduation",
+   "form": "legacy",
+   "bytes": 361,
+   "fee_lamports": 5001,
+   "compute_units": 26384,
+   "payer_lamports_on_the_fork": "5001",
+   "payer_lamports_at_mainnet_rent": "5001",
+   "of_which_neither_fee_nor_rent": "0",
+   "accounts_created": [],
+   "signature": "52YZZrgGnv5CVAy6h6WeLX5JW3AMxEwJm3wZ4csKfCy6Jb4tXJUgEJ7GHsDGUET9hBApm3GBSKefGMLazYtAnFdh"
+  },
+  "migrate_and_record": {
+   "what": "the migration and the record in one transaction",
+   "instructions": "migrate_v2 and record_pump_graduation",
+   "form": "legacy",
+   "bytes": 1169,
+   "fee_lamports": 5001,
+   "compute_units": 405722,
+   "payer_lamports_on_the_fork": "25375402",
+   "payer_lamports_at_mainnet_rent": "22519682",
+   "of_which_neither_fee_nor_rent": "14798161",
+   "accounts_created": [
+    {
+     "bytes": 287,
+     "rent_mainnet": "2108200"
+    },
+    {
+     "bytes": 82,
+     "rent_mainnet": "1066800"
+    },
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    },
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    },
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    }
+   ],
+   "signature": "4vUdkFV4C4WCopiNDitHQrwLJN3fCBZCKYstQU1FRpLSG5cEu7ojQrJZxfWjEH5AyUtgb6mXii3rtGjPrdtFpT8t"
+  },
+  "a_run_that_finds_nothing": "0 lamports (reads only)",
+  "keeper_payer_total_lamports_on_the_fork": "25380403",
+  "pool_migration_fee_lamports": "15000001",
+  "note": "the fork charges the base fee per signature (5,000 lamports) plus the priority fee at the profile's floor price; on mainnet the priority fee follows recent fees up to the profile's cap, on 60,000 compute units for a record and 600,000 for a migration with its record. The migration's cost beyond the fee is pump.fun's: it takes Global.pool_migration_fee from the sender and pays the pool's accounts from it"
+ },
+ "finished": "2026-10-13T16:16:56.689Z",
+ "outcome": "PASS",
+ "pass": 52,
+ "total": 52,
+ "sections": {
+  "0 fork": {
+   "passed": 6,
+   "total": 6
+  },
+  "1 on its curve": {
+   "passed": 4,
+   "total": 4
+  },
+  "2 curve complete, no pool": {
+   "passed": 9,
+   "total": 9
+  },
+  "3 migrated, not recorded": {
+   "passed": 7,
+   "total": 7
+  },
+  "4 recorded": {
+   "passed": 5,
+   "total": 5
+  },
+  "5 the keeper migrates": {
+   "passed": 9,
+   "total": 9
+  },
+  "6 the site across the move": {
+   "passed": 8,
+   "total": 8
+  },
+  "7 routed crank after graduation": {
+   "passed": 2,
+   "total": 2
+  },
+  "8 pool buys on the venue": {
+   "passed": 2,
+   "total": 2
+  }
+ },
+ "checks": [
+  {
+   "name": "0 fork: the launch program on the fork is the code deployed on mainnet, byte for byte",
+   "ok": true,
+   "detail": "958368 bytes of code, sha256 817077c4730d02df"
+  },
+  {
+   "name": "0 fork: pump.fun's Pump program on the fork is mainnet's build",
+   "ok": true,
+   "detail": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P, sha256 a8bc61552f2854e3"
+  },
+  {
+   "name": "0 fork: pump.fun's PumpSwap program on the fork is mainnet's build",
+   "ok": true,
+   "detail": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA, sha256 a8d05e6927cc6e86"
+  },
+  {
+   "name": "0 fork: pump.fun's Global is mainnet's: migrations are on, the migration fee is what the keeper will pay",
+   "ok": true,
+   "detail": "enable_migrate true, pool_migration_fee 15000001 lamports"
+  },
+  {
+   "name": "0 fork: the three coins are live launches on their curves, not graduated; the first two are of one repository and the second is a member of its pool on mainnet",
+   "ok": true,
+   "detail": "HHxDgM, Cuvvtx, ALGNQF"
+  },
+  {
+   "name": "0 fork: the trader holds the $UNITS written into the fork and $UNITS's own pool is untouched by this run so far",
+   "ok": true,
+   "detail": "300000000 $UNITS"
+  },
+  {
+   "name": "1 on its curve: on chain: on its curve; the keeper's detection says so",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1 on its curve: a keeper run finds nothing to do and sends nothing",
+   "ok": true,
+   "detail": "done: 8 on their curves, 0 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "1 on its curve: the indexer: on its curve, not awaiting a migration, priced in dollars",
+   "ok": true,
+   "detail": "phase curve, 6 trades, 0.0000023319005187033957 USD"
+  },
+  {
+   "name": "1 on its curve: the coin's page: the badge says \"Bonding curve\", the trade box offers a trade on the curve, a chart is drawn",
+   "ok": true,
+   "detail": "badge \"Bonding curve\", trade box \"pump.fun bonding curve 6r4J…wSrL\""
+  },
+  {
+   "name": "2 curve complete, no pool: on chain: the curve is complete, its PumpSwap pool does not exist, the launch program has nothing recorded; the keeper's detection says awaiting migration",
+   "ok": true,
+   "detail": "completing buy 3uJo9zQqfPWg"
+  },
+  {
+   "name": "2 curve complete, no pool: in this window no trade lands: a buy and a sell on the curve are both refused by pump.fun (BondingCurveComplete)",
+   "ok": true,
+   "detail": "Program log: AnchorError thrown in programs/pump/src/trade_v3.rs:148. Error Code: BondingCurveComplete. Error Number: 6005. Error Message: The bonding curve has"
+  },
+  {
+   "name": "2 curve complete, no pool: the keeper, dry run, inside pump.fun's head start (120 s by default): it waits and says why",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): waiting, its curve completed 0 s ago; pump.fun's own keeper is given 120 s before this one sends the migration | done: 7 on their curves, 1 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "2 curve complete, no pool: the keeper with --send inside the head start sends nothing and pays nothing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "2 curve complete, no pool: the keeper told never to migrate (--no-migrate) waits for pump.fun however long it takes",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): waiting, its curve is complete; waiting for pump.fun's migration (this keeper is set not to send it) | done: 7 on their curves, 1 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "2 curve complete, no pool: the indexer: still not graduated, awaiting migration, curve progress 100%",
+   "ok": true,
+   "detail": "phase curve, awaiting_migration true, progress 1, price 0.00003598509430648503 USD"
+  },
+  {
+   "name": "2 curve complete, no pool: the coin's page: the badge says \"Curve complete, pool opening\"; the trade box says \"This coin's curve is complete. Trading moves to its pool shortly.\" and offers no trade, no error",
+   "ok": true,
+   "detail": "badge \"Curve complete, pool opening\", trade box \"Curve complete This coin's curve is complete. Trading moves to its pool shortly.\""
+  },
+  {
+   "name": "2 curve complete, no pool: the fee crank keeper in this window cranks the member on its curve, every amount exact (the crank lane's check)",
+   "ok": true,
+   "detail": "fees 105103894349: compute 58858180836, protocol 31531168305, pool 14714545208; legacy 992 bytes"
+  },
+  {
+   "name": "2 curve complete, no pool: that crank touched the curve after the completion; the keeper still dates the completion from pump.fun's CompleteEvent, on the chain's clock, and keeps waiting",
+   "ok": true,
+   "detail": "the keeper says 2 s, the completing buy's block is 2 s old"
+  },
+  {
+   "name": "3 migrated, not recorded: on chain: the canonical PumpSwap pool exists, quoted in $UNITS, its coin creator is the agent's creator account; the launch program has not recorded it; the keeper's detection says migrated",
+   "ok": true,
+   "detail": "pool HHF5LdxNDExt8QhmoSSiA5iL2FiswoijijJR4MoUsB1L"
+  },
+  {
+   "name": "3 migrated, not recorded: the page that was open while the curve was complete moves to the pool by itself: the trade box offers a trade on PumpSwap with no reload",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "3 migrated, not recorded: the indexer: graduated as soon as the pool exists (it does not wait for the record), no longer awaiting",
+   "ok": true,
+   "detail": "phase graduated, migrated true"
+  },
+  {
+   "name": "3 migrated, not recorded: the price does not move at the migration: the indexer's price while the curve was complete and its price once the pool exists are the pool's opening price (no trade happened in between)",
+   "ok": true,
+   "detail": "while complete 0.1432391010347152, pool opens at 0.1432391010347152, once migrated 0.1432391010347152 $UNITS per coin"
+  },
+  {
+   "name": "3 migrated, not recorded: a trade on the pool lands before the record exists: trading does not wait for the keeper",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "3 migrated, not recorded: the coin's page: the badge says \"Graduated, PumpSwap\", the trade box offers a trade on the PumpSwap pool",
+   "ok": true,
+   "detail": "badge \"Graduated, PumpSwap\", trade box \"PumpSwap pool HHF5…sB1L\""
+  },
+  {
+   "name": "3 migrated, not recorded: the keeper, dry run: it would record, says what that costs, sends nothing",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): its pool exists and the launch program has not recorded it; record_pump_graduation: simulation ok, would cost the payer 0.000005001 SOL (legacy transaction, 361 bytes, 26384 compute units; payer holds 5.000000000 SOL) | Cuvvtx (F2j1B7): would send record_pump_graduation | done: 7 on their curves, 0 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "4 recorded: the keeper with --send records the graduation and nothing else: one instruction, the payer pays the network fee alone",
+   "ok": true,
+   "detail": "legacy 361 bytes, 26384 compute units, fee 5001 lamports"
+  },
+  {
+   "name": "4 recorded: the next run does not read that coin again and pays nothing",
+   "ok": true,
+   "detail": "done: 7 on their curves, 0 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "4 recorded: the indexer's record of the coin's life has the three events in order: the completion, the migration, the recorded graduation",
+   "ok": true,
+   "detail": "complete, fees_routed, migration, graduated"
+  },
+  {
+   "name": "4 recorded: the coin's page after the record: the same badge and trade box as before it (the site never waited for the record)",
+   "ok": true,
+   "detail": "badge \"Graduated, PumpSwap\", trade box \"PumpSwap pool HHF5…sB1L\""
+  },
+  {
+   "name": "4 recorded: the same page at 390 px: no horizontal scroll",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "5 the keeper migrates: a second live coin completes its curve; nobody migrates it",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "5 the keeper migrates: a payer that cannot afford the migration: the simulation fails, nothing is sent, nothing is lost, the run ends with a failure status",
+   "ok": true,
+   "detail": "ALGNQF (AFixtu): its curve is complete and its pool does not exist; migrate_v2 and record_pump_graduation not sent, simulation failed: {\"InstructionError\":[2,{\"Custom\":1}]} Program 11111111111111111111111111111111 failed: custom program error: 0x1 | Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P failed: custom program error: 0x1 | done: 6 on their curves, 0 waiting for a migration, 0 migrated and 0 recorded by t"
+  },
+  {
+   "name": "5 the keeper migrates: a migration that would cost more than --max-migrate-sol is not sent: the keeper waits for pump.fun's",
+   "ok": true,
+   "detail": "ALGNQF (AFixtu): its curve is complete and its pool does not exist; migrate_v2 not sent, would cost the payer 0.025375402 SOL, more than --max-migrate-sol 0.001000000 allows: waiting for pump.fun's migration | done: 6 on their curves, 1 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "5 the keeper migrates: dry run past the head start: it would migrate and record, says the cost, sends nothing",
+   "ok": true,
+   "detail": "ALGNQF (AFixtu): its curve is complete and its pool does not exist; migrate_v2 and record_pump_graduation: simulation ok, would cost the payer 0.025375402 SOL (legacy transaction, 1169 bytes, 405722 compute units; payer holds 4.999994999 SOL) | ALGNQF (AFixtu): would send migrate_v2 and record_pump_graduation | done: 6 on their curves, 0 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0"
+  },
+  {
+   "name": "5 the keeper migrates: inside a head start of 20 s the keeper waits and pays nothing",
+   "ok": true,
+   "detail": "ALGNQF (AFixtu): waiting, its curve completed 0 s ago; pump.fun's own keeper is given 20 s before this one sends the migration | done: 6 on their curves, 1 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "5 the keeper migrates: the keeper with --send: pump.fun's migrate_v2 and record_pump_graduation in one transaction signed by its payer alone; the pool is the canonical one, the coin creator is the agent's creator account, the graduation is recorded",
+   "ok": true,
+   "detail": "legacy 1169 bytes, 405722 compute units; the payer paid 0.022519682 SOL at mainnet rent (fee 5001 lamports)"
+  },
+  {
+   "name": "5 the keeper migrates: what the migration cost the payer: the network fee, pump.fun's migration fee, and the rent of the accounts the migration made, under 0.03 SOL at mainnet rent",
+   "ok": true,
+   "detail": "22519682 lamports at mainnet rent: fee 5001; 5 accounts created (7716520 lamports of rent at mainnet rates in all, part of it paid by pump.fun from its fee); Global.pool_migration_fee 15000001"
+  },
+  {
+   "name": "5 the keeper migrates: the run after it finds both coins recorded and pays nothing",
+   "ok": true,
+   "detail": "done: 6 on their curves, 0 waiting for a migration, 0 migrated and 0 recorded by this run; the payer paid 0.000000000 SOL"
+  },
+  {
+   "name": "5 the keeper migrates: a second record_pump_graduation is refused by the launch program (WrongPhase): the record happens once",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "6 the site across the move: the indexer holds one series for the coin: every curve trade of this run, the completing buy, then every pool trade, in order",
+   "ok": true,
+   "detail": "7 trades on the curve, then 4 on the pool"
+  },
+  {
+   "name": "6 the site across the move: every trade on both venues is priced in dollars at the reading of its own time",
+   "ok": true,
+   "detail": "11 trades"
+  },
+  {
+   "name": "6 the site across the move: the series has no step at the move: the first pool trade's price is within 3% of the price recorded after the completing buy (a small sell: its own price impact and fee)",
+   "ok": true,
+   "detail": "after the completing buy 0.1432391010347152, first pool trade 0.14269656932715197 $UNITS per coin (0.379% apart)"
+  },
+  {
+   "name": "6 the site across the move: the dollar chart is one continuous series across the move: a candle for every minute from the first curve trade to the last pool trade, each with a dollar close, none missing",
+   "ok": true,
+   "detail": "2 one-minute candles, 11 trades in them"
+  },
+  {
+   "name": "6 the site across the move: dollars per $UNITS is the same on both sides of the move (the dollar series moves with the coin, not with a change of venue or of price source)",
+   "ok": true,
+   "detail": "0.00025082006179296366 to 0.0002513749336801825 USD per $UNITS over the run (0.221%)"
+  },
+  {
+   "name": "6 the site across the move: holders after the move: the trader's balance is the chain's; neither the curve's account nor the pool (its vault's owner) is listed as a holder",
+   "ok": true,
+   "detail": "1 holders on this fork (holders' accounts on mainnet are not part of the copy); trader 797779837757629"
+  },
+  {
+   "name": "6 the site across the move: the explorer's figures: two graduated, and the Graduated filter lists exactly the two coins",
+   "ok": true,
+   "detail": "2 of 8 graduated"
+  },
+  {
+   "name": "6 the site across the move: the coin's page lists the trades of both venues in one list, each named for where it happened, under one chart",
+   "ok": true,
+   "detail": "4 PumpSwap rows above 7 curve rows"
+  },
+  {
+   "name": "7 routed crank after graduation: the fee crank keeper cranks the graduated pool member as a version 0 transaction of 1,108 bytes; the fees it moved are what waited in the pool and on the curve; compute, protocol and pool exact to the base unit; nothing left behind (the crank lane's check)",
+   "ok": true,
+   "detail": "fees 45526612: compute 25494903, protocol 13657984, pool 6373725; v0 1108 bytes"
+  },
+  {
+   "name": "7 routed crank after graduation: a second crank run right after finds nothing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "8 pool buys on the venue: after a settlement that credits the graduated member, Core's keeper spends its buyback on its PumpSwap pool: the pool's holding account of that coin grows (pool_buy through PumpSwap by CPI)",
+   "ok": true,
+   "detail": "buyback due 208364680; bought 1399306941 base units; actions: pay, buyback, buyback"
+  },
+  {
+   "name": "8 pool buys on the venue: Core's pool keeper buys the graduated member's coin for the other member on its PumpSwap pool (pool_cross_buy through PumpSwap by CPI): the holder's own token account receives the coins",
+   "ok": true,
+   "detail": "114231716498 base units of the graduated coin bought; keeper actions: prepare, cross_buy"
+  }
+ ]
+}
