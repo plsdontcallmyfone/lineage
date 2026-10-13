@@ -68,7 +68,11 @@ export function parsePlan(transactions: string, rows: { label: string; usd: stri
 export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; unitsAccount?: boolean }): string | null {
   if (!p.built) return "the page shows no built launch (or still speaks of a simulation)";
   // two transactions with the purchase on the quote coin's curve (or none); three when it is bought on its PumpSwap pool
-  if (p.txs.length !== 2 && p.txs.length !== 3) return `the plan has ${p.txs.length} transactions, expected 2 or 3 (launch + soul, then the purchase, initial buy, credits and tip)`;
+  // a hosted launch may carry its binding as one more transaction, last and alone (seamless bind, apps/web/wallet/bind-plan.ts)
+  const bindAt = p.txs.findIndex((t) => t.groups.includes("bind"));
+  if (bindAt >= 0 && (bindAt !== p.txs.length - 1 || p.txs[bindAt]!.groups.length !== 1)) return "the binding is not a transaction of its own at the end of the plan";
+  const n = p.txs.length - (bindAt >= 0 ? 1 : 0);
+  if (n !== 2 && n !== 3) return `the plan has ${n} launch transactions, expected 2 or 3 (launch + soul, then the purchase, initial buy, credits and tip)`;
   if (!p.txs[0]!.groups.includes("launch")) return "the first transaction does not carry the launch";
   const later = p.txs.slice(1).flatMap((t) => t.groups);
   if (!later.includes("credits") || !later.includes("initial-buy")) return "the transactions after the launch do not carry the credits and the initial buy";
