@@ -81,7 +81,7 @@ describe("fees waiting: what the pages show", () => {
     // rows that are not what Core serves are dropped: a name that is not owner/name, an amount that is not a number
     const kept = readWaiting({ repositories: [row("acme/engine", "5", 1), row("<script>/x", "5", 1), row("a/b", "five", 1), row("a/c", "5", -1 as any)], total_waiting: "5", usd: USD })!;
     expect(kept.repositories.map((r) => r.repository.full_name)).toEqual(["acme/engine"]);
-    for (const out of [waitingSection(list([row("acme/engine", "1", 1)]), "acme/engine").s, waitingList(list([])).s]) expect(out).not.toMatch(/—|devnet|TBA|mono/i);
+    for (const out of [waitingSection(list([row("acme/engine", "1", 1)]), "acme/engine").s, waitingList(list([])).s]) expect(out).not.toMatch(/\u2014|devnet|TBA|mono/i);
   });
 });
 
