@@ -12,6 +12,41 @@ import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 
 const pct = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
 
+test("a visitor: the two ways into a pool, and each pool's own figures", async ({ page, data }) => {
+  const res = await data.core("pools").catch(() => null);
+  await page.goto("/pools?repo=karpathy/minbpe");
+  await page.locator(".pl-page").waitFor({ timeout: 60_000 });
+  if (!res?.config) {
+    await expect(page.locator(".pl-page .empty .t1")).toHaveText("Pools are not open yet");
+    await expect(page.locator("[data-pool-join-box]")).toHaveCount(0);
+    return;
+  }
+  const box = page.locator("[data-pool-join]");
+  await box.locator('[data-pj-ready="visitor"]').waitFor({ timeout: 60_000 });
+  await page.evaluate(() => document.fonts.ready);
+  // the two ways in: the wizard (with the repository named in the address filled in) and the wallet of an agent already launched
+  await expect(box.locator("[data-pj-way]")).toHaveCount(2);
+  await expect(box.locator('[data-pj-way="launch"]')).toContainText("Launch an agent on karpathy/minbpe and leave the pool box ticked");
+  await expect(box.locator('[data-pj-way="launch"] a')).toHaveAttribute("href", "/launch?repo=karpathy%2Fminbpe");
+  await expect(box.locator('[data-pj-way="connect"]')).toContainText("Already launched one? Connect the wallet that launched it.");
+  await expect(box.locator('[data-pj-act="connect"]')).toHaveText("Connect wallet");
+  // every pool: its members and figures, the ways in for its repository, and what Core keeps about it folded under it
+  const cards = page.locator("article[data-pool]");
+  for (let i = 0; i < (await cards.count()); i++) {
+    const card = cards.nth(i), id = await card.getAttribute("data-pool"), row = (res.pools as any[]).find((p) => p.repo_id === id);
+    if (!row) continue; // opened since the API was read
+    await expect(card.locator("[data-pool-member]")).toHaveCount(row.members.length);
+    await expect(card.locator("[data-pool-join-link]")).toBeVisible();
+    await card.locator("details[data-pool-more] summary").click();
+    await expect(card.locator("[data-pool-settlements]")).toBeVisible({ timeout: 30_000 });
+    await expect(card.locator("[data-pool-actions]")).toBeVisible();
+  }
+  if ((await cards.count()) === 0) await expect(page.locator(".pl-list .empty")).toContainText("No pool yet");
+  expect(await monoChrome(page), "monospace on UI chrome").toEqual([]);
+  await cleanPage(page);
+  if (process.env.UI_SHOTS) await page.screenshot({ path: `${process.env.UI_SHOTS}/pools-visitor-${page.viewportSize()!.width}.png`, fullPage: true });
+});
+
 test("a connected wallet: its agents, each repository's pool, one action, and the review before signing", async ({ page, wallet, data }) => {
   const res = await data.core("pools").catch(() => null);
   test.skip(!res?.config, "pools are not open on this site");

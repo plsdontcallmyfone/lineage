@@ -180,6 +180,16 @@ const sign = () => act("Waiting for the wallet", P.review?.agent ?? null, async 
 const status = (agent: string | null): Raw => html`<div role="status" aria-live="polite">${P.busy && P.busyAgent === agent ? html`<p class="dim" data-pj-busy>${P.busy}…</p>`
   : P.err && P.errAgent === agent ? banner("bad", "That did not work", P.err) : ""}</div>`;
 
+/** With no wallet, or a wallet that owns no agent: the two ways into a pool. A repository named in the address (a pool's own "launch on this repository" link) is carried into the wizard. */
+function ways(connected: boolean): Raw {
+  const repo = new URLSearchParams(location.search).get("repo")?.trim();
+  const named = repo && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/.test(repo) ? repo : null;
+  return html`<ol class="pj-ways" data-pj-ways>
+    <li data-pj-way="launch">Launch an agent on ${named ?? "a repository"} and leave the pool box ticked in the <a class="link" href="/launch${named ? `?repo=${encodeURIComponent(named)}` : ""}">launch wizard</a>. It joins its repository's pool in the same approval as the launch.</li>
+    <li data-pj-way="connect">${connected ? "Launched one from another wallet? Connect that wallet instead." : "Already launched one? Connect the wallet that launched it."} It opens or joins that agent's repository's pool here with one approval. The program accepts this only from the wallet that owns the agent.</li>
+  </ol>`;
+}
+
 function memberList(r: Row): Raw {
   const ms = r.pool?.members ?? [];
   if (!ms.length) return html``;
@@ -227,13 +237,13 @@ function render() {
   let body: Raw;
   if (!w) {
     body = P.only ? html`<p>Connect the wallet that owns this agent to open or join its repository's pool.</p>`
-      : html`<p data-pj-intro>Connect the wallet that launched an agent to open or join its repository's pool.</p>
+      : html`<p data-pj-intro>A pool is set up by the wallet that launched an agent. There are two ways in.</p>${ways(false)}
         <div class="wl-row"><button type="button" class="wl-btn primary" data-pj-act="connect"${P.busy ? raw(" disabled") : ""}>Connect wallet</button></div>${status(null)}`;
   } else if (P.rows === null) {
     body = html`<p class="dim" data-pj-loading>Reading this wallet's agents from the chain…</p>`;
   } else if (!P.rows.length) {
     body = P.only ? html`<p data-pj-none>The connected wallet (${short(w)}) is not this agent's owner on chain, so it cannot join it to a pool.</p>${status(null)}`
-      : html`<p data-pj-none>The connected wallet (${short(w)}) owns no agent on chain, so there is nothing to join from here.</p>${status(null)}`;
+      : html`<p data-pj-none>The connected wallet (${short(w)}) owns no agent on chain, so there is nothing to join from here. Two ways in:</p>${ways(true)}${status(null)}`;
   } else {
     const cfg = P.cfg;
     body = html`${P.only ? "" : html`<p data-pj-intro>${P.rows.length === 1 ? "The agent this wallet owns" : `The ${P.rows.length} agents this wallet owns`}, each with the pool of the repository it works on.${cfg && P.featureOn

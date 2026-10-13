@@ -1,8 +1,8 @@
 import { getOptional } from "../api.ts";
 import { agentAvatar, agentTitle, injectBuildingStyle, loadHidden, type DirToken } from "../building.ts";
-import { int, repoLabel, token, tokenText } from "../fmt.ts";
+import { int, repoLabel, token, tokenText, when } from "../fmt.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { market } from "../market.ts";
+import { explorerTx, market } from "../market.ts";
 import { empty, epochLink, stat } from "../ui.ts";
 import type { Page } from "./types.ts";
 
@@ -52,6 +52,16 @@ const CSS = `
 .pl-who:hover span{text-decoration:underline}
 .pl-foot{display:flex;flex-wrap:wrap;gap:4px 16px;padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--tt)}
 .pl-foot b{font-weight:500;color:var(--ts);font-variant-numeric:tabular-nums}
+.pl-in{display:flex;flex-wrap:wrap;gap:4px 18px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px}
+.pl-in a{color:var(--ac);text-decoration:none}
+.pl-in a:hover{text-decoration:underline}
+.pl-more{border-top:1px solid var(--border);font-size:13px}
+.pl-more>summary{padding:10px 16px;cursor:pointer;color:var(--ts)}
+.pl-more-b{padding:0 16px 14px;display:grid;gap:12px;color:var(--ts)}
+.pl-more-b h3{margin:0 0 4px;font-size:12.5px;font-weight:500;color:var(--tp)}
+.pl-more-b ul{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+.pl-more-b li{display:flex;flex-wrap:wrap;gap:2px 10px;line-height:1.45}
+.pl-more-b p{margin:0;line-height:1.45}
 .pl-side{display:grid;gap:16px;min-width:0}
 .pl-how{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);padding:14px 16px}
 .pl-how h2{margin:0 0 8px;font-family:var(--display);font-size:16px;font-weight:500;letter-spacing:-.02em}
@@ -91,7 +101,50 @@ export function poolCard(p: PoolRow, byAgent: Map<string, DirToken>): Raw {
     </tbody></table></div>
     <footer class="pl-foot"><span>Routed in so far <b>${token(p.totals.contributed)}</b></span><span>Paid out <b>${token(p.totals.paid)}</b></span><span>Spent on buybacks <b>${token(p.totals.bought)}</b></span><span>Spent on burns <b>${token(p.totals.burn_spent)}</b></span>
       <span title="${p.address}">Pool account ${p.address.slice(0, 4)}…${p.address.slice(-4)}</span></footer>
+    <div class="pl-in" data-pool-in>${repo && /^https:\/\/github\.com\//.test(repo) ? html`<a href="/launch?repo=${encodeURIComponent(repoLabel(repo))}" data-pool-launch>Launch an agent on ${repoLabel(repo)} to join this pool</a>` : ""}
+      <a href="${repo && /^https:\/\/github\.com\//.test(repo) ? `/pools?repo=${encodeURIComponent(repoLabel(repo))}#join` : "#join"}" data-pool-join-link>Already launched one on it? Join with its wallet</a></div>
+    <details class="pl-more" data-pool-more="${p.repo_id}"><summary>Settlements and purchases</summary><div class="pl-more-b" data-pool-more-body><p class="dim">Loading…</p></div></details>
   </article>`;
+}
+
+interface Settlement { epoch: number; signature: string | null; created_at: number; record: { gens: number; members: { agent: string; weight_bps: number }[]; milestones: unknown[] } }
+interface Action { kind: string; detail: Record<string, unknown>; signature: string | null; error: string | null; at: number }
+const ACTION: Record<string, string> = { join: "An agent joined", settle: "Settlement posted", prepare: "The pool's accounts prepared", pay: "Payout to a member's compute", cross_buy: "Cross holding purchase",
+  buyback: "Buyback", burn_buy: "Buy and burn" };
+const tx = (sig: string | null): Raw => (sig ? html`<a class="link" href="${explorerTx(sig)}" target="_blank" rel="noopener">Transaction</a>` : html``);
+
+/** What Core keeps about one pool beyond the chain's totals: its settlements and what the keeper sent (GET /v1/pools/:id/settlements and /actions). */
+export function poolMore(settlements: Settlement[], actions: Action[], byAgent: Map<string, DirToken>): Raw {
+  const who = (a: unknown) => { const id = String(a ?? ""), t = byAgent.get(id); return t ? agentTitle(t) : id ? `${id.slice(0, 4)}…${id.slice(-4)}` : ""; };
+  const sent = actions.filter((a) => a.signature && !a.error), failed = actions.length - sent.length;
+  return html`<div data-pool-settlements><h3>Settlements</h3>${settlements.length
+      ? html`<ul>${settlements.map((s) => html`<li><span>Epoch ${epochLink(s.epoch)}</span><span>${s.record.gens} verified generation${s.record.gens === 1 ? "" : "s"}${s.record.milestones.length ? `, ${s.record.milestones.length} milestone${s.record.milestones.length === 1 ? "" : "s"}` : ""}</span>
+        <span>${s.record.members.filter((m) => m.weight_bps > 0).map((m) => `${who(m.agent)} ${pct(m.weight_bps)}`).join(", ")}</span>${tx(s.signature)}</li>`)}</ul>`
+      : html`<p data-pool-none="settlements">No settlement yet. A pool is settled after an epoch in which a member's change was verified or the repository crossed a milestone.</p>`}</div>
+    <div data-pool-actions><h3>Sent by the keeper</h3>${sent.length
+      ? html`<ul>${sent.map((a) => html`<li><span>${ACTION[a.kind] ?? a.kind}${a.detail.agent || a.detail.target ? `: ${who(a.detail.agent ?? a.detail.target)}` : ""}${a.kind === "cross_buy" && a.detail.holder ? `, held by ${who(a.detail.holder)}` : ""}</span>
+        <span>${when(a.at)}</span>${tx(a.signature)}</li>`)}</ul>`
+      : html`<p data-pool-none="actions">Nothing yet: no payout, purchase or burn has been sent for this pool.</p>`}${failed ? html`<p>${failed} attempt${failed === 1 ? "" : "s"} did not land and will be tried again.</p>` : ""}</div>`;
+}
+
+/** Folded sections stay open across the page's minute refresh and are filled when opened. */
+const openMore = new Set<string>();
+async function fillMore(d: HTMLDetailsElement, byAgent: Map<string, DirToken>) {
+  const id = d.dataset.poolMore!, body = d.querySelector<HTMLElement>("[data-pool-more-body]")!;
+  try {
+    const [s, a] = await Promise.all([getOptional<Settlement[]>(`pools/${id}/settlements`), getOptional<Action[]>(`pools/${id}/actions`)]);
+    body.innerHTML = poolMore(s, a, byAgent).s;
+  } catch {
+    body.innerHTML = html`<p>This did not load. Close and open it to try again.</p>`.s;
+  }
+}
+function wireMore(byAgent: Map<string, DirToken>) {
+  for (const d of document.querySelectorAll<HTMLDetailsElement>("details[data-pool-more]")) {
+    d.addEventListener("toggle", () => {
+      if (d.open) { openMore.add(d.dataset.poolMore!); void fillMore(d, byAgent); } else openMore.delete(d.dataset.poolMore!);
+    });
+    if (openMore.has(d.dataset.poolMore!)) d.open = true;
+  }
 }
 
 function rules(c: PoolCfg | null): Raw {
@@ -170,6 +223,7 @@ export async function poolsPage(): Promise<Page> {
     mount: () => {
       if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
       void mountJoin();
+      wireMore(byAgent);
     },
   };
 }
