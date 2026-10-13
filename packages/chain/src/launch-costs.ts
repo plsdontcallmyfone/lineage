@@ -182,6 +182,8 @@ export function launchCostDetail(o: {
   identity: bigint;
   tip?: bigint;
   headroom?: bigint;
+  /** the part of `headroom` the purchase can spend: its bound less its quote (launch-bundle.ts LaunchSolCosts.maxCharge) */
+  slippage?: bigint;
   /** the launch buys no $UNITS: the credits and the initial buy come from the launcher's own $UNITS (no SOL line for either) */
   units?: LaunchUnitsCosts;
 }): LaunchCostDetail {
@@ -195,6 +197,6 @@ export function launchCostDetail(o: {
   const whole = o.purchase?.whole ?? 0n;
   const credits = o.hasBuy ? (o.purchase?.credits ?? 0n) : whole;
   const costs = launchSolCosts({ creation: fees.reduce((n, f) => n + f, 0n) + rent, credits, buy: o.units ? null : o.hasBuy ? whole - credits : null, identity: o.identity, tip: o.tip,
-    headroom: o.headroom, units: o.units });
+    headroom: o.headroom, slippage: o.slippage, units: o.units });
   return { costs, fees, rents, rent };
 }

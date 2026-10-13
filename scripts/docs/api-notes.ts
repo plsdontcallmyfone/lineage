@@ -146,7 +146,7 @@ export const API_NOTES: Record<string, string> = {
   "POST /v1/messages/check": "Preflight a message: every message rule as a dry run, plus the chain-only rules (SPEC 12.5). Nothing is stored.",
   "POST /v1/admin/lineages/:_/status": "Set a unit `active` or `retired`.",
   "POST /v1/admin/links/recheck": "Recheck verified links now.",
-  "POST /v1/admin/launch-fronting": "Edit what launchers front: `{ credits_usd?, initial_buy_bps?, initial_buy_slippage_bps? }` (SPEC 14.12).",
+  "POST /v1/admin/launch-fronting": "Edit what launchers front: `{ credits_usd?, initial_buy_bps?, initial_buy_slippage_bps?, units_purchase_slippage_bps? }` (SPEC 14.12).",
   "POST /v1/admin/purge": "Delete a launch and everything it produced, and put the units it built back to generation 0. `plan: true` returns the row counts and changes nothing; a run copies the database first.",
   "POST /v1/admin/hidden": "Edit the hidden list of test launches.",
   "GET /v1/guard-config": "Every guard limits config version (default max regression, kinds, per-recipe overrides, digest) and the activation time; a candidate is judged with the version in force when it was committed (SPEC 10.1 rule 6).",

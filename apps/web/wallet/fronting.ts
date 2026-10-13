@@ -148,13 +148,17 @@ export function fundingSummary(v: FundingView): Raw {
   </div>`;
 }
 
-/** Review: every cost line once, the total and the one approval. */
+/** A share as a percentage with at most two decimals (the purchase's room over its quote). */
+const pct = (part: bigint, of: bigint) => (of > 0n ? `${(Number((part * 10_000n) / of) / 100).toFixed(2).replace(/\.?0+$/, "")}%` : "0%");
+
+/** Review: every cost line once, the total, the most the wallet can be charged and the one approval that states it. */
 export function costBreakdown(v: FundingView): Raw {
   const c = v.costs;
   return html`<div class="lz-review lz-fronting" data-fronting-ok="${String(!v.blocked)}">
     ${lines(v).map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}
     <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : WAIT}</b> <span class="dim">${c ? sol(c.total) : ""}${c?.units ? ` in SOL, plus ${(v.unitsFmt ?? String)(c.units.total)} from your wallet` : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
-    <div class="lz-rr"><span class="eyebrow">Approval</span><span class="lz-rv"><b>one signature</b> <span class="dim">${v.txCount ? `${v.txCount} transaction${v.txCount === 1 ? "" : "s"} signed together${v.devnet ? ", sent in order" : ", sent as one Jito bundle (all or nothing)"}` : ""}</span></span></div>
+    ${c && c.maxCharge > c.total ? html`<div class="lz-rr" data-fronting="Maximum" data-lamports="${c.maxCharge.toString()}"><span class="eyebrow">At most</span><span class="lz-rv"><b class="num">${money(usdOf(c.maxCharge, v.solUsd))}</b> <span class="dim">${sol(c.maxCharge)}: the ${v.unitsName ?? "UNITS"} purchase may cost up to ${pct(c.maxCharge - c.total, c.credits + (c.buy ?? 0n))} more if its price rises before the launch lands. What is not spent stays in your wallet.</span></span></div>` : ""}
+    <div class="lz-rr"><span class="eyebrow">Approval</span><span class="lz-rv"><b>one signature${c ? html`, for at most ${money(usdOf(c.maxCharge, v.solUsd))}` : ""}</b> <span class="dim">${c ? `${sol(c.maxCharge)}${c.units ? ` and ${(v.unitsFmt ?? String)(c.units.needed)}` : ""}; ` : ""}${v.txCount ? `${v.txCount} transaction${v.txCount === 1 ? "" : "s"} signed together${v.devnet ? ", sent in order" : ", sent as one Jito bundle (all or nothing)"}` : ""}</span></span></div>
     ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked.replace(/\.$/, "")}.</span></div>` : html`<div class="wl-fine"><span class="mark good">your wallet covers all of it</span></div>`}
   </div>`;
 }

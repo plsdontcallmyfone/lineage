@@ -73,6 +73,8 @@ import {
   JITO_MAX_TXS,
   jitoTipIx,
   maxSolIn,
+  purchaseBound,
+  UNITS_PURCHASE_SLIPPAGE_DEFAULT_BPS,
   planLaunchBundle,
   pumpSolToLine,
   pumpSolToLinePool,
@@ -156,6 +158,18 @@ interface MintMeta {
   symbol: string;
   uri: string;
 }
+/** A launch as built for the Review step: its keys, its transactions and what they cost. */
+interface LaunchDraft { agent: WebKey; mint: WebKey; args: { name: string; symbol: string; uri: string; repoUrl: string; identityMode: number; hosted: boolean; cls: string; identity: string }; soul: SoulDoc | null; deposit: bigint; buy: InitialBuy | null; plan: BundleTx[];
+    /** per transaction of `plan`: its signatures, compute unit limit and the unit price it is sent with */
+    txs: LaunchCostTx[]; detail: LaunchCostDetail; swap: PreparedSwap | null; costs: LaunchSolCosts;
+    /** a hosted launch: the hosted runtime's key reserved for the agent; the bind rides in the launch's approval (bind-plan.ts). Null when the runtime gave none. */
+    bind?: RuntimeKey | null;
+    /** the SOL purchase is a Jupiter quote (labelled as one), not the curve's arithmetic */
+    quoted: boolean; identity: bigint; landed: string[]; metaLive: boolean; links: CoinLinks;
+    /** the most SOL the $UNITS purchase may cost, as this draft states it (null: no purchase on the pool or curve) */
+    purchaseBound: bigint | null;
+    /** the purchase priced again on the venue as it is now and the launch assembled on it; `moved`: past the stated bound, so the review is read again */
+    requote: null | (() => Promise<{ draft: LaunchDraft; moved: boolean }>) }
 const S = {
   root: null as HTMLElement | null,
   page: null as null | "launch" | "profile",
@@ -183,13 +197,7 @@ const S = {
   sigs: [] as SigRow[],
   // launch
   repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[]; check?: RepoCheck },
-  draft: null as null | { agent: WebKey; mint: WebKey; args: { name: string; symbol: string; uri: string; repoUrl: string; identityMode: number; hosted: boolean; cls: string; identity: string }; soul: SoulDoc | null; deposit: bigint; buy: InitialBuy | null; plan: BundleTx[];
-    /** per transaction of `plan`: its signatures, compute unit limit and the unit price it is sent with */
-    txs: LaunchCostTx[]; detail: LaunchCostDetail; swap: PreparedSwap | null; costs: LaunchSolCosts;
-    /** a hosted launch: the hosted runtime's key reserved for the agent; the bind rides in the launch's approval (bind-plan.ts). Null when the runtime gave none. */
-    bind?: RuntimeKey | null;
-    /** the SOL purchase is a Jupiter quote (labelled as one), not the curve's arithmetic */
-    quoted: boolean; identity: bigint; landed: string[]; metaLive: boolean; links: CoinLinks },
+  draft: null as null | LaunchDraft,
   /** the launch is being built (chain reads in flight) */
   building: false as boolean,
   /** why the last build stopped */
@@ -821,7 +829,8 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   // the soul's digest goes on chain with the launch, signed by the agent key (its signing key until a rotation)
   const soulIx = soul ? registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(soul), seq: soul.seq }) : null;
   const need = deposit + (buy?.maxIn ?? 0n);
-  const bps = P.cfg?.initial_buy_slippage_bps ?? 100;
+  // the bound of the $UNITS purchase is its own setting (Core's config, default 5%): the pool is small and moves
+  const bps = P.cfg?.units_purchase_slippage_bps ?? UNITS_PURCHASE_SLIPPAGE_DEFAULT_BPS;
   // A units account (owner direction 2026-10-11): its price from Core's config, to the configured recipient
   const idChosen = args.identity === "purchased";
   if (idChosen && !P.cfg?.identity_account_recipient) throw new Error("A units account: Core's config names no recipient for its payment; pick Your own token or try later.");
@@ -829,17 +838,19 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   const fee = idChosen ? [system.transfer(launcher, P.cfg!.identity_account_recipient!, identity)] : [];
   // SOL to $UNITS: on $UNITS's own SOL curve (devnet, and a mainnet profile with swap off: the test and the official deployment),
   // inside the same bundle; a profile with swap on converts through Jupiter (its own transaction, first in the bundle).
-  let solToLine: Ix[] = [];
-  let swap: PreparedSwap | null = null;
-  let purchase: { whole: bigint; credits: bigint } | null = null;
-  let headroom = 0n;
-  let purchaseVenue: "curve" | "pool" = "curve";
-  let heldUnits: bigint | null = null;
-  if (isMainnet() && NET.p.swap) {
-    swap = await prepareSwapThen({ pay: "SOL", need, taker: launcher, action: [], cuLimit: 400_000 });
-    // Jupiter's quote for the whole amount, split by the amounts bought (a quote, labelled as one on the page)
-    purchase = { whole: swap.route.inAmount, credits: need > 0n ? (swap.route.inAmount * deposit) / need : 0n };
-  } else {
+  // The purchase as priced last: `price` reads the venue and fills it, at the first build and again right before the wallet
+  // is asked (launchSign), so the bound that is signed comes from a quote seconds old, not from when the Review step opened.
+  const Q = { solToLine: [] as Ix[], swap: null as PreparedSwap | null, purchase: null as { whole: bigint; credits: bigint } | null, headroom: 0n, slippage: 0n,
+    venue: "curve" as "curve" | "pool", held: null as bigint | null, bound: null as bigint | null };
+  /** Prices the purchase on the venue as it is now. `shown`: the bound the Review step stated (purchaseBound's rule). True: the price moved past it, so the review must be read again. */
+  const price = async (shown: bigint | null): Promise<boolean> => {
+    if (isMainnet() && NET.p.swap) {
+      if (Q.swap) return false; // a Jupiter route carries its own bound and expiry
+      Q.swap = await prepareSwapThen({ pay: "SOL", need, taker: launcher, action: [], cuLimit: 400_000 });
+      // Jupiter's quote for the whole amount, split by the amounts bought (a quote, labelled as one on the page)
+      Q.purchase = { whole: Q.swap.route.inAmount, credits: need > 0n ? (Q.swap.route.inAmount * deposit) / need : 0n };
+      return false;
+    }
     const lp = linePool();
     if (lp) {
       // $UNITS trades on its canonical PumpSwap pool: an exact-output buy_v2 there for what the launch needs, paid from a
@@ -852,27 +863,31 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
         throw new Error("the $UNITS pool on chain is not the one this deployment names");
       const rates = poolRates({ creatorFeeConfigurable: decodePumpGlobal(gA.data).creatorFeeConfigurable }, decodePumpFeeConfig(fcA.data), pool, decodeMint(mA.data).supply, quote + pool.virtualQuoteReserves, base);
       const whole = quotePoolBuyExactOut(rates, pool, base, quote, need).quoteIn, part = quotePoolBuyExactOut(rates, pool, base, quote, deposit).quoteIn;
-      const maxSol = maxSolIn(whole, bps), rentToken = rentLamports(TOKEN_ACCOUNT_LEN, rate);
+      const b = purchaseBound({ quote: whole, bps, shown }), rentToken = rentLamports(TOKEN_ACCOUNT_LEN, rate);
       // held, not spent: the slippage bound, and the temporary account's rent (it comes back when the account closes)
-      headroom = maxSol - whole + rentToken;
-      purchase = { whole, credits: part };
-      purchaseVenue = "pool";
-      solToLine = pumpSolToLinePool({ launcher, lineMint: lineMint(), pool: lp.pool, amountOut: need, maxSolIn: maxSol, rentToken, lineTokenProgram: T22 });
+      Q.slippage = b.maxSol - whole;
+      Q.headroom = Q.slippage + rentToken;
+      Q.purchase = { whole, credits: part };
+      Q.venue = "pool";
+      Q.bound = b.maxSol;
+      Q.solToLine = pumpSolToLinePool({ launcher, lineMint: lineMint(), pool: lp.pool, amountOut: need, maxSolIn: b.maxSol, rentToken, lineTokenProgram: T22 });
       // the other way to pay, used only when the wallet's SOL does not cover the purchase and its own $UNITS do (below)
-      heldUnits = hA ? decodeTokenAccount(hA.data).amount : 0n;
-      S.line = heldUnits;
-    } else {
-      const [gA, fcA, cA, bA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(lineMint()), ata(pumpPdas.bondingCurve(lineMint()), lineMint(), T22)]);
-      if (!gA || !fcA || !cA || !bA) throw new Error("pump.fun's Global, fee config or the $UNITS curve is missing on this cluster");
-      const g = decodePumpGlobal(gA.data), fc = decodePumpFeeConfig(fcA.data), c = decodeBondingCurve(cA.data), base = decodeTokenAccount(bA.data).amount;
-      const whole = quoteCurveBuyExactOut(g, fc, c, need, base);
-      const part = quoteCurveBuyExactOut(g, fc, c, deposit, base);
-      const maxSol = maxSolIn(whole.quoteIn, bps);
-      headroom = maxSol - whole.quoteIn;
-      purchase = { whole: whole.quoteIn, credits: part.quoteIn };
-      solToLine = pumpSolToLine({ launcher, lineMint: lineMint(), amountOut: need, maxSolIn: maxSol, lineTokenProgram: T22 });
+      Q.held = hA ? decodeTokenAccount(hA.data).amount : 0n;
+      S.line = Q.held;
+      return b.redraw;
     }
-  }
+    const [gA, fcA, cA, bA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(lineMint()), ata(pumpPdas.bondingCurve(lineMint()), lineMint(), T22)]);
+    if (!gA || !fcA || !cA || !bA) throw new Error("pump.fun's Global, fee config or the $UNITS curve is missing on this cluster");
+    const g = decodePumpGlobal(gA.data), fc = decodePumpFeeConfig(fcA.data), c = decodeBondingCurve(cA.data), base = decodeTokenAccount(bA.data).amount;
+    const whole = quoteCurveBuyExactOut(g, fc, c, need, base);
+    const part = quoteCurveBuyExactOut(g, fc, c, deposit, base);
+    const b = purchaseBound({ quote: whole.quoteIn, bps, shown });
+    Q.slippage = Q.headroom = b.maxSol - whole.quoteIn;
+    Q.purchase = { whole: whole.quoteIn, credits: part.quoteIn };
+    Q.bound = b.maxSol;
+    Q.solToLine = pumpSolToLine({ launcher, lineMint: lineMint(), amountOut: need, maxSolIn: b.maxSol, lineTokenProgram: T22 });
+    return b.redraw;
+  };
   let tip = 0n;
   let tipIxs: Ix[] = [];
   if (tips) {
@@ -882,8 +897,9 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   // GitHub fee route and repository pool (fee-route-step.ts): no instruction while those features are off
   const extras = await launchExtras({ launcher, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), repoUrl: args.repoUrl });
   // `fromUnits` set: no purchase, the credits and the initial buy come from the wallet's own $UNITS
-  const assemble = async (fromUnits: LaunchUnitsCosts | null): Promise<NonNullable<typeof S.draft>> => {
-    const buyIxs = fromUnits ? [] : solToLine;
+  // `prior`: the draft the Review step shows, whose unit prices are kept so a requote changes only the purchase
+  const assemble = async (fromUnits: LaunchUnitsCosts | null, prior: NonNullable<typeof S.draft> | null = null): Promise<NonNullable<typeof S.draft>> => {
+    const buyIxs = fromUnits ? [] : Q.solToLine;
     // one approval (owner direction 2026-10-11): the groups in order, packed into the fewest transactions
     const groups: BundleGroup[] = [
       { name: "launch", ixs: main },
@@ -896,35 +912,52 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
       { name: "units-account", ixs: fee },
       { name: "tip", ixs: tipIxs },
     ];
-    const plan = planLaunchBundle({ payer: launcher, groups, budget: budgetIxs(CU_MAX), table: P.table, v0: signsV0(S.wallet!), uniform: true, maxTxs: JITO_MAX_TXS - (swap?.plan.txs.length ?? 0) });
+    const plan = planLaunchBundle({ payer: launcher, groups, budget: budgetIxs(CU_MAX), table: P.table, v0: signsV0(S.wallet!), uniform: true, maxTxs: JITO_MAX_TXS - (Q.swap?.plan.txs.length ?? 0) });
     if (plan[0]!.groups[0] !== "launch") throw new Error("the launch transaction must come first");
     // the accounts whose rent the launcher pays: the new agent's and coin's always, the wallet's own and the shared ones only when absent
     const creates = launchCreates({ name: args.name, symbol: args.symbol, uri: args.uri,
-      purchase: buyIxs.length ? { launcherLine: ata(launcher, lineMint(), T22), launcherVolume: purchaseVenue === "pool" ? pumpPdas.ammUserVolume(launcher) : pumpPdas.userVolume(launcher), venue: purchaseVenue } : undefined,
+      purchase: buyIxs.length ? { launcherLine: ata(launcher, lineMint(), T22), launcherVolume: Q.venue === "pool" ? pumpPdas.ammUserVolume(launcher) : pumpPdas.userVolume(launcher), venue: Q.venue } : undefined,
       buy: buy ? { createsBuyback: buy.ixs.length > 2, launcherVolume: pumpPdas.userVolume(launcher) } : undefined, feeRoute: extras.creates.feeRoute, pool: extras.creates.pool });
     const maybe = creates.flatMap((c) => (c.address ? [c.address] : []));
     // each transaction's unit price is read once here and the transaction is sent with it, so the fee shown is the fee paid
     const bindIxs = bind && bind.status !== "bound" ? bindPart({ owner: launcher, agent: agent.id, newKey: bind.new_key }).ixs : null;
-    const [prices, there, bindPrice] = await Promise.all([Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : [], bindIxs ? unitPrice(launcher, bindIxs) : 0]);
+    const same = !!prior && prior.plan.length === plan.length && prior.plan.every((t, i) => t.groups.join() === plan[i]!.groups.join()) && prior.txs.length === plan.length + (bindIxs ? 1 : 0);
+    const [prices, there, bindPrice] = await Promise.all([same ? prior!.txs.slice(0, plan.length).map((t) => t.price) : Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : [],
+      bindIxs ? (same ? prior!.txs[plan.length]!.price : unitPrice(launcher, bindIxs)) : 0]);
     const FAKE = "11111111111111111111111111111111";
     const txs: LaunchCostTx[] = plan.map((t, i) => {
       const all = [...budgetIxs(CU_MAX), ...t.ixs];
-      return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups, purchaseVenue), price: prices[i]! };
+      return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups, Q.venue), price: prices[i]! };
     });
     // the bind: one more transaction in the same approval (the launcher and the runtime's key sign), after the plan's
     if (bindIxs) txs.push({ groups: [BIND_LABEL], signatures: 2, units: BIND_UNITS, price: bindPrice });
-    const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase: fromUnits ? null : purchase, hasBuy: !!buy, identity, tip,
-      headroom: fromUnits ? 0n : headroom, units: fromUnits ?? undefined });
-    return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links, bind: bindIxs ? bind : null };
+    const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase: fromUnits ? null : Q.purchase, hasBuy: !!buy, identity, tip,
+      headroom: fromUnits ? 0n : Q.headroom, slippage: fromUnits ? 0n : Q.slippage, units: fromUnits ?? undefined });
+    return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap: Q.swap, costs: detail.costs, quoted: !!Q.swap, identity, landed: [], metaLive: coin.answers, links, bind: bindIxs ? bind : null,
+      purchaseBound: fromUnits ? null : Q.bound, requote: null };
   };
-  const paidInSol = await assemble(null);
-  // $UNITS on its pool: a wallet whose SOL does not cover the purchase but which holds the $UNITS itself launches with those
-  // (no purchase; SOL pays only what is SOL). Every other wallet pays everything in SOL, as before.
-  if (purchaseVenue === "pool" && heldUnits !== null && solShortfall(paidInSol.costs, balance)) {
-    const u = launchUnitsCosts({ deposit, buy: buy ? { quote: buy.quote, maxIn: buy.maxIn } : null });
-    if (heldUnits >= u.needed) return assemble(u);
-  }
-  return paidInSol;
+  // One pricing of the purchase and the launch assembled on it. The draft carries `requote`: the same again on the venue as it
+  // is at that moment, held to the bound this draft stated.
+  const make = async (shown: bigint | null, landed: string[], sol: bigint, prior: NonNullable<typeof S.draft> | null = null): Promise<{ draft: NonNullable<typeof S.draft>; moved: boolean }> => {
+    const moved = await price(shown);
+    let d = await assemble(null, prior);
+    // $UNITS on its pool: a wallet whose SOL does not cover the purchase but which holds the $UNITS itself launches with those
+    // (no purchase; SOL pays only what is SOL). Every other wallet pays everything in SOL, as before.
+    if (Q.venue === "pool" && Q.held !== null && solShortfall(d.costs, sol)) {
+      const u = launchUnitsCosts({ deposit, buy: buy ? { quote: buy.quote, maxIn: buy.maxIn } : null });
+      if (Q.held >= u.needed) d = await assemble(u, prior);
+    }
+    d.landed = landed;
+    const me = d;
+    d.requote = async () => {
+      const now = await rpc.getBalance(launcher);
+      S.sol = now;
+      return make(me.purchaseBound, me.landed, now, me);
+    };
+    // never more than the review stated: a higher maximum for any reason (the price, an account that is gone) is read again first
+    return { draft: d, moved: (moved && !d.costs.units) || (!!prior && d.costs.maxCharge > prior.costs.maxCharge) };
+  };
+  return (await make(null, [], balance)).draft;
 }
 
 /** The SOL/USD price (apps/web/chain-routes.ts /chain/sol-price: Jupiter, refused when stale); null when unavailable. */
@@ -1042,17 +1075,34 @@ async function groupDone(d: NonNullable<typeof S.draft>, g: string): Promise<boo
   return d.landed.includes(g);
 }
 
+/** Said under the redrawn Review step when the price moved past what it stated. */
+export const PRICE_MOVED = "The price moved since this review, so the amounts were read again. Nothing was signed or sent. Check the new maximum, then press Launch.";
+
 async function launchSign() {
-  const d = S.draft;
+  const d0 = S.draft;
   // never double-send: one launch in flight at a time, and what is already on chain is left out
-  if (!d || S.sending || S.launched?.mint === d.mint.id || !requireReady()) return;
+  if (!d0 || S.sending || S.launched?.mint === d0.mint.id || !requireReady()) return;
   // market rate: the built amount's price reading has aged past Core's limit, so the launch is built again before anything is signed
-  if (!d.landed.length && builtRateStale()) return void launchReview().then(() => set("w-launch-status", html`<span class="dim">${RATE_REBUILT}</span>`));
+  if (!d0.landed.length && builtRateStale()) return void launchReview().then(() => set("w-launch-status", html`<span class="dim">${RATE_REBUILT}</span>`));
+  let d: NonNullable<typeof S.draft> = d0;
   S.sending = true;
   renderWizard();
   for (const el of S.root?.querySelectorAll<HTMLButtonElement>('[data-act="launch-sign"], [data-act="launch-review"]') ?? []) el.disabled = true;
   const st = (m: string) => set("w-launch-status", html`<span class="dim">${m}</span>`);
   try {
+    // The purchase is priced again on the pool as it is this second, and the bound that is signed comes from that reading
+    // (purchaseBound): never above the maximum the review stated. Past it, the review is drawn again and nothing is signed.
+    if (d.requote) {
+      st("Reading the price again");
+      const q = await d.requote();
+      S.draft = d = q.draft;
+      if (q.moved || launchBlocked()) {
+        S.sending = false;
+        renderLaunchReview();
+        renderFronting();
+        return void set("w-launch-status", html`<span class="dim" data-price-moved>${PRICE_MOVED}</span>`);
+      }
+    }
     const parts: BundlePart[] = [];
     for (const t of d.swap?.plan.txs ?? []) parts.push({ ixs: t.ixs, units: 0, tables: t.tables, raw: true, label: "SOL to $UNITS (Jupiter)" });
     const todo = await partsToSend(d.plan, (g) => groupDone(d, g), d.landed);

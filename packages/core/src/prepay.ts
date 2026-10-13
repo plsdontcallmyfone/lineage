@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS prepay_admin (
 // edits the amounts with POST /v1/admin/launch-fronting; the patch is stored here and applied over the
 // config file's prepay block, so GET /v1/config serves the effective values.
 // "A units account" (owner direction 2026-10-11): its price in lamports and the recipient of the payment are edited the same way.
-const FRONTING_KEYS = ["credits_usd", "initial_buy_bps", "initial_buy_slippage_bps", "identity_account_price_lamports", "identity_account_recipient"] as const;
+const FRONTING_KEYS = ["credits_usd", "initial_buy_bps", "initial_buy_slippage_bps", "units_purchase_slippage_bps", "identity_account_price_lamports", "identity_account_recipient"] as const;
 
 interface Internals {
   db: Core["db"];
@@ -161,6 +161,7 @@ export class Prepay {
     if (typeof patch.credits_usd === "string") next.min_usd = next.default_usd = patch.credits_usd;
     if (typeof patch.initial_buy_bps === "number") next.initial_buy_bps = patch.initial_buy_bps;
     if (typeof patch.initial_buy_slippage_bps === "number") next.initial_buy_slippage_bps = patch.initial_buy_slippage_bps;
+    if (typeof patch.units_purchase_slippage_bps === "number") next.units_purchase_slippage_bps = patch.units_purchase_slippage_bps;
     if (typeof patch.identity_account_price_lamports === "string") next.identity_account_price_lamports = patch.identity_account_price_lamports;
     if (typeof patch.identity_account_recipient === "string") next.identity_account_recipient = patch.identity_account_recipient;
     (this.c.cfg as { prepay?: PrepayConfig | null }).prepay = parsePrepayConfig(next);
@@ -184,6 +185,7 @@ export class Prepay {
       rate_status: p.rate_status,
       initial_buy_bps: p.initial_buy_bps,
       initial_buy_slippage_bps: p.initial_buy_slippage_bps,
+      units_purchase_slippage_bps: p.units_purchase_slippage_bps,
       identity_account_price_lamports: p.identity_account_price_lamports,
       identity_account_recipient: p.identity_account_recipient,
       admin_patch: row ? JSON.parse(row.patch) : null,
@@ -191,7 +193,7 @@ export class Prepay {
     };
   }
 
-  /** POST /v1/admin/launch-fronting { credits_usd?, initial_buy_bps?, initial_buy_slippage_bps? } */
+  /** POST /v1/admin/launch-fronting { credits_usd?, initial_buy_bps?, initial_buy_slippage_bps?, units_purchase_slippage_bps? } */
   setFronting(body: unknown) {
     const p = this.config();
     if (!p) throw bad("no_prepay_config", "this Core has no prepay block in its network config");
@@ -201,7 +203,7 @@ export class Prepay {
     if (extra.length) throw bad("bad_fronting", `unknown field(s): ${extra.join(", ")}`);
     if (b.credits_usd !== undefined && (typeof b.credits_usd !== "string" || !/^\d+(\.\d{1,2})?$/.test(b.credits_usd) || Number(b.credits_usd) <= 0))
       throw bad("bad_fronting", "credits_usd must be a positive dollar amount as a string, such as \"10\"");
-    for (const k of ["initial_buy_bps", "initial_buy_slippage_bps"] as const)
+    for (const k of ["initial_buy_bps", "initial_buy_slippage_bps", "units_purchase_slippage_bps"] as const)
       if (b[k] !== undefined && (!Number.isInteger(b[k]) || (b[k] as number) < 0 || (b[k] as number) > 10_000)) throw bad("bad_fronting", `${k} must be an integer 0 to 10000`);
     if (b.identity_account_price_lamports !== undefined && (typeof b.identity_account_price_lamports !== "string" || !/^\d{1,19}$/.test(b.identity_account_price_lamports)))
       throw bad("bad_fronting", "identity_account_price_lamports must be a whole number of lamports as a string, such as \"30000000\"");

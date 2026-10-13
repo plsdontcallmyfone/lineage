@@ -33,6 +33,14 @@ export interface PrepayConfig {
   /** Most the initial buy may cost above the curve quote, in basis points of the quote (the maximum input sent with an exact-output buy). */
   initial_buy_slippage_bps: number;
   /**
+   * Most the launch's purchase of the quote coin with SOL may cost above its quote, in basis points of the
+   * quote (the maximum SOL sent with the exact-output buy on the coin's own pool or curve). The pool is
+   * small and moves between the price reading and the block the launch lands in: the mainnet proof run of
+   * 2026-10-13 lost a launch's second transaction to a 4.6% move against a 1% bound. Default 500 (5%).
+   * Admin-editable (POST /v1/admin/launch-fronting). The Review step states the SOL at this bound.
+   */
+  units_purchase_slippage_bps: number;
+  /**
    * "A units account" (owner direction 2026-10-11): the SOL the launcher pays, in lamports (decimal
    * string), by a system transfer in the launch transactions to `identity_account_recipient`. The
    * identity service assigns a pool account only to a launch that carries it. Admin-editable
@@ -81,6 +89,9 @@ export function marketRate(c: PrepayConfig | null | undefined): { maxAgeS: numbe
 export const IDENTITY_ACCOUNT_PRICE_DEFAULT = "30000000";
 
 const DEC = /^\d+(\.\d+)?$/;
+/** The default bound of the launch's SOL purchase of the quote coin: 5% over its quote. */
+export const UNITS_PURCHASE_SLIPPAGE_DEFAULT_BPS = 500;
+
 /** A non-negative decimal string as (integer, scale). */
 function dec(s: string): [bigint, bigint] {
   if (!DEC.test(s)) throw new Error(`${s} is not a non-negative decimal`);
@@ -114,7 +125,7 @@ export function parsePrepayConfig(raw: unknown): PrepayConfig {
   if (r.rate_status !== "test" && r.rate_status !== "live") throw new Error('prepay config: rate_status is "test" or "live"');
   for (const k of ["sandbox_reserve_s", "attempt_max_usd", "since"])
     if (typeof r[k] !== "number" || !Number.isFinite(r[k]) || (r[k] as number) < 0) throw new Error(`prepay config: ${k} must be a non-negative number`);
-  for (const k of ["initial_buy_bps", "initial_buy_slippage_bps"])
+  for (const k of ["initial_buy_bps", "initial_buy_slippage_bps", "units_purchase_slippage_bps"])
     if (r[k] !== undefined && (!Number.isInteger(r[k]) || (r[k] as number) < 0 || (r[k] as number) > 10_000)) throw new Error(`prepay config: ${k} must be an integer 0 to 10000`);
   if (r.identity_account_price_lamports !== undefined && (typeof r.identity_account_price_lamports !== "string" || !/^\d+$/.test(r.identity_account_price_lamports)))
     throw new Error("prepay config: identity_account_price_lamports must be a whole number of lamports as a string");
@@ -127,6 +138,7 @@ export function parsePrepayConfig(raw: unknown): PrepayConfig {
     compute_price_line_per_usd: c.compute_price_line_per_usd, compute_price_line_per_sandbox_s: c.compute_price_line_per_sandbox_s,
     sandbox_reserve_s: c.sandbox_reserve_s, attempt_max_usd: c.attempt_max_usd, since: c.since,
     initial_buy_bps: (r.initial_buy_bps as number | undefined) ?? 100, initial_buy_slippage_bps: (r.initial_buy_slippage_bps as number | undefined) ?? 100,
+    units_purchase_slippage_bps: (r.units_purchase_slippage_bps as number | undefined) ?? UNITS_PURCHASE_SLIPPAGE_DEFAULT_BPS,
     identity_account_price_lamports: (r.identity_account_price_lamports as string | undefined) ?? IDENTITY_ACCOUNT_PRICE_DEFAULT,
     identity_account_recipient: (r.identity_account_recipient as string | null | undefined) ?? null,
     ...(typeof r.identity_account_unavailable === "string" && r.identity_account_unavailable ? { identity_account_unavailable: r.identity_account_unavailable.slice(0, 200) } : {}),

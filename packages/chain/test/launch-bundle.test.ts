@@ -229,3 +229,45 @@ describe("Jito helpers", () => {
 function launcherKey() {
   return k();
 }
+
+describe("the purchase bound that is signed comes from a fresh quote (mainnet proof run 2026-10-13)", () => {
+  test("the proof run's numbers: a 1% bound on a 25 s old price failed; 5% on the fresh quote covers the move", async () => {
+    const c = await import("../src/index.ts");
+    // the review read a quote whose 1% bound was 95,665,082 lamports; when the transaction ran the purchase needed 100,024,838
+    const oldBound = 95_665_082n, neededAtRun = 100_024_838n;
+    expect(neededAtRun > oldBound).toBe(true);
+    // priced again right before signing, at the configured default: the bound is ceil(quote x 1.05)
+    const b = c.purchaseBound({ quote: neededAtRun, bps: c.UNITS_PURCHASE_SLIPPAGE_DEFAULT_BPS, shown: null });
+    expect(c.UNITS_PURCHASE_SLIPPAGE_DEFAULT_BPS).toBe(500);
+    expect(b).toEqual({ maxSol: 105_026_080n, redraw: false });
+    expect(b.maxSol).toBe(c.maxSolIn(neededAtRun, 500));
+    // Measured from the record: the purchase needed 5.6% more than the quote the review had read (4.6% more than its 1% bound),
+    // so 5% over that OLD quote would not have covered it either (99,453,798). The fresh reading is what the fix rests on.
+    const quoteAtReview = (oldBound * 10_000n) / 10_100n;
+    expect(c.maxSolIn(quoteAtReview, 500)).toBe(99_453_798n);
+    expect(neededAtRun > c.maxSolIn(quoteAtReview, 500)).toBe(true);
+    expect(Number((neededAtRun * 10_000n) / quoteAtReview)).toBe(10_560);
+  });
+  test("never above the maximum the review stated: fresh when lower, the stated bound while half the tolerance is left, else read again", async () => {
+    const { purchaseBound, maxSolIn } = await import("../src/index.ts");
+    const shown = maxSolIn(100_000_000n, 500); // 105,000,000
+    // the price fell: the fresh, lower bound is signed
+    expect(purchaseBound({ quote: 98_000_000n, bps: 500, shown })).toEqual({ maxSol: 102_900_000n, redraw: false });
+    // unchanged: the same bound
+    expect(purchaseBound({ quote: 100_000_000n, bps: 500, shown })).toEqual({ maxSol: shown, redraw: false });
+    // rose 2%: 2.5% over the fresh quote is 104,550,000, under the stated bound, which is signed as stated
+    expect(purchaseBound({ quote: 102_000_000n, bps: 500, shown })).toEqual({ maxSol: shown, redraw: false });
+    // rose 3%: less than half the tolerance is left under the stated bound, so nothing is signed and the review shows the fresh bound
+    expect(purchaseBound({ quote: 103_000_000n, bps: 500, shown })).toEqual({ maxSol: 108_150_000n, redraw: true });
+    // the bound is a function of the quote passed in, whatever was shown before
+    for (const q of [1n, 77n, 95_665_082n, 10n ** 12n]) expect(purchaseBound({ quote: q, bps: 500, shown: null }).maxSol).toBe(maxSolIn(q, 500));
+  });
+  test("the setting: default 5%, read from the prepay config, 0 to 10000", async () => {
+    const { parsePrepayConfig } = await import("../src/index.ts");
+    const base = { min_usd: "10", default_usd: "10", line_per_usd: "20", rate_status: "test", compute_price_line_per_usd: "20", compute_price_line_per_sandbox_s: "0.002", sandbox_reserve_s: 600, attempt_max_usd: 0.5, since: 0 };
+    expect(parsePrepayConfig(base).units_purchase_slippage_bps).toBe(500);
+    expect(parsePrepayConfig(base).initial_buy_slippage_bps).toBe(100);
+    expect(parsePrepayConfig({ ...base, units_purchase_slippage_bps: 800 }).units_purchase_slippage_bps).toBe(800);
+    expect(() => parsePrepayConfig({ ...base, units_purchase_slippage_bps: 10_001 })).toThrow(/units_purchase_slippage_bps/);
+  });
+});

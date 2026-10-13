@@ -94,3 +94,30 @@ describe("the venue buy hook", () => {
     setInitialBuyBuilder(null);
   });
 });
+
+describe("Review states the most the wallet can be charged (mainnet proof run 2026-10-13)", () => {
+  // a purchase quoted 95,000,000 lamports with a 5% bound: 4,750,000 of room, plus 2,039,280 of rent that comes back
+  const c = launchSolCosts({ creation: 25_000_000n, credits: 90_000_000n, buy: 5_000_000n, identity: 0n, tip: 10_000n, headroom: 4_750_000n + 2_039_280n, slippage: 4_750_000n });
+  const v = { costs: c, creditsUsd: "10", bps: 100, identityChosen: false, solUsd: 100, solBalance: 10n ** 12n, txCount: 3, blocked: null, devnet: false, docs: "/docs/x", pending: false, unitsName: "UNITS" };
+  test("maxCharge is the total plus the purchase's room, without the rent that returns", () => {
+    expect(c.total).toBe(120_010_000n);
+    expect(c.maxCharge).toBe(124_760_000n);
+    expect(c.needed).toBe(126_799_280n);
+    expect(() => launchSolCosts({ creation: 1n, credits: 1n, buy: null, identity: 0n, headroom: 1n, slippage: 2n })).toThrow(/slippage room/);
+    // callers that give no split keep the conservative figure
+    expect(launchSolCosts({ creation: 1n, credits: 1n, buy: null, identity: 0n, headroom: 7n }).maxCharge).toBe(9n);
+  });
+  test("an At most row in US dollars first, and the approval line states that maximum, not the quote", () => {
+    const r = costBreakdown(v).s;
+    expect(r).toContain('data-fronting="Maximum" data-lamports="124760000"');
+    expect(r).toMatch(/At most<\/span><span class="lz-rv"><b class="num">\$12\.48<\/b> <span class="dim">0\.1248 SOL: the UNITS purchase may cost up to 5% more/);
+    expect(r).toMatch(/one signature, for at most \$12\.48<\/b> <span class="dim">0\.1248 SOL; 3 transactions signed together/);
+    expect(r).not.toContain("—");
+  });
+  test("no purchase inside the launch: no At most row, the approval states the total", () => {
+    const flat = launchSolCosts({ creation: 25_000_000n, credits: 0n, buy: null, identity: 0n });
+    const r = costBreakdown({ ...v, costs: flat }).s;
+    expect(r).not.toContain('data-fronting="Maximum"');
+    expect(r).toContain("one signature, for at most $2.50");
+  });
+});

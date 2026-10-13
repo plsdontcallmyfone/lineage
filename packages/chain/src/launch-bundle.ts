@@ -85,6 +85,12 @@ export interface LaunchSolCosts {
   /** what the wallet must hold: total plus headroom */
   needed: bigint;
   /**
+   * The most the wallet can be charged: total plus what the SOL purchase may cost above its quote at its
+   * slippage bound (the part of `headroom` that can be spent; a temporary account's rent comes back and is
+   * not in it). The Review step and the approval line state this figure, not the quote.
+   */
+  maxCharge: bigint;
+  /**
    * Set when the launch buys no $UNITS and takes it from the launcher's own balance instead (base
    * units of $UNITS): the credits deposit, the initial buy at its quote (null without one), their sum,
    * and what the wallet must hold (the buy at its slippage bound). The SOL lines `credits` and `buy`
@@ -109,10 +115,14 @@ export function unitsShortfall(c: LaunchSolCosts, held: bigint | null, fmt: (bas
   if (held < c.units.needed) return `this launch needs ${fmt(c.units.needed)} in your wallet; you hold ${fmt(held)}`;
   return null;
 }
-export function launchSolCosts(o: { creation: bigint; credits: bigint; buy: bigint | null; identity: bigint; tip?: bigint; headroom?: bigint; units?: LaunchUnitsCosts }): LaunchSolCosts {
+export function launchSolCosts(o: { creation: bigint; credits: bigint; buy: bigint | null; identity: bigint; tip?: bigint; headroom?: bigint;
+  /** the part of `headroom` the purchase can really spend (its bound less its quote); all of `headroom` when not given */
+  slippage?: bigint; units?: LaunchUnitsCosts }): LaunchSolCosts {
   const tip = o.tip ?? 0n, headroom = o.headroom ?? 0n;
   const total = o.creation + o.credits + (o.buy ?? 0n) + o.identity + tip;
-  return { creation: o.creation, credits: o.credits, buy: o.buy, identity: o.identity, tip, headroom, total, needed: total + headroom, ...(o.units ? { units: o.units } : {}) };
+  const slippage = o.slippage ?? headroom;
+  if (slippage < 0n || slippage > headroom) throw new Error("the purchase's slippage room is part of the headroom");
+  return { creation: o.creation, credits: o.credits, buy: o.buy, identity: o.identity, tip, headroom, total, needed: total + headroom, maxCharge: total + slippage, ...(o.units ? { units: o.units } : {}) };
 }
 /** Why the wallet cannot pay, or null. */
 export function solShortfall(c: LaunchSolCosts, lamports: bigint | null): string | null {
@@ -127,6 +137,24 @@ const fmtSol = (l: bigint) => {
 
 /** The SOL a curve buy of an exact amount costs at most: ceil(quote x (10,000 + bps) / 10,000). */
 export const maxSolIn = (quote: bigint, bps: number) => (quote * BigInt(10_000 + bps) + 9_999n) / 10_000n;
+
+/**
+ * The bound the SOL purchase is SIGNED with, from a quote read right before the wallet is asked (mainnet
+ * proof run 2026-10-13: a bound set from the price read when the Review step opened was 25 s old when the
+ * transaction ran, and the purchase failed). `shown` is the bound the Review step stated (null: none
+ * stated yet, the first build).
+ *   - the fresh bound is at or under the stated one: the fresh bound is signed (never more than was shown);
+ *   - the price rose, but the fresh quote still leaves at least half the tolerance under the stated bound:
+ *     the stated bound is signed (exactly what the person read);
+ *   - otherwise nothing is signed: `redraw` is true and `maxSol` is the fresh bound, for the Review step to
+ *     show before the person presses Launch again.
+ */
+export function purchaseBound(o: { quote: bigint; bps: number; shown: bigint | null }): { maxSol: bigint; redraw: boolean } {
+  const fresh = maxSolIn(o.quote, o.bps);
+  if (o.shown === null || fresh <= o.shown) return { maxSol: fresh, redraw: false };
+  if (maxSolIn(o.quote, Math.floor(o.bps / 2)) <= o.shown) return { maxSol: o.shown, redraw: false };
+  return { maxSol: fresh, redraw: true };
+}
 
 // ---------- the units account payment ----------
 
