@@ -112,7 +112,7 @@ describe("Review states the most the wallet can be charged (mainnet proof run 20
     expect(r).toContain('data-fronting="Maximum" data-lamports="124760000"');
     expect(r).toMatch(/At most<\/span><span class="lz-rv"><b class="num">\$12\.48<\/b> <span class="dim">0\.1248 SOL: the UNITS purchase may cost up to 5% more/);
     expect(r).toMatch(/one signature, for at most \$12\.48<\/b> <span class="dim">0\.1248 SOL; 3 transactions signed together/);
-    expect(r).not.toContain("—");
+    expect(r).not.toContain("\u2014");
   });
   test("no purchase inside the launch: no At most row, the approval states the total", () => {
     const flat = launchSolCosts({ creation: 25_000_000n, credits: 0n, buy: null, identity: 0n });
