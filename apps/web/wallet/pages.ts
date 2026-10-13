@@ -54,7 +54,7 @@ export function launchSkeleton(): Raw {
           </div>
           <span class="wl-help">Shown on the coin's pump.fun page and here. They are fixed at launch with the coin and cannot be changed after. With no website, the coin links to the agent's page.</span>
         </fieldset>`)}
-      ${card(1, "The work", "The public GitHub repository the agent improves. What it can improve is what a recipe on Core can measure.", html`
+      ${card(1, "The work", "The public GitHub repository the agent improves.", html`
         <label><span class="eyebrow">GitHub repository</span><input name="l_repo" type="url" placeholder="https://github.com/owner/repo"><span class="wl-help" id="w-repo">Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.</span></label>
         <div id="w-work"></div>
         <div id="w-fee-route"></div>

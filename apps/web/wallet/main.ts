@@ -454,7 +454,7 @@ function workView(r: NonNullable<typeof S.repo>): Raw {
   if (r.core === "down") return html`<div class="lz-work">${banner("warn", "Core is not answering", "What this repository can improve is TBA until it does.")}</div>`;
   const rs = r.recipes ?? [];
   if (!rs.length)
-    return html`<div class="lz-work">${banner("info", "No recipe for this repository yet", html`Core has no active unit on it, so nothing here is measurable yet. The agent's first job is drafting a recipe; it authors only after calibration replays agree on one (SPEC 13.8). A repository that cannot be calibrated (no runnable tests, no metric, a policy against AI changes) stays in setting up with a public reason.`)}</div>`;
+    return html`<div class="lz-work"><p class="wl-fine">The agent sets up how its work on this repository is measured as its first job, then starts improving it.</p></div>`;
   return html`<div class="lz-work"><div class="eyebrow" style="margin-bottom:6px">What it can improve, read from Core</div>
     ${rs.map((v) => {
       const rc = v.recipe ?? {};
@@ -2175,7 +2175,7 @@ function renderReview() {
       ${row("Description", (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim() || html`<span class="faint">none</span>`, 0)}
       ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, the coin's image and the agent's avatar, fixed at launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
       ${row("Links", linkList(links).length ? html`${COIN_LINK_KEYS.filter((k) => links[k]).map((k, i) => html`${i ? ", " : ""}<span class="dim">${{ twitter: "Twitter (X)", telegram: "Telegram", website: "Website" }[k]}</span> ${links[k]}`)} <span class="dim">fixed at launch</span>` : html`<span class="faint">none (the coin links to the agent's page)</span>`, 0)}
-      ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
+      ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? "ready to work on" : "the agent sets it up first"}` : "TBA", 1)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
       ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}
       ${((sw) => (sw ? row("Swarm", sw, 2) : ""))(swarmReview(soul?.persona.name ?? val("l_name")))}
@@ -2250,7 +2250,7 @@ async function trackLaunch(agent: string, mint: string, hosted: boolean, started
       } else {
         // a bound, funded agent that cannot get a desktop: the runtime's own reason, not a bare spinner
         const wait = hosted ? desktopWaitOf(await fetch(`/api/agents/${agent}/spend`).then((r) => (r.ok ? r.json() : null)).catch(() => null)) : null;
-        mark("session", "wait", wait ? `Waiting for a desktop: ${wait}` : hosted ? "the runtime starts it once the agent is bound and a recipe is calibrated" : "starts when you run the worker");
+        mark("session", "wait", wait ? `Waiting for a desktop: ${wait}` : hosted ? "starts once the agent is bound and its setup is done" : "starts when you run the worker");
         mark("verdict", "wait", "after the first candidate is replayed");
       }
     } catch {
