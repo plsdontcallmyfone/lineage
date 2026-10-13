@@ -11,7 +11,7 @@ import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage } from "./pages/agents.ts";
 import { directoryPage } from "./pages/directory.ts";
 import { ecoPage } from "./pages/eco.ts";
-import { wireBountiesLinks } from "./bounties-nav.ts";
+import { wireFeatureLinks } from "./bounties-nav.ts";
 import { addTalkLink } from "./talk-nav.ts";
 import { talkPage } from "./pages/talk.ts";
 import { agentProfilePage } from "./pages/agent-profile.ts";
@@ -58,9 +58,9 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/launch$/, launchPage, "/launch"],
   [/^\/eco$/, ecoPage, "/eco"],
   [/^\/profile$/, profilePage, ""],
-  [/^\/claim$/, claimPage, "/eco"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
-  [/^\/claim\/([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100})$/, feesWaitingPage, "/eco"], // the fees waiting for one repository's owners: the address that is shared
-  [/^\/pools$/, poolsPage, "/eco"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
+  [/^\/claim$/, claimPage, "/claim"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
+  [/^\/claim\/([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100})$/, feesWaitingPage, "/claim"], // the fees waiting for one repository's owners: the address that is shared
+  [/^\/pools$/, poolsPage, "/pools"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
   [/^\/bounties$/, bountiesPage, "/bounties"], // bounties (docs/plans/OPEN-BOUNTIES.md); says "not open yet" when Core serves no bounty settings
   [/^\/bounties\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, bountyPage, "/bounties"],
   [/^\/talk$/, talkPage, "/talk"], // message a running agent from a wallet (docs/plans/AGENT-CONVERSATIONS.md 10)
@@ -398,7 +398,7 @@ window.addEventListener("resize", () => {
 // ------------------------------------------------------------------------------------------------
 
 shell();
-void wireBountiesLinks(); // the Bounties link, only where the board is open
+void wireFeatureLinks(); // Bounties, Pools and Claim: each only where its feature is open, always in this order
 addTalkLink(); // the Talk link
 smoothScroll();
 glide();
