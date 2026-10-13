@@ -1,0 +1,545 @@
+{
+ "started": "2026-10-13T15:40:34.731Z",
+ "fork": "http://127.0.0.1:9690",
+ "program": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+ "mainnet_slot_of_the_copy": 456492911,
+ "replaced_on_the_fork": {
+  "BsPrUoUz2k2cUtXLZcm4ggbXM38pK5QDBoWrXxDKdQU2": "PoolConfig: keeper (bytes 8 to 39) replaced by a stand-in key",
+  "2U9JStvCctQ8pUz8LKX9RwcDgG63THvY9trgu4r7GpVL": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key",
+  "4WeywLMS3QnSJRRkREfsbfDrVZTr2WCg1ofjXEDoY1Ey": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key",
+  "C8T2dUYUfYiTPoSLumhFQP8dWtNHM21YYXd9tXcLKkYx": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key"
+ },
+ "agents": {
+  "pool_member_on_its_curve": {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "mint": "EArgzU8BNN24s1NcVJX2XT2bgUBDysSiPYF4828r93Sp",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "repo_url": "https://github.com/karpathy/minbpe"
+  },
+  "pool_member_that_graduates": {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "mint": "F2j1B7WfAWceMKWpXAddynuYquhvdAtw9e1r712qGZAS",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "repo_url": "https://github.com/karpathy/minbpe"
+  },
+  "fee_route_only_that_graduates": {
+   "agent": "ALGNQFPtKjY7jmL27RNFa9M7UAFnz91VCHa5sh8QFnyh",
+   "mint": "AFixtuZr34wHT5JaMb4hQ2147NZuu32b1FtX9oNeUmLV",
+   "repo_id": "9e58ae623483821e5c7536969b54c72637d97201470b32cc5600098063b34af1",
+   "repo_url": "https://github.com/morluto/rea"
+  },
+  "no_route_that_graduates": {
+   "agent": "9gihFuPRTJnrr88EqLBsBcJDhwznno19CQukYPMkCdTe",
+   "mint": "CL4tdH4TNGkyLLinkU4vQEozF8svaM7fZjB6ECTvi2yL",
+   "repo_id": "1281f873054cde064bf02d6aa54799d48c2d8de146f59973e4155aba1a95ab27",
+   "repo_url": "https://github.com/units-agents/units-learnings"
+  },
+  "no_route": [
+   {
+    "agent": "HB2xZfFfPH9JwSPaJHBzq4QcQn4h8cfNQ6SxaxkeJP6u",
+    "mint": "Bs8cLf4h1EPEgyVm7N5UKKS5CmyznN2wivy9YmJV1wPc",
+    "repo_id": "2de27865909264c17830467d048f54c94fb893e456449466c1ed0a1d6dfb607b",
+    "repo_url": "https://github.com/karpathy/autoresearch"
+   }
+  ]
+ },
+ "cranks": [
+  {
+   "case": "no route, on its curve (HB2xZf, the 641855458 base units that wait on mainnet now)",
+   "agent": "HB2xZfFfPH9JwSPaJHBzq4QcQn4h8cfNQ6SxaxkeJP6u",
+   "form": "legacy",
+   "bytes": 860,
+   "fees": "641855458",
+   "keeper_said_waiting": "641855458",
+   "to_compute": "449298820",
+   "to_protocol": "192556638",
+   "to_repository_owners": "0",
+   "to_pool": "0",
+   "exact": true,
+   "fee_lamports": 5001,
+   "compute_units": 94439,
+   "payer_lamports_on_the_fork": "557721",
+   "fork_rent_top_up_lamports": "552720",
+   "created": [],
+   "signature": "3N4J3BjWZhZSyGjuBUsgbmciMisAXA4f2PPsWTjENioM6isXHqKzx6UwjhmMLLa7pQNXPREPFZB9d8arRDnDhzgA"
+  },
+  {
+   "case": "pool member, on its curve (HHxDgM)",
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "form": "legacy",
+   "bytes": 992,
+   "fees": "18457595716",
+   "keeper_said_waiting": "18457595716",
+   "to_compute": "10336253601",
+   "to_protocol": "5537278715",
+   "to_repository_owners": "0",
+   "to_pool": "2584063400",
+   "pool_share_to_its_cross_holding": "2584063400",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5001,
+   "compute_units": 130482,
+   "payer_lamports_on_the_fork": "5001",
+   "fork_rent_top_up_lamports": "0",
+   "created": [],
+   "signature": "5JQzi9z4nSZPNKUWePhUk5ktQJL2r76jFtgJtY2H1UcEUVB3WboBcbSWwCqg87eDUtr7LKcMHDDRN1bJf9KCnW9s"
+  },
+  {
+   "case": "fee route and pool member, on its curve (HHxDgM)",
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "form": "legacy",
+   "bytes": 1091,
+   "fees": "18457595716",
+   "keeper_said_waiting": "18457595716",
+   "to_compute": "7752190201",
+   "to_protocol": "5537278715",
+   "to_repository_owners": "2584063400",
+   "to_pool": "2584063400",
+   "pool_share_to_its_cross_holding": "2584063400",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5001,
+   "compute_units": 146367,
+   "payer_lamports_on_the_fork": "5001",
+   "fork_rent_top_up_lamports": "0",
+   "created": [],
+   "signature": "5exZj6KhSwGQQVfYBLjssMQDU2W9WKJfnuANLu5JsjjTwFFrYvkiS1SB5WRu7pZqbnDC24hCX5puHmLjV4XjVt76"
+  },
+  {
+   "case": "fee route, on its curve (ALGNQF)",
+   "agent": "ALGNQFPtKjY7jmL27RNFa9M7UAFnz91VCHa5sh8QFnyh",
+   "form": "legacy",
+   "bytes": 959,
+   "fees": "4945162166",
+   "keeper_said_waiting": "4945162166",
+   "to_compute": "2769290813",
+   "to_protocol": "1483548650",
+   "to_repository_owners": "692322703",
+   "to_pool": "0",
+   "exact": true,
+   "fee_lamports": 5001,
+   "compute_units": 116945,
+   "payer_lamports_on_the_fork": "5001",
+   "fork_rent_top_up_lamports": "0",
+   "created": [],
+   "signature": "3pyPEjD4qSj63Zhxsig8FV8Y3WYgUtqEp8ECBeMJ9o3Fe7TkyA9rPdQgsL2oQ75nrkBzrWuju4LSq3gRGRyooSku"
+  },
+  {
+   "case": "pool member whose curve is complete and not migrated yet: cranked on its curve, the first crank of this agent (Cuvvtx)",
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "form": "legacy",
+   "bytes": 992,
+   "fees": "87397662125",
+   "keeper_said_waiting": "87397662125",
+   "to_compute": "48942690790",
+   "to_protocol": "26219298638",
+   "to_repository_owners": "0",
+   "to_pool": "12235672697",
+   "pool_share_to_its_cross_holding": "12235672697",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5001,
+   "compute_units": 159740,
+   "payer_lamports_on_the_fork": "2079081",
+   "fork_rent_top_up_lamports": "0",
+   "created": [
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    }
+   ],
+   "signature": "2E7Vg2d6mCaaFyaoFM4s4YBykzPGbwCxKnEpd4QTDqEWaELptWLGxY2huxt7Sk53EMrw7pdgiY9s35KLysuSfDDR"
+  },
+  {
+   "case": "pool member, graduated (Cuvvtx)",
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "form": "v0",
+   "bytes": 1108,
+   "fees": "4758378790",
+   "keeper_said_waiting": "4758378790",
+   "to_compute": "2664692123",
+   "to_protocol": "1427513637",
+   "to_repository_owners": "0",
+   "to_pool": "666173030",
+   "pool_share_to_its_cross_holding": "666173030",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5002,
+   "compute_units": 198848,
+   "payer_lamports_on_the_fork": "2079082",
+   "fork_rent_top_up_lamports": "0",
+   "created": [
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    }
+   ],
+   "signature": "4MZbYZM9X91gvkTGAVh1gY5yGUNZ8LXrqhsvfvnDPZ3X2RQFGyfAF8XE3cbggf8wSH3zuKqDiuQEfaUnQrdbiKtn"
+  },
+  {
+   "case": "fee route and pool member, graduated: the largest crank (Cuvvtx)",
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "form": "v0",
+   "bytes": 1207,
+   "fees": "4751576275",
+   "keeper_said_waiting": "4751576275",
+   "to_compute": "1995662036",
+   "to_protocol": "1425472883",
+   "to_repository_owners": "665220678",
+   "to_pool": "665220678",
+   "pool_share_to_its_cross_holding": "665220678",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5002,
+   "compute_units": 193029,
+   "payer_lamports_on_the_fork": "5002",
+   "fork_rent_top_up_lamports": "0",
+   "created": [],
+   "signature": "3MY9gqH1yMLtmM8217STtzboZKfgkXsi6KKtSsxGqMr1NuZt4YEpu485jaPpz3FB5RAQa53oBtquwWnH2puywgps"
+  },
+  {
+   "case": "fee route and pool member, graduated, again (2 of 3)",
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "form": "v0",
+   "bytes": 1207,
+   "fees": "4744788858",
+   "keeper_said_waiting": "4744788858",
+   "to_compute": "1992811320",
+   "to_protocol": "1423436658",
+   "to_repository_owners": "664270440",
+   "to_pool": "664270440",
+   "pool_share_to_its_cross_holding": "664270440",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5002,
+   "compute_units": 193029,
+   "payer_lamports_on_the_fork": "5002",
+   "fork_rent_top_up_lamports": "0",
+   "created": [],
+   "signature": "3hCPYRPuEfCRBsnLig9dYpe8JyD9ns4WseG9w1maDLyKyicMpCHWZ18TouNa8uKmjt2jurpFwh8rmnbXJSTqu4GF"
+  },
+  {
+   "case": "fee route and pool member, graduated, again (3 of 3)",
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "form": "v0",
+   "bytes": 1207,
+   "fees": "4738016494",
+   "keeper_said_waiting": "4738016494",
+   "to_compute": "1989966927",
+   "to_protocol": "1421404949",
+   "to_repository_owners": "663322309",
+   "to_pool": "663322309",
+   "pool_share_to_its_cross_holding": "663322309",
+   "pool_share_to_buckets": "0",
+   "exact": true,
+   "fee_lamports": 5002,
+   "compute_units": 193029,
+   "payer_lamports_on_the_fork": "5002",
+   "fork_rent_top_up_lamports": "0",
+   "created": [],
+   "signature": "2VTzzdrFYqVCVH5eaFMkEeGvQVvmtzdAqyC43v38GiUwuCC886mvF4ujSF1FK3oXvj7DKdb7CGQGZZjaZdmgahUz"
+  },
+  {
+   "case": "fee route, graduated: the largest legacy crank (ALGNQF)",
+   "agent": "ALGNQFPtKjY7jmL27RNFa9M7UAFnz91VCHa5sh8QFnyh",
+   "form": "legacy",
+   "bytes": 1225,
+   "fees": "67451715483",
+   "keeper_said_waiting": "67451715483",
+   "to_compute": "37772960671",
+   "to_protocol": "20235514645",
+   "to_repository_owners": "9443240167",
+   "to_pool": "0",
+   "exact": true,
+   "fee_lamports": 5002,
+   "compute_units": 189184,
+   "payer_lamports_on_the_fork": "2079082",
+   "fork_rent_top_up_lamports": "0",
+   "created": [
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    }
+   ],
+   "signature": "53ziYFRtMMdwma6eLhSSyufacYQ3bkUEGHEejYGKXRGq5EnC2mS5UCz5ZBLJp7utxQceVKZpA1BFuhSqdji75wiE"
+  },
+  {
+   "case": "no route, graduated (9gihFu)",
+   "agent": "9gihFuPRTJnrr88EqLBsBcJDhwznno19CQukYPMkCdTe",
+   "form": "legacy",
+   "bytes": 1126,
+   "fees": "70606819179",
+   "keeper_said_waiting": "70606819179",
+   "to_compute": "49424773425",
+   "to_protocol": "21182045754",
+   "to_repository_owners": "0",
+   "to_pool": "0",
+   "exact": true,
+   "fee_lamports": 5002,
+   "compute_units": 191782,
+   "payer_lamports_on_the_fork": "2079082",
+   "fork_rent_top_up_lamports": "0",
+   "created": [
+    {
+     "bytes": 170,
+     "rent_mainnet": "1513840"
+    }
+   ],
+   "signature": "4BCWkrPApRb6qtmA3JJMgPK7meJMJqZcp2Xb8wYvYUVsEcoBLYsAEbnMD5rxHvqQYZeaCnS21reUdMcB2nLBLJ2u"
+  }
+ ],
+ "counts": {
+  "legacy": 9,
+  "v0": 5
+ },
+ "fork_only_top_up": "3 accounts of the pool copied from mainnet (the pool, its vault, its member): 0.01 SOL each, for this validator's higher rent",
+ "before_this_change_pool_member_graduated": [
+  "[crank-fees] Cuvvtx (F2j1B7): transaction is 1258 bytes, over the 1232-byte packet limit",
+  "[crank-fees] done: 0 crank(s) sent"
+ ],
+ "before_this_change_route_and_pool_graduated": [
+  "[crank-fees] Cuvvtx (F2j1B7): not sent, its crank is 1313 bytes as a legacy transaction (a routed agent whose coin graduated): it needs a v0 transaction with the launch lookup table",
+  "[crank-fees] done: 0 crank(s) sent"
+ ],
+ "cost": {
+  "lookup_table": "none created: the keeper reads the frozen launch lookup table and pays no rent for a table",
+  "fee_per_crank_lamports": {
+   "legacy": [
+    5001
+   ],
+   "v0": [
+    5002
+   ]
+  },
+  "compute_units": {
+   "legacy_max": 191782,
+   "v0_max": 198848
+  },
+  "accounts_the_payer_paid_rent_for": [
+   {
+    "case": "pool member whose curve is complete and not migrated yet: cranked on its curve, the first crank of this agent (Cuvvtx)",
+    "created": [
+     {
+      "bytes": 170,
+      "rent_mainnet": "1513840"
+     }
+    ]
+   },
+   {
+    "case": "pool member, graduated (Cuvvtx)",
+    "created": [
+     {
+      "bytes": 170,
+      "rent_mainnet": "1513840"
+     }
+    ]
+   },
+   {
+    "case": "fee route, graduated: the largest legacy crank (ALGNQF)",
+    "created": [
+     {
+      "bytes": 170,
+      "rent_mainnet": "1513840"
+     }
+    ]
+   },
+   {
+    "case": "no route, graduated (9gihFu)",
+    "created": [
+     {
+      "bytes": 170,
+      "rent_mainnet": "1513840"
+     }
+    ]
+   }
+  ],
+  "note": "the fork charges the base fee per signature (5,000 lamports) plus the priority fee at the profile's floor of 1 micro-lamport per compute unit; on mainnet the priority fee follows recent fees up to the profile's cap, on the default compute limit (no limit instruction is sent: 200,000 units per instruction that is not a budget instruction). fork_rent_top_up_lamports of a crank is not a mainnet cost"
+ },
+ "finished": "2026-10-13T15:41:17.254Z",
+ "outcome": "PASS",
+ "pass": 31,
+ "total": 31,
+ "sections": {
+  "0 fork": {
+   "passed": 4,
+   "total": 4
+  },
+  "1 no route": {
+   "passed": 2,
+   "total": 2
+  },
+  "2 routed on the curve": {
+   "passed": 3,
+   "total": 3
+  },
+  "3 routed and graduated": {
+   "passed": 15,
+   "total": 15
+  },
+  "4 graduated without a pool": {
+   "passed": 4,
+   "total": 4
+  },
+  "5 every agent in one run": {
+   "passed": 3,
+   "total": 3
+  }
+ },
+ "checks": [
+  {
+   "name": "0 fork: the launch program on the fork is the code deployed on mainnet, byte for byte",
+   "ok": true,
+   "detail": "958368 bytes of code, sha256 817077c4730d02df"
+  },
+  {
+   "name": "0 fork: the launch lookup table on the fork is mainnet's, byte for byte: frozen (no authority, so nobody can extend it), never deactivated, the 24 launch addresses",
+   "ok": true,
+   "detail": "6dj2UbcMsYY4BHQNnQmXkkcNs5b4sa7h3C8q6Gj3Fkrc, 824 bytes, 4836160 lamports of rent paid at the launch setup"
+  },
+  {
+   "name": "0 fork: both feature bits are on, the fee route share and the pool share are mainnet's",
+   "ok": true,
+   "detail": "agent share 7000 bps of the fees; a fee route takes 2000 to 2000 bps of it, a pool 2000 bps"
+  },
+  {
+   "name": "0 fork: the agents are live launches on their curves, none with a fee route, and only the pool memberships mainnet has now; the three that take a route have stand-in owners here",
+   "ok": true,
+   "detail": "HHxDgM, Cuvvtx, ALGNQF, HB2xZf, 9gihFu; pool member on mainnet already: Cuvvtx"
+  },
+  {
+   "name": "1 no route: a dry run (no --send) of HB2xZf simulates, says what it would do and sends nothing",
+   "ok": true,
+   "detail": "HB2xZf (Bs8cLf): simulation ok, would crank (legacy) | done: 0 crank(s) sent (0 legacy, 0 v0)"
+  },
+  {
+   "name": "1 no route: no route, on its curve (HB2xZf, the 641855458 base units that wait on mainnet now): sent by the keeper as a legacy transaction of 860 bytes; the fees it said wait are the fees it moved; compute, protocol exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 641855458: compute 449298820, protocol 192556638; legacy 860 bytes, 94439 CU, fee 5001 lamports"
+  },
+  {
+   "name": "2 routed on the curve: pool member, on its curve (HHxDgM): sent by the keeper as a legacy transaction of 992 bytes; the fees it said wait are the fees it moved; compute, protocol, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 18457595716: compute 10336253601, protocol 5537278715, pool 2584063400; legacy 992 bytes, 130482 CU, fee 5001 lamports"
+  },
+  {
+   "name": "2 routed on the curve: fee route and pool member, on its curve (HHxDgM): sent by the keeper as a legacy transaction of 1091 bytes; the fees it said wait are the fees it moved; compute, protocol, repository owners, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 18457595716: compute 7752190201, protocol 5537278715, repository owners 2584063400, pool 2584063400; legacy 1091 bytes, 146367 CU, fee 5001 lamports"
+  },
+  {
+   "name": "2 routed on the curve: fee route, on its curve (ALGNQF): sent by the keeper as a legacy transaction of 959 bytes; the fees it said wait are the fees it moved; compute, protocol, repository owners exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 4945162166: compute 2769290813, protocol 1483548650, repository owners 692322703; legacy 959 bytes, 116945 CU, fee 5001 lamports"
+  },
+  {
+   "name": "3 routed and graduated: pool member whose curve is complete and not migrated yet: cranked on its curve, the first crank of this agent (Cuvvtx): sent by the keeper as a legacy transaction of 992 bytes; the fees it said wait are the fees it moved; compute, protocol, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 87397662125: compute 48942690790, protocol 26219298638, pool 12235672697; legacy 992 bytes, 159740 CU, fee 5001 lamports"
+  },
+  {
+   "name": "3 routed and graduated: Cuvvtx's coin graduated: its curve is complete, pump.fun's migrate_v2 made the canonical PumpSwap pool quoted in $UNITS whose coin creator is the agent's creator account, and the launch program recorded it",
+   "ok": true,
+   "detail": "pool HHF5LdxNDExt8QhmoSSiA5iL2FiswoijijJR4MoUsB1L"
+  },
+  {
+   "name": "3 routed and graduated: trades on the PumpSwap pool leave the coin creator fees inside the pool until pump.fun's sweep: what waits is what the trade events state",
+   "ok": true,
+   "detail": "4758378790 base units"
+  },
+  {
+   "name": "3 routed and graduated: the keeper script before this change does not crank a pool member whose coin graduated: the fees wait",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): transaction is 1258 bytes, over the 1232-byte packet limit | done: 0 crank(s) sent"
+  },
+  {
+   "name": "3 routed and graduated: a dry run of the graduated pool member says version 0 and sends nothing",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): simulation ok, would crank (v0) | done: 0 crank(s) sent (0 legacy, 0 v0)"
+  },
+  {
+   "name": "3 routed and graduated: the --min-usd rule holds for it: below the threshold nothing is simulated or sent",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): 4758378790 base units of creator fees wait (4.7584 USD before the fee split); graduated, pool fees included; 4 route accounts follow the crank's; v0 transaction, 1108 bytes (1258 as legacy), 6 accounts from the lookup table | done: 0 crank(s) sent (0 legacy, 0 v0)"
+  },
+  {
+   "name": "3 routed and graduated: with a lookup table that cannot be used (an address that holds no table) the crank is not sent and says both sizes; the fees wait, nothing is lost",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): not sent, transaction does not fit the 1232-byte packet: 1258 bytes as a legacy transaction, no usable lookup table for a version 0 one | done: 0 crank(s) sent (0 legacy, 0 v0)"
+  },
+  {
+   "name": "3 routed and graduated: pool member, graduated (Cuvvtx): sent by the keeper as a v0 transaction of 1108 bytes; the fees it said wait are the fees it moved; compute, protocol, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 4758378790: compute 2664692123, protocol 1427513637, pool 666173030; v0 1108 bytes, 198848 CU, fee 5002 lamports"
+  },
+  {
+   "name": "3 routed and graduated: a second run right after finds nothing to do",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): skipped, simulation failed: {\"InstructionError\":[6,{\"Custom\":6008}]} Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq consumed 30086 of 1109888 compute units | Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq failed: custom program error: 0x1778 | done: 0 crank(s) sent (0 legacy, 0 v0)"
+  },
+  {
+   "name": "3 routed and graduated: the keeper script before this change does not crank a routed pool member whose coin graduated: the fees wait",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): not sent, its crank is 1313 bytes as a legacy transaction (a routed agent whose coin graduated): it needs a v0 transaction with the launch lookup table | done: 0 crank(s) sent"
+  },
+  {
+   "name": "3 routed and graduated: fee route and pool member, graduated: the largest crank (Cuvvtx): sent by the keeper as a v0 transaction of 1207 bytes; the fees it said wait are the fees it moved; compute, protocol, repository owners, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 4751576275: compute 1995662036, protocol 1425472883, repository owners 665220678, pool 665220678; v0 1207 bytes, 193029 CU, fee 5002 lamports"
+  },
+  {
+   "name": "3 routed and graduated: that crank moved exactly the coin creator fees the pool's trade events state",
+   "ok": true,
+   "detail": "4751576275"
+  },
+  {
+   "name": "3 routed and graduated: a second run right after finds nothing to do",
+   "ok": true,
+   "detail": "Cuvvtx (F2j1B7): skipped, simulation failed: {\"InstructionError\":[6,{\"Custom\":6008}]} Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq consumed 31145 of 1109888 compute units | Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq failed: custom program error: 0x1778 | done: 0 crank(s) sent (0 legacy, 0 v0)"
+  },
+  {
+   "name": "3 routed and graduated: fee route and pool member, graduated, again (2 of 3): sent by the keeper as a v0 transaction of 1207 bytes; the fees it said wait are the fees it moved; compute, protocol, repository owners, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 4744788858: compute 1992811320, protocol 1423436658, repository owners 664270440, pool 664270440; v0 1207 bytes, 193029 CU, fee 5002 lamports"
+  },
+  {
+   "name": "3 routed and graduated: fee route and pool member, graduated, again (3 of 3): sent by the keeper as a v0 transaction of 1207 bytes; the fees it said wait are the fees it moved; compute, protocol, repository owners, pool exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 4738016494: compute 1989966927, protocol 1421404949, repository owners 663322309, pool 663322309; v0 1207 bytes, 193029 CU, fee 5002 lamports"
+  },
+  {
+   "name": "4 graduated without a pool: ALGNQF's coin graduated: its curve is complete, pump.fun's migrate_v2 made the canonical PumpSwap pool quoted in $UNITS whose coin creator is the agent's creator account, and the launch program recorded it",
+   "ok": true,
+   "detail": "pool 7nKfA9kME7ay4gXEFp5mqktTJLHo9LCM7gXztvt3Hvz5"
+  },
+  {
+   "name": "4 graduated without a pool: fee route, graduated: the largest legacy crank (ALGNQF): sent by the keeper as a legacy transaction of 1225 bytes; the fees it said wait are the fees it moved; compute, protocol, repository owners exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 67451715483: compute 37772960671, protocol 20235514645, repository owners 9443240167; legacy 1225 bytes, 189184 CU, fee 5002 lamports"
+  },
+  {
+   "name": "4 graduated without a pool: 9gihFu's coin graduated: its curve is complete, pump.fun's migrate_v2 made the canonical PumpSwap pool quoted in $UNITS whose coin creator is the agent's creator account, and the launch program recorded it",
+   "ok": true,
+   "detail": "pool FoWahb8bYtVr1ABkHr2djvFHszt5CpBNR4apUnoiL1kY"
+  },
+  {
+   "name": "4 graduated without a pool: no route, graduated (9gihFu): sent by the keeper as a legacy transaction of 1126 bytes; the fees it said wait are the fees it moved; compute, protocol exact to the base unit; nothing left behind",
+   "ok": true,
+   "detail": "fees 70606819179: compute 49424773425, protocol 21182045754; legacy 1126 bytes, 191782 CU, fee 5002 lamports"
+  },
+  {
+   "name": "5 every agent in one run: one keeper run over 5 agents cranks each one that has fees in the form its size needs, moves exactly what waited for each and leaves nothing",
+   "ok": true,
+   "detail": "legacy 1091, v0 1207, legacy 1225; done: 3 crank(s) sent (2 legacy, 1 v0)"
+  },
+  {
+   "name": "5 every agent in one run: the run after it finds nothing to do for any agent",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "5 every agent in one run: the keeper's payer paid for its cranks and nothing else: no lookup table was created or extended; the only accounts it paid rent for are token accounts, one on an agent's first crank (its creator account's) and one on the first crank after its coin graduated (pump.fun's pool creator vault)",
+   "ok": true,
+   "detail": "0.008919062 SOL over 14 cranks (9 legacy, 5 v0); accounts it paid rent for: 170 bytes, 1513840 lamports at mainnet rent; 170 bytes, 1513840 lamports at mainnet rent; 170 bytes, 1513840 lamports at mainnet rent; 170 bytes, 1513840 lamports at mainnet rent"
+  }
+ ]
+}
