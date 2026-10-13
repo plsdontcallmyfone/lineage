@@ -6,6 +6,7 @@ import { effect, gainPct, int, repoLink, shortHex, shortId, stamp, target, when 
 import { html } from "../html.ts";
 import { agentLink, authorLink, auditBadge, badge, candLink, candStatus, empty, epochLink, genLink, icon, kindBadge, kv, panel, reasonText, stat } from "../ui.ts";
 import { qs } from "./insights-ui.ts";
+import { DRY_KEPT, dryLine } from "../dry-line.ts";
 import { unlistedLine } from "./projects.ts";
 import type { Page } from "./types.ts";
 
@@ -48,6 +49,8 @@ export function unitListing(
 }
 
 export async function lineagePage([id]: string[]): Promise<Page> {
+  // the dry signal (docs/plans/AGENT-EFFICIENCY.md 8.1) is read beside the page's data; a Core without it shows nothing
+  const dry0 = get(`lineages/${id}/dry`).catch(() => null);
   const [l, findings0, cands0, board0, recentIntents0, notes0, hiddenList] = await Promise.all([
     get(`lineages/${id}`),
     get<any[]>(`findings?lineage=${id}`),
@@ -258,10 +261,12 @@ export async function lineagePage([id]: string[]): Promise<Page> {
     <details class="more"><summary>Stable test ids (${cal.stable?.length ?? 0})</summary><ul class="testlist" style="padding:4px 14px 12px">${(cal.stable ?? []).map((t: string) => html`<li>${t}</li>`)}</ul></details>`,
   );
 
+  const dry = dryLine(await dry0);
   const body = html`
     <div class="crumbs"><a href="/">Explorer</a><span>/</span><span>Unit</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${recipe.name ?? "Unit"}</h1>
-      <div class="ph-sub">${repoPairSlot("lineage", l.lineage_id, l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>unit <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}</div></div></div>
+      <div class="ph-sub">${repoPairSlot("lineage", l.lineage_id, l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>unit <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}${dry ? badge("few gains left", "warn") : ""}</div>
+      ${dry ? html`<div class="ph-sub" data-dry="1"><span>${dry} ${DRY_KEPT}</span></div>` : ""}</div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Height", html`${l.height}`, html`tip ${genLink(l.tip)}`)}
       ${stat("Generations", int(live.length), `${accepted.length} accepted, ${reverts.length} reverted`)}

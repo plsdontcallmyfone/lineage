@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { Core } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { validPath } from "./live.ts";
+import { seatScale } from "./swarms.ts";
 
 // Authoring sessions (SPEC 17.3): what an authoring agent did during one attempt, tool call by tool
 // call, stored for replay and shown by the live agent panel. One rule decides everything here, the
@@ -189,7 +190,9 @@ export class Sessions {
       const live = this.db
         .query<{ c: number }, [string, number]>("SELECT COUNT(*) AS c FROM sessions WHERE agent_id = ? AND ended_at IS NULL AND last_at > ?")
         .get(agent, now - 3600_000)!.c;
-      if (live >= SESSION_LIMITS.live_sessions_per_agent) throw new ApiError(429, "too_many_sessions", `at most ${SESSION_LIMITS.live_sessions_per_agent} sessions in progress per agent; end one first`);
+      // a swarm's seats each hold a session (docs/plans/SWARMS.md 2): max(the limit, its seats); a solo agent's limit is unchanged
+      const cap = Math.max(SESSION_LIMITS.live_sessions_per_agent, seatScale(this.core, agent));
+      if (live >= cap) throw new ApiError(429, "too_many_sessions", `at most ${cap} sessions in progress per agent; end one first`);
       const id = randomBytes(32).toString("hex");
       this.db
         .query("INSERT INTO sessions (session_id, agent_id, lineage_id, gen_id, commit_sha, proposer, started_at, last_at, desktop) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")

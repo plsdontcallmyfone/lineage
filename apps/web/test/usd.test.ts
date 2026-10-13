@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { paramCells } from "../src/building.ts";
-import { usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig } from "../src/market.ts";
+import { changeFrom, usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig } from "../src/market.ts";
 import { fmtUsd, fmtUsdPrice, loadUsd, quoteToUsd, setUsdReading, solToUsd, USD_NA, usdFig, usdText } from "../src/usd.ts";
 
 // The app's one dollar formatter and the figures built on it (owner 2026-10-12: everything in USD).
@@ -51,17 +51,29 @@ describe("figures", () => {
   });
   test("24h change: of the dollar price when the indexer has it, else against the quote coin, and the title says which", () => {
     expect(usdChangeFig({ change_24h: 0.1, change_24h_usd: 0.25 }).s).toMatch(/data-f="change_24h_usd"[^>]*>\+25%/);
-    expect(usdChangeFig({ change_24h: 0.1, change_24h_usd: null }).s).toMatch(/data-f="change_24h"[^>]*not on record[^>]*>\+10%/);
+    // no dollar price for "then": the figure says so, it never shows the change against UNITS
+    const na = usdChangeFig({ change_24h: 0.1, change_24h_usd: null }).s;
+    expect(na).toContain(USD_NA);
+    expect(na).toMatch(/24 hours ago or now is not on record/);
+    expect(na).not.toContain("10%");
+    expect(usdChangeFig({ change_24h: 0.1, change_24h_usd: null, change_window: "since_launch" }).s).toMatch(/at the launch or now is not on record/);
+    // the chart legend's percentage is the stat's arithmetic: value over the same reference, minus 1
+    expect(changeFrom(0.004, 0.005)).toBeCloseTo(0.25, 12);
+    expect(changeFrom(null, 0.005)).toBeNull();
+    expect(changeFrom(0.004, null)).toBeNull();
   });
   test("candles in dollars: the _usd fields, or nothing when one is missing; one caption sentence per basis", () => {
     const c = { t: 1, open: 1, high: 2, low: 1, close: 2, volume: 10, volume_base: 5, trades: 1, open_usd: 0.002, high_usd: 0.004, low_usd: 0.002, close_usd: 0.004, volume_usd: 0.02 };
-    expect(usdCandles({ candles: [c], usd_basis: "current", start_price_usd: 0.001 })).toEqual({ candles: [{ ...c, open: 0.002, high: 0.004, low: 0.002, close: 0.004, volume: 0.02 }], basis: "current", start: 0.001 });
-    expect(usdCandles({ candles: [c, { ...c, close_usd: null }] })).toBeNull();
+    expect(usdCandles({ candles: [c], usd_basis: "at_time", start_price_usd: 0.001 })).toEqual({ candles: [{ ...c, open: 0.002, high: 0.004, low: 0.002, close: 0.004, volume: 0.02 }], basis: "at_time", start: 0.001, missing: 0 });
+    // a candle without a dollar value is left out, never drawn at another price; none with one: no chart
+    expect(usdCandles({ candles: [c, { ...c, t: c.t + 60, close_usd: null }] })).toMatchObject({ basis: "partial", missing: 1, candles: [{ t: c.t }] });
+    expect(usdCandles({ candles: [{ ...c, close_usd: null }] })).toBeNull();
+    expect(usdBasisNote("partial")).toMatch(/Some intervals are not drawn/);
     expect(usdBasisNote("current")).toMatch(/today's UNITS price/);
     expect(usdBasisNote("at_time")).toMatch(/price of its own time/);
     expect(usdBasisNote(null)).toContain(USD_NA);
     expect(usdBasisNote("current", false)).toBe("");
-    for (const b of ["at_time", "current", "mixed", null] as const) expect(usdBasisNote(b)).not.toMatch(/[\u2013\u2014]/);
+    for (const b of ["at_time", "partial", "current", "mixed", null] as const) expect(usdBasisNote(b)).not.toMatch(/[\u2013\u2014]/);
   });
 });
 

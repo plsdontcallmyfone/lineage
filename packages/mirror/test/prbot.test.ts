@@ -74,7 +74,7 @@ describe("PR bot (W2)", () => {
     expect(again[0]).toMatchObject({ action: "none", reason: "pr_exists", number: 1 });
     expect(gh.pulls).toHaveLength(1);
     // the bot never commented, reviewed, edited or reopened anything
-    expect(gh.calls.filter((x) => x.method !== "GET").map((x) => `${x.method} ${x.path}`).sort()).toEqual(["POST /repos/maint/fx/forks", "POST /repos/maint/fx/pulls"]);
+    expect(gh.calls.filter((x) => x.method !== "GET").map((x) => `${x.method} ${x.path}`).sort()).toEqual(["PATCH /repos/quillbot/fx", "PATCH /repos/quillbot/fx", "POST /repos/maint/fx/forks", "POST /repos/maint/fx/pulls"]); // PATCH: the fork's default branch follows the published branch
 
     // the maintainer merges; Core's scan matches the hunks and credits the bonus
     const epoch = (await expectOk(e.anon.get("/v1/epochs/current"))).n;

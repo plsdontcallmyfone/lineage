@@ -1,0 +1,142 @@
+{
+  "sep_value_slice": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "4 stable tests fail: clap.streaming.test.all params, clap.streaming.test.different assignment separators, clap.streaming.test.short params, clap.test.different assignment separators",
+    "effect": null,
+    "metrics": {
+      "examples_bytes": {
+        "base": [
+          142368
+        ],
+        "cand": [
+          141920
+        ],
+        "ratio": 0.99685322544392
+      },
+      "parse_ir": {
+        "base": [
+          32184440
+        ],
+        "cand": [
+          30517821
+        ],
+        "ratio": 0.948216622690965
+      },
+      "help_ir": {
+        "base": [
+          24542725
+        ],
+        "cand": [
+          24542715
+        ],
+        "ratio": 0.9999995925472823
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d73",
+    "recipe_id": "8f22fe223e8609b99274b1b85c725e820564930fb0e59fae801f2201133c53ca",
+    "eval_seconds": 187.1,
+    "date": "2026-10-13T11:35:27.747Z",
+    "match": true
+  },
+  "long_lastsep": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "examples_bytes": {
+        "base": [
+          142368
+        ],
+        "cand": [
+          142200
+        ],
+        "ratio": 0.99881995954147
+      },
+      "parse_ir": {
+        "base": [
+          31968476
+        ],
+        "cand": [
+          30819248
+        ],
+        "ratio": 0.9640512109491863
+      },
+      "help_ir": {
+        "base": [
+          24554011
+        ],
+        "cand": [
+          24605601
+        ],
+        "ratio": 1.0021010823852772
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d6c",
+    "recipe_id": "8f22fe223e8609b99274b1b85c725e820564930fb0e59fae801f2201133c53ca",
+    "eval_seconds": 253.2,
+    "date": "2026-10-13T11:39:40.983Z",
+    "match": true
+  },
+  "inline_chaining": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0155 vs required 0.9950",
+    "effect": {
+      "metric": "examples_bytes",
+      "ratio": 1.0154529107664643,
+      "ci_low": 1.0154529107664643,
+      "ci_high": 1.0154529107664643,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.0154529107664643,
+          "ci_low": 1.0154529107664643,
+          "ci_high": 1.0154529107664643,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "examples_bytes": {
+        "base": [
+          142368
+        ],
+        "cand": [
+          144568
+        ],
+        "ratio": 1.0154529107664643
+      },
+      "parse_ir": {
+        "base": [
+          31840157
+        ],
+        "cand": [
+          24886880
+        ],
+        "ratio": 0.781619261487938
+      },
+      "help_ir": {
+        "base": [
+          24560681
+        ],
+        "cand": [
+          24611699
+        ],
+        "ratio": 1.0020772225330397
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d69",
+    "recipe_id": "8f22fe223e8609b99274b1b85c725e820564930fb0e59fae801f2201133c53ca",
+    "eval_seconds": 252.7,
+    "date": "2026-10-13T11:43:53.664Z",
+    "match": true
+  }
+}

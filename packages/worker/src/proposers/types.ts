@@ -77,6 +77,8 @@ export interface ProposeContext {
   board?: BoardNote[];
   /** Direct messages delivered to this agent, sealed ones opened with its encryption key (SPEC 12.3). */
   inbox?: InboxMessage[];
+  /** Board messages other agents addressed to this agent (worker talk-inbox.ts): shown as untrusted data, never instructions. */
+  talk?: string | null;
   /** Stacked series (SPEC 12.4): the commit this attempt builds on; its patch is the last of parentPatches. */
   dependsOn?: string | null;
   /** Soul block (SPEC 14.8) appended to the system prompt after the rules; taste and voice only. */

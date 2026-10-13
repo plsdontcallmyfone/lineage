@@ -40,8 +40,10 @@ export const COSIGN_MAX_CU_PRICE = 1_000_000n;
 export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expectAgent?: Address } = {}): CosignPlan {
   const { signatures, message } = parseWire(wire);
   const m = decodeMessage(message);
-  // lookup-table accounts are not shown in the message itself: co-sign legacy messages only
-  if (m.version !== "legacy") throw new Error("refusing to co-sign: a versioned (v0) message");
+  // lookup-table accounts are not shown in the message itself: a legacy message, or a v0 message that
+  // reads no lookup table (it names every account itself, exactly like a legacy one; a launch approved
+  // as v0 messages carries its bind as one, docs/plans/SEAMLESS-BIND.md)
+  if (m.version !== "legacy" && m.lookups.length) throw new Error("refusing to co-sign: a versioned (v0) message that reads a lookup table");
   const signers = m.keys.slice(0, m.numSigners);
   if (!signers.includes(agent)) throw new Error(`agent ${agent} is not a signer of this transaction`);
   // the co-signing key proves possession only: it never pays fees and is never a writable account,
@@ -60,6 +62,9 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
       else throw new Error(`refusing to co-sign: compute budget instruction outside the allowed limit (${COSIGN_MAX_CU_LIMIT} units) and price (${COSIGN_MAX_CU_PRICE})`);
       continue;
     }
+    // a wallet's own guard (Phantom adds Lighthouse assertions). This key is never the fee payer and never
+    // writable in the whole message (checked above), so nothing such an instruction does can touch it.
+    if (ix.programId === "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95") continue;
     if (ix.programId !== REGISTRY_PROGRAM_ID) throw new Error(`refusing to co-sign: instruction for program ${ix.programId} (only units_registry and compute budget)`);
     const name = Object.keys(COSIGNABLE).find((n) => ix.data.length >= 8 && ixDisc(n).every((x, i) => x === ix.data[i]));
     if (!name) throw new Error("refusing to co-sign: a units_registry instruction other than register or rotate_agent_key");
@@ -87,6 +92,20 @@ export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
   return placeSignature(wire, key.id, signBytes(key, parseWire(wire).message));
 }
 
+/**
+ * Checks a wire exactly as `cosignCommand` does (inspectForCosign, then the transaction firewall for a
+ * guarded key) and returns it with this key's signature placed. Nothing is simulated or sent: the
+ * caller sends it. For the bind a launcher approves together with the launch
+ * (docs/plans/SEAMLESS-BIND.md): the agent's record does not exist yet, so there is nothing to simulate.
+ */
+export async function cosignWire(o: { key: Signer; tx: string; expectAgent: Address }): Promise<{ wire: Uint8Array; signature: string; summary: string[]; payer: Address }> {
+  const wire = new Uint8Array(Buffer.from(o.tx.trim(), "base64"));
+  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
+  await authorizeSigners(parseWire(wire).message, [o.key.id]);
+  const signed = cosign(wire, o.key);
+  return { wire: signed, signature: base58Encode(parseWire(signed).signatures[0]!), summary: plan.summary, payer: plan.payer };
+}
+
 /** `units-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */
 export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void; genesis?: string }) {
   const log = o.log ?? console.log;
@@ -107,7 +126,12 @@ export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string
     log(`dry run: simulation ${sim.err ? `failed ${JSON.stringify(sim.err)}` : "ok"}`);
     return { signature: sig, sent: false };
   }
-  const sim = await rpc.simulate(signed);
+  // the wallet's blockhash can be newer than what this RPC node has seen yet: wait for it a few seconds before giving up
+  let sim = await rpc.simulate(signed);
+  for (let i = 0; i < 8 && JSON.stringify(sim.err ?? "").includes("BlockhashNotFound"); i++) {
+    await new Promise((r) => setTimeout(r, 750));
+    sim = await rpc.simulate(signed);
+  }
   if (sim.err) throw new Error(`simulation failed: ${JSON.stringify(sim.err)}\n${(sim.logs ?? []).slice(-8).join("\n")}`);
   const { lastValidBlockHeight } = await rpc.getLatestBlockhash();
   const r = await sendWire(rpc, signed, lastValidBlockHeight, (s) => log(`  ${s}`));

@@ -204,6 +204,12 @@ export class Revenue {
     return { ok: true, quote_usd: rate, sol_usd: pos(m?.usd?.sol_usd), read_at: readAt, source: "market indexer (GET /market/quote-usd): the quote coin's pump.fun market, then Jupiter Price API V3" };
   }
 
+  /** The quote coin's decimals as the indexer last named them; null before its first answer. */
+  quoteDecimals(): number | null {
+    const d = (this.source("indexer")?.meta as { quote_decimals?: unknown } | null | undefined)?.quote_decimals;
+    return typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 18 ? d : null;
+  }
+
   private mark(source: SourceState["source"], ok: boolean, error: string | null, meta?: Record<string, unknown>) {
     const now = this.c.now();
     this.c.db

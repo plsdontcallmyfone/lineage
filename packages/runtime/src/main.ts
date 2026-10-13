@@ -3,6 +3,9 @@
 //   run      --config <file> [--max-candidates <n>]   run every hosted agent until SIGINT or SIGTERM
 //                                                     (devnet with bind_port: also the bind endpoint, bind.ts)
 //   status   --config <file>                          print the persisted state summary (no keys) and the global cap: window and spend counter
+//   bind     --config <file> [--port <n>]             the bind service (bind-service.ts): the bind surface as its own
+//                                                     process, up while `run` drains or restarts. Port: --port, else
+//                                                     the config's bind_service_port. Loads no authority or model key.
 //   bind-request --config <file> --agent <id>         what the owner needs to bind the agent to this runtime's key
 //   cosign   --config <file> --agent <id> --tx <base64> [--dry-run]
 //                                                     devnet: co-sign, as the agent's new runtime key, a
@@ -27,7 +30,8 @@ import { anthropicPrices, reloadKeys, resolveRoute, routedProposers, RegistrySou
 import { OpenRouterBalance } from "./provider-balance.ts";
 import { JupiterPrice } from "./price.ts";
 import type { AgentRoute } from "./runtime.ts";
-import { bindHandler, chainCosign, serveBind } from "./bind.ts";
+import { bindHandler, chainCosign, chainCosignOnly, serveBind, waitingOf } from "./bind.ts";
+import { Reservations } from "./reserve.ts";
 import { withGenesis } from "./genesis.ts";
 import type { ModelClient } from "../../souls/src/generator.ts";
 import { routedModelClient } from "../../souls/src/routed-client.ts";
@@ -75,9 +79,11 @@ export function hostedProposers(cfg: RuntimeConfig, keys: Record<string, string>
 }
 
 /** The model and route an agent runs on now (plan MODELS-AND-SELF-FUNDING), for the runtime's gates and spend report. */
-export function routeResolver(core: string, keys: Record<string, string>, registry: RegistrySource): (agent: string) => Promise<AgentRoute> {
-  return async (agent) => {
-    const r = resolveRoute(await registry.get(), await soulModel(core, agent), keys);
+export function routeResolver(core: string, keys: Record<string, string>, registry: RegistrySource): (agent: string, seat?: number) => Promise<AgentRoute> {
+  return async (agent, seat) => {
+    const choice = await soulModel(core, agent, fetch, seat);
+    if (seat !== undefined && !choice) return { via: null, model: null, why: `the soul names no model for seat ${seat}` };
+    const r = resolveRoute(await registry.get(), choice, keys);
     if (!r.ok) return { via: null, model: r.choice, why: r.why };
     // the routed model's rate prices the minimum useful attempt (runtime.ts minUsefulUsd)
     const p = r.model.rate ? anthropicPrices(r.model) : null;
@@ -180,15 +186,25 @@ async function main() {
           if (r.status >= 300) throw new Error(`HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
         },
       });
-      fwAgents = () => rt.state.agents;
+      // keys reserved for launches that are not on chain yet (reserve.ts): guarded like every agent key, each for its own agent only
+      // with the bind service (config bind_service_port) the reservations and the bind routes are that process's
+      const ownBind = !cfg.bind_service_port;
+      const reservations = backend instanceof ChainBackend && ownBind
+        ? new Reservations({ dir: cfg.state_dir, keyFor: (a) => rt.store.keyFor(a), keyFile: (a) => rt.store.keyFile(a), adopted: (a) => !!rt.state.agents[a], adopt: async (a) => !!(await rt.bindTarget(a)), log })
+        : null;
+      fwAgents = () => (reservations ? { ...reservations.agents(), ...rt.state.agents } : rt.state.agents);
+      for (const r of Object.values(reservations?.agents() ?? {})) guardKey(r.key_id);
       for (const st of Object.values(rt.state.agents)) guardKey(st.key_id);
       await rt.start();
       // hosted launches bind from the Wallet page (bind.ts): the owner signs the rotation, this runtime co-signs
-      const bindServer = cfg.bind_port && backend instanceof ChainBackend
-        ? serveBind(cfg.bind_port, withGenesis(rt, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), log })), log), log)
-        : desktops && (cfg.desktop_port ?? cfg.bind_port)
-          ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
-          : null;
+      const bindServer = cfg.bind_port && backend instanceof ChainBackend && ownBind
+        ? serveBind(cfg.bind_port, withGenesis(rt, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), reserve: reservations ? { reservations, recordExists: async (a) => !!(await backend.reader.agent(a)), sign: chainCosignOnly } : undefined, waiting: waitingOf({ agents: () => rt.state.agents, launcherOf: async (a) => (await backend.hostedAgent(a))?.launcher ?? null }), log })), log), log)
+        : cfg.bind_port && backend instanceof ChainBackend
+          // the bind service answers /runtime/bind and /runtime/unbound; this port keeps the genesis proof and the desktops
+          ? serveBind(cfg.bind_port, withGenesis(rt, withDesktops(desktops), log), log)
+          : desktops && (cfg.desktop_port ?? cfg.bind_port)
+            ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
+            : null;
       const stopPublisher = desktops ? startRecordingPublisher(desktops, cfg.core, (a) => rt.keyOf(a), log) : () => {};
       let signals = 0;
       const onSignal = () => {
@@ -197,8 +213,9 @@ async function main() {
         stopMonitor();
         stopKeys();
         stopPublisher();
-        bindServer?.stop(true);
-        void rt.stop().then(() => process.exit(0));
+        // the listener stays up while the attempts drain (up to TimeoutStopSec): a runtime that serves the
+        // bind surface itself keeps answering reservations and co-signs until the process leaves
+        void rt.stop().then(() => (bindServer?.stop(true), process.exit(0)));
       };
       process.on("SIGINT", onSignal);
       process.on("SIGTERM", onSignal);
@@ -215,7 +232,49 @@ async function main() {
       const start = ws ? windowStart(Date.now(), ws) : null;
       const spent = ws ? (s.window?.start === start && s.window?.window_s === ws ? s.window.usd : 0) : s.spent_usd_total;
       s.cap = { max_usd: cfg.global_max_usd, window_s: ws, window_start: start && new Date(start).toISOString(), window_end: start && new Date(start + ws! * 1000).toISOString(), spent_usd: spent, left_usd: Math.max(0, cfg.global_max_usd - spent), lifetime_usd: s.spent_usd_total };
+      // the bind service's counters (bind-service.ts): reservations, co-signs, binds landed with the launch and after, launches seen unbound
+      const bs = join(cfg.state_dir, "bind-service", "status.json");
+      s.bind = existsSync(bs) ? JSON.parse(readFileSync(bs, "utf8")) : null;
       console.log(JSON.stringify(s, null, 2));
+      return;
+    }
+    case "bind": {
+      if (cfg.mode === "sim") throw new Error("the bind service is for chain mode");
+      const port = Number(a.port ?? cfg.bind_service_port);
+      if (!(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error("bind: --port <n> or bind_service_port in the config");
+      const { ChainReader } = await import("@units/chain");
+      const { readerChain, startBindService } = await import("./bind-service.ts");
+      const { Lock } = await import("./state.ts");
+      const rpcUrl = cfg.rpc_url ?? chainRpc();
+      const rpc = Rpc.http(rpcUrl, "confirmed");
+      // one bind service per state directory; a restart waits out the old process's last moments
+      const lock = new Lock(join(cfg.state_dir, "bind-service"), "bind.lock");
+      for (let i = 0; ; i++) {
+        try {
+          lock.acquire();
+          break;
+        } catch (e) {
+          if (i >= 50) throw e;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
+      const blog = (m: string) => console.log(redact(`[${new Date().toISOString().slice(11, 19)} bind] ${m}`));
+      const svc = startBindService({
+        stateDir: cfg.state_dir, port, mode: cfg.mode, log: blog,
+        chain: readerChain(new ChainReader(rpc) as any, rpc),
+        send: chainCosign(rpcUrl, blog, profile.genesis), sign: chainCosignOnly,
+        // the transaction firewall, as in `run`: every key this process reads is guarded, each for its own agent only
+        guard: (view) => void installAgentFirewall({ rpc, stateDir: join(cfg.state_dir, "bind-service"), view: { agents: view }, log: blog }),
+      });
+      let leaving = false;
+      const leave = () => {
+        if (leaving) process.exit(130);
+        leaving = true;
+        void svc.stop().then(() => (lock.release(), process.exit(0)));
+      };
+      process.on("SIGINT", leave);
+      process.on("SIGTERM", leave);
+      await new Promise(() => {});
       return;
     }
     case "bind-request": {
@@ -237,7 +296,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-runtime run|status|bind-request|cosign --config <file> (see the header of src/main.ts)");
+      console.error("usage: lineage-runtime run|bind|status|bind-request|cosign --config <file> (see the header of src/main.ts)");
       process.exit(2);
   }
 }

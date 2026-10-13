@@ -73,6 +73,9 @@
 # WITH_IDENTITY=1 runs the instance's own GitHub identity service (default off; kept in the server's
 # site.env like WITH_RUNTIME, so a later deploy without the variable keeps it; WITH_IDENTITY=0 turns it
 # off again). It ships no GitHub account: the reserve is empty until identity-pool is run.
+# UNITS_FEATURE_OPEN_BOUNTIES=1 and UNITS_FEATURE_BOUNTIES=1 are Core's two bounty switches (the result
+# leaf in the record roots; the board open on mainnet). Each travels the same way: written into the
+# server's site.env, which the Core unit reads, only when on; unset keeps what the server has; 0 turns it off.
 # DRY_RUN=1 is the dry run (scripts/deploy/dryrun.sh): no Docker, no keys from here, internal TLS.
 set -euo pipefail
 HOST="${1:-}"; MODE="${2:-stage}"; EXTRA="${3:-}"
@@ -126,6 +129,23 @@ if [ -n "${EXTRA_ORIGINS:-}" ]; then
 fi
 [ "$DRY_RUN" = 1 ] && [ -n "${DRY_RUN_ORIGIN:-}" ] && ORIGINS="$ORIGINS,$DRY_RUN_ORIGIN"
 
+# >>> feature-lines
+# Core's feature switches that travel through site.env (the Core unit reads that file). Given here as
+# 1 or 0 they are taken; left unset, the server's own line is kept, so a later deploy without them does
+# not switch a feature off. Prints one "NAME=1" line per switch that is on, each after a newline.
+FEATURE_SWITCHES="UNITS_FEATURE_OPEN_BOUNTIES UNITS_FEATURE_BOUNTIES"
+feature_lines() {
+  local cur="$1" n v
+  for n in $FEATURE_SWITCHES; do
+    v="${!n:-}"
+    [ -n "$v" ] || v="$(printf '%s\n' "$cur" | sed -n "s/^$n=//p" | tail -1)"
+    case "${v:-0}" in 0|1) ;; *) echo "$n must be 1 or 0" >&2; return 2 ;; esac
+    if [ "${v:-0}" = 1 ]; then printf '\n%s=1' "$n"; fi
+  done
+}
+feature_given() { local n; for n in $FEATURE_SWITCHES; do [ -z "${!n:-}" ] || return 0; done; return 1; }
+# <<< feature-lines
+
 write_env() {
   [ -n "$SITE_NAMES" ] || { echo "no site name: give the server's IPv4 address as <host>, or SITE_NAMES / MAIN_DOMAIN" >&2; exit 2; }
   # recipes left unset here: the first instance's (both use the same sandbox images)
@@ -141,7 +161,8 @@ write_env() {
   case "${with_id:-0}" in 0|1) ;; *) echo "WITH_IDENTITY must be 1 or 0" >&2; exit 2 ;; esac
   # written only when on: without it site.env is what it always was
   if [ "${with_id:-0}" = 1 ]; then id_line="WITH_IDENTITY=1"; fi
-  local nl=$'\n'
+  local nl=$'\n' feat
+  feat="$(feature_lines "$(r "cat /etc/$P/site.env 2>/dev/null" || true)")" || exit 2
   r "install -d -m 755 /etc/$P && (umask 077; cat > /etc/$P/site.env) && chmod 600 /etc/$P/site.env && chown root:root /etc/$P/site.env" <<EOF
 # written by scripts/deploy/instance.sh; read by remote-instance.sh and the $P-* units
 UNITS_INSTANCE=$NAME
@@ -153,7 +174,7 @@ GATE_EXTRA_ORIGINS=${EXTRA_ORIGINS:-}
 UNITS_RECIPES=$recipes
 UNITS_SITE_URL=${PUBLIC_SITE_URL:-$(r "sed -n 's/^UNITS_SITE_URL=//p' /etc/$P/site.env 2>/dev/null | tail -1" 2>/dev/null | grep -E '^https://' || echo "https://${SITE_NAMES%%,*}")}
 DRY_RUN=$DRY_RUN
-WITH_RUNTIME=${with_rt:-0}${id_line:+$nl$id_line}
+WITH_RUNTIME=${with_rt:-0}${id_line:+$nl$id_line}$feat
 EOF
 }
 
@@ -291,8 +312,8 @@ case "$MODE" in
     say "go: activate the staged $NAME instance on $HOST (nothing is built or installed)"
     put_tools
     ship_next "$([ -f "$STATE_FILE" ] && echo "$STATE_FILE")" "$([ -f "$PROFILE_FILE" ] && echo "$PROFILE_FILE")" "${INSTANCE_SIZING_FILE:-}"
-    # site.env is the server's (WITH_IDENTITY and WITH_RUNTIME as staged); written again only when one is given now
-    if [ -n "${WITH_IDENTITY:-}${WITH_RUNTIME:-}${UNITS_RECIPES:-}" ]; then write_env; echo "site.env: written again"; else echo "site.env: the server's, unchanged"; fi
+    # site.env is the server's (WITH_IDENTITY, WITH_RUNTIME and the feature switches as staged); written again only when one is given now
+    if [ -n "${WITH_IDENTITY:-}${WITH_RUNTIME:-}${UNITS_RECIPES:-}" ] || feature_given; then write_env; echo "site.env: written again"; else echo "site.env: the server's, unchanged"; fi
     echo "time      shipping (this machine)       $(secs $t)"; t=$(date +%s)
     r "HEALTH_WAIT=${DEPLOY_HEALTH_WAIT:-300} GO_SWITCH_RUNNING=${GO_SWITCH_RUNNING:-} GO_BACKUP_CORE=${GO_BACKUP_CORE:-} GO_ARCHIVE_INDEXER=${GO_ARCHIVE_INDEXER:-} $RI activate-staged $(git rev-parse HEAD 2>/dev/null || true) < /dev/null"
     echo "time      activation (over ssh)         $(secs $t)"; t=$(date +%s)

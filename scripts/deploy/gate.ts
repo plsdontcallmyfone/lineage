@@ -12,6 +12,8 @@
 //   PUT  /v1/bounties/:id/terms, /api/bounties/:id/terms   (Core keeps terms only if they hash to the onchain digest)
 //   GET  /api/*, /live/*      dashboard data (CORS *); not /api/admin*, not encoded slashes or //
 //   GET  /market/*            market indexer read API (own class; the indexer's own CORS and preflight)
+//   GET  /market/supply, /market/supply/{burns,developer,coins,holders}   the Analytics page's Supply section: supply, burns,
+//                             the developer wallet's own coins, agent coins and top holders; plain reads in the market class
 //   POST /chain/rpc           devnet JSON-RPC proxy (web keeps its method allowlist); same origin only
 //   POST /chain/faucet        UNITS faucet (web keeps its per-wallet and hourly limits); same origin only
 //                             (an Origin header is required: browsers always send one on POST)
@@ -21,6 +23,19 @@
 //   POST /api/fee-claims/proofs/gist, /api/fee-claims/wallet, /api/fee-claims/attest   the Claim page (GitHub fee
 //                             claims): Core checks the gist, the wallet's signature and the session; same origin only;
 //                             the social class; bodies capped at 8 KB
+//   GET  /api/fee-claims/waiting (and under /v1), /claim/<owner>/<name>   the fees waiting for a repository's owners: a public
+//                             read in the api and v1 classes, and the page of one repository in the page class
+//   POST /api/repo-requests    "Request a repository": a wallet-signed request for a unit on a repository that has none;
+//                             same origin only; the repocheck class (a new request starts a reading), bodies capped at 8 KB.
+//                             GET /api/repo-requests/check (and under /v1) is in that class too; the list is a plain read
+//   POST /api/bounties/owner-proof, /api/bounties/owner-proof/forget   "Posted by an owner" on a bounty: a fee-claim
+//                             session and a repository id; Core checks both; same origin only; the social class
+//   POST /api/tweet-launches   the launch page hands in the launch a reply bot's link led to (launch from a tweet);
+//                             same origin only; the social class
+//   GET  /api/tweet-links/:id, /api/agents/:id/tweet-origin (and under /v1)   "Started from a tweet": the tweet an open
+//                             launch link answers and the tweet an agent's launch started from; plain reads in the api
+//                             and v1 classes. The reply bot's signed POST /v1/tweet-links is refused here (405): the bot
+//                             talks to Core on the machine itself
 //   GET, POST /runtime/bind/:agent   the hosted runtime's bind endpoint (packages/runtime/src/bind.ts):
 //                             the runtime key a hosted launch rotates to, and the owner-signed rotation
 //                             it co-signs; POST same origin only (a browser sends no Origin on a
@@ -30,6 +45,8 @@
 //                             address per hour), and publishing a soul the agent key signed (Core checks
 //                             it against the digest on chain); same origin only; own class; anything
 //                             else under /souls is refused
+//   GET  /v1/repo-check, /api/repo-check   whether an agent can work on a repository (the launch form, before the
+//                             launcher pays): Core may fetch the repository to read it; own class
 //   GET  /gate/viewers        distinct viewers per live desktop session and in total (counts only), served to
 //                             loopback callers without a forwarded header; Core samples it once a minute
 //   GET  /desktops/<session>/live.m3u8, init.mp4, seg-<n>.m4s   an agent desktop's live stream (SPEC 17.7),
@@ -42,10 +59,11 @@
 // Client address: the last X-Forwarded-For entry (Caddy sets it to the peer it saw), else the socket.
 // Limits key on clientKey(): an IPv6 address counts as its /64, an IPv4-mapped one as the IPv4.
 //   [--indexer http://127.0.0.1:9668]   the market indexer upstream for /market/*
-//   [--runtime http://127.0.0.1:9667]   the hosted runtime's bind endpoint for /runtime/bind/*
+//   [--runtime http://127.0.0.1:9667]   the hosted runtime (desktops, genesis proof; /runtime/bind/* too without --bind)
+//   [--bind http://127.0.0.1:9666]      the bind service for /runtime/bind/*, /runtime/unbound/* and /runtime/bind/health
 //   [--upstream-wait-ms 15000]  a refused upstream connection (a restart during a deploy) is retried this long
 
-export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop";
+export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop" | "repocheck";
 export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   v1: { perMin: 120, burst: 60 },
   api: { perMin: 240, burst: 120 },
@@ -62,6 +80,9 @@ export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   souls: { perMin: 6, burst: 6 },
   // one viewer polls the playlist and fetches a segment every 2 s (about 60 a minute); a few tabs fit
   desktop: { perMin: 240, burst: 60 },
+  // the launch form asks once per repository typed and again every few seconds while a reading runs (Core bounds
+  // the readings themselves, packages/core/src/repo-check.ts); this keeps one address from asking for many
+  repocheck: { perMin: 20, burst: 12 },
 };
 export const DESKTOP_VIEWERS = 50;
 export const DESKTOP_VIEWERS_TOTAL = 300;
@@ -79,7 +100,7 @@ export const MAX_BUCKETS = 50_000;
 
 export interface Route {
   klass: Klass;
-  upstream: "web" | "core" | "indexer" | "runtime";
+  upstream: "web" | "core" | "indexer" | "runtime" | "bind";
   cors: boolean;
   stream: boolean;
   sameOrigin: boolean;
@@ -134,7 +155,11 @@ export class DesktopViewers {
 /** Decides what a request is, or the status to refuse it with. Pure; tested in gate.test.ts. */
 export function classify(method: string, path: string): Route | { refuse: number; why: string } {
   if (/^\/runtime\/bind\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && (method === "GET" || method === "POST"))
-    return { klass: "bind", upstream: "runtime", cors: false, stream: false, sameOrigin: method === "POST", maxBody: SOCIAL_MAX_BODY };
+    return { klass: "bind", upstream: "bind", cors: false, stream: false, sameOrigin: method === "POST", maxBody: SOCIAL_MAX_BODY };
+  // whether a hosted launch can be bound right now (the bind service's health; the launch form reads it once)
+  if (path === "/runtime/bind/health" && method === "GET") return { klass: "api", upstream: "bind", cors: false, stream: false, sameOrigin: false };
+  // the "finish setting up" bar's one read: the hosted agents a wallet launched that still wait for their bind
+  if (/^\/runtime\/unbound\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && method === "GET") return { klass: "bind", upstream: "bind", cors: false, stream: false, sameOrigin: false };
   const terms = /^\/(v1|api)\/bounties\/[1-9A-HJ-NP-Za-km-z]{32,44}\/terms$/.test(path);
   if (method === "PUT") return terms ? { klass: "terms", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false } : { refuse: 405, why: "method" };
   if (method === "POST") {
@@ -146,6 +171,15 @@ export function classify(method: string, path: string): Route | { refuse: number
     // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md 5): the gist proof, the wallet statement and the attestation request.
     // Core verifies each (the gist's owner, the wallet's signature, the session); small JSON bodies; same origin only
     if (/^\/api\/fee-claims\/(proofs\/gist|wallet|attest)$/.test(path)) return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    // the owner mark of a bounty's poster (docs/plans/OPEN-BOUNTIES.md 9): the page hands Core a fee-claim session and a repository
+    // id; Core verifies the session and reads the admin answer GitHub gave at that sign-in; same origin only
+    if (path === "/api/bounties/owner-proof" || path === "/api/bounties/owner-proof/forget") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    // "Request a repository" (docs/plans/OPEN-BOUNTIES.md 10): a statement the wallet signed; Core verifies it, takes one per wallet
+    // per repository and a few per wallet per day; same origin only. Its class is the repository check's: a new request starts a reading
+    if (path === "/api/repo-requests") return { klass: "repocheck", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a reply bot's link led to; Core
+    // stores it only for a launch it has read from the chain; same origin only
+    if (path === "/api/tweet-launches") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
     return { refuse: 405, why: "method" };
   }
   if (method !== "GET" && method !== "HEAD") return { refuse: 405, why: "method" };
@@ -153,6 +187,12 @@ export function classify(method: string, path: string): Route | { refuse: number
     if (!DESKTOP_PATH.test(path)) return { refuse: 404, why: "desktop" };
     return { klass: "desktop", upstream: "runtime", cors: true, stream: false, sameOrigin: false };
   }
+  // the repository check before a launch: a reading may fetch the repository, so it has a class of its own
+  if (path === "/v1/repo-check" || path === "/api/repo-check") return { klass: "repocheck", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false };
+  // "Request a repository": its check is the same reading, so it shares that class; the list is a plain read. The runtime's
+  // draft plan is not a public route
+  if (path === "/v1/repo-requests/check" || path === "/api/repo-requests/check") return { klass: "repocheck", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false };
+  if (path === "/v1/repo-requests/draft-plan" || path === "/api/repo-requests/draft-plan") return { refuse: 404, why: "admin" };
   if (path.startsWith("/v1/")) {
     if (path.startsWith("/v1/admin")) return { refuse: 404, why: "admin" };
     return { klass: "v1", upstream: "core", cors: true, stream: path === "/v1/events", sameOrigin: false };
@@ -383,7 +423,11 @@ if (import.meta.main) {
     core: arg("core", "http://127.0.0.1:9660").replace(/\/+$/, ""),
     indexer: arg("indexer", "http://127.0.0.1:9668").replace(/\/+$/, ""),
     runtime: arg("runtime", "http://127.0.0.1:9667").replace(/\/+$/, ""),
+    bind: "",
   };
+  // the bind service (packages/runtime/src/bind-service.ts) answers /runtime/bind/* and /runtime/unbound/* while the
+  // runtime drains or restarts; without --bind they go to the runtime itself, as before
+  UP.bind = arg("bind", UP.runtime).replace(/\/+$/, "");
   const ORIGINS = arg("origin", "").split(",").map((s) => s.trim()).filter(Boolean);
   // how long a request waits for an upstream that refuses connections (restarting during a deploy)
   const UPSTREAM_WAIT_MS = Number(arg("upstream-wait-ms", "15000"));

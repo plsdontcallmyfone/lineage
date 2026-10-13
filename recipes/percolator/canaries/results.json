@@ -1,0 +1,181 @@
+{
+  "carry_dropped": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "1 stable tests fail: src/lib.rs::wide_math::tests::test_widening_mul_u128",
+    "effect": null,
+    "metrics": {
+      "engine_ir": {
+        "base": [
+          971950955
+        ],
+        "cand": [
+          962380996
+        ],
+        "ratio": 0.9901538663542956
+      },
+      "wide_ir": {
+        "base": [
+          143196652
+        ],
+        "cand": [
+          142343326
+        ],
+        "ratio": 0.9940408802295182
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d63",
+    "recipe_id": "60e9b59c369b39a7c2b0d874f0f4a372c468cdec63a3d29fae10c27133b246de",
+    "eval_seconds": 147.5,
+    "date": "2026-10-13T12:19:04.229Z",
+    "match": true
+  },
+  "ceil_add_first": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "1 stable tests fail: tests/rounding_residue_fuzz.rs::source_credit_fast_path_differential::fast_mul_div_boundary_partition_matches_wide_reference",
+    "effect": null,
+    "metrics": {
+      "engine_ir": {
+        "base": [
+          971950955
+        ],
+        "cand": [
+          970440198
+        ],
+        "ratio": 0.9984456448216567
+      },
+      "wide_ir": {
+        "base": [
+          143196652
+        ],
+        "cand": [
+          147568379
+        ],
+        "ratio": 1.0305295336094868
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d63",
+    "recipe_id": "60e9b59c369b39a7c2b0d874f0f4a372c468cdec63a3d29fae10c27133b246de",
+    "eval_seconds": 168.7,
+    "date": "2026-10-13T12:26:34.110Z",
+    "match": true
+  },
+  "fee_wide_path_dropped": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "engine_ir": {
+        "base": [
+          857700632
+        ],
+        "cand": [
+          857716215
+        ],
+        "ratio": 1.000018168343847
+      },
+      "wide_ir": {
+        "base": [
+          142670134
+        ],
+        "cand": [
+          139385283
+        ],
+        "ratio": 0.9769759030295717
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d66",
+    "recipe_id": "60e9b59c369b39a7c2b0d874f0f4a372c468cdec63a3d29fae10c27133b246de",
+    "eval_seconds": 201.9,
+    "date": "2026-10-13T12:29:55.983Z",
+    "match": true
+  },
+  "withdraw_open_position": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "engine_ir": {
+        "base": [
+          905230642
+        ],
+        "cand": [
+          906282054
+        ],
+        "ratio": 1.001161485207435
+      },
+      "wide_ir": {
+        "base": [
+          142043957
+        ],
+        "cand": [
+          142043957
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d77",
+    "recipe_id": "60e9b59c369b39a7c2b0d874f0f4a372c468cdec63a3d29fae10c27133b246de",
+    "eval_seconds": 110.6,
+    "date": "2026-10-13T12:34:12.954Z",
+    "match": true
+  },
+  "leading_zero_gate": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 0.9978 vs required 0.9900",
+    "effect": {
+      "metric": "wide_ir",
+      "ratio": 0.9977727284896317,
+      "ci_low": 0.9977727284896317,
+      "ci_high": 0.9977727284896317,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9977727284896317,
+          "ci_low": 0.9977727284896317,
+          "ci_high": 0.9977727284896317,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "engine_ir": {
+        "base": [
+          911139288
+        ],
+        "cand": [
+          911420565
+        ],
+        "ratio": 1.0003087091114438
+      },
+      "wide_ir": {
+        "base": [
+          142201343
+        ],
+        "cand": [
+          141884622
+        ],
+        "ratio": 0.9977727284896317
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6c",
+    "recipe_id": "60e9b59c369b39a7c2b0d874f0f4a372c468cdec63a3d29fae10c27133b246de",
+    "eval_seconds": 95.5,
+    "date": "2026-10-13T12:38:37.518Z",
+    "match": true
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "inclusive_limit": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "25 stable tests fail: tests.unit_tests.test_text_splitters::test_character_text_splitter, tests.unit_tests.test_text_splitters::test_character_text_splitter_long, tests.unit_tests.test_text_splitters::test_character_text_splitter_short_words_first, tests.unit_tests.test_text_splitters::test_cobol_code_splitter, tests.unit_tests.test_text_splitters::test_cpp_code_splitter, tests.unit_tests.test_text_splitters::test_create_documents_with_start_index[splitter0-foo bar baz 123-expected_docs0], tests.unit_tests.test_text_splitters::test_create_documents_with_start_index[splitter1-w1 w1 w1 w1 w1 w1 w1 w1 w1-expected_docs1], tests.unit_tests.test_text_splitters::test_csharp_code_splitter, tests.unit_tests.test_text_splitters::test_golang_code_splitter, tests.unit_tests.test_text_splitters::test_haskell_code_splitter",
+    "effect": null,
+    "metrics": {
+      "recursive_ir": {
+        "base": [
+          710262722
+        ],
+        "cand": [
+          711031875
+        ],
+        "ratio": 1.001082913373004
+      },
+      "code_ir": {
+        "base": [
+          198057097
+        ],
+        "cand": [
+          198175635
+        ],
+        "ratio": 1.000598504177813
+      },
+      "markdown_ir": {
+        "base": [
+          739134782
+        ],
+        "cand": [
+          738975505
+        ],
+        "ratio": 0.9997845088556528
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d69",
+    "recipe_id": "97d998999b889cfe1ca392645b585f0e1317b5627e57500888a153571e8f4e56",
+    "eval_seconds": 277.2,
+    "date": "2026-10-13T11:48:11.146Z",
+    "match": true
+  },
+  "bom_only_filter": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "recursive_ir": {
+        "base": [
+          725173671
+        ],
+        "cand": [
+          725164840
+        ],
+        "ratio": 0.9999878222274841
+      },
+      "code_ir": {
+        "base": [
+          191326971
+        ],
+        "cand": [
+          191292959
+        ],
+        "ratio": 0.9998222310225149
+      },
+      "markdown_ir": {
+        "base": [
+          773054777
+        ],
+        "cand": [
+          326372156
+        ],
+        "ratio": 0.4221850323033448
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d62",
+    "recipe_id": "97d998999b889cfe1ca392645b585f0e1317b5627e57500888a153571e8f4e56",
+    "eval_seconds": 324.5,
+    "date": "2026-10-13T11:53:35.625Z",
+    "match": true
+  },
+  "resum_total": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.3290 vs required 0.9900",
+    "effect": {
+      "metric": "recursive_ir",
+      "ratio": 1.3290292123883969,
+      "ci_low": 1.3290292123883969,
+      "ci_high": 1.3290292123883969,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.3290292123883969,
+          "ci_low": 1.3290292123883969,
+          "ci_high": 1.3290292123883969,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "recursive_ir": {
+        "base": [
+          724693158
+        ],
+        "cand": [
+          963138377
+        ],
+        "ratio": 1.3290292123883969
+      },
+      "code_ir": {
+        "base": [
+          203524774
+        ],
+        "cand": [
+          297170935
+        ],
+        "ratio": 1.4601216803218267
+      },
+      "markdown_ir": {
+        "base": [
+          759221529
+        ],
+        "cand": [
+          758162832
+        ],
+        "ratio": 0.9986055492902125
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d72",
+    "recipe_id": "97d998999b889cfe1ca392645b585f0e1317b5627e57500888a153571e8f4e56",
+    "eval_seconds": 211.7,
+    "date": "2026-10-13T11:57:07.349Z",
+    "match": true
+  }
+}

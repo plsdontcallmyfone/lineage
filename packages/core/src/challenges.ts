@@ -657,6 +657,7 @@ export class Challenges {
     const leaves = [
       ...this.c.db.query<{ leaf: string }, [number]>("SELECT leaf FROM records WHERE epoch = ?").all(n).map((x) => x.leaf),
       ...this.c.db.query<{ leaf: string }, [number]>("SELECT leaf FROM contributions WHERE epoch = ?").all(n).map((x) => x.leaf),
+      ...this.c.db.query<{ leaf: string }, [number]>("SELECT leaf FROM bounty_results WHERE epoch = ?").all(n).map((x) => x.leaf),
     ].sort();
     return { payouts: p, root: p.root, lineage_root: lineageRootOf(gens), record_root: ep.record_root ? merkleRoot(leaves) : null };
   }

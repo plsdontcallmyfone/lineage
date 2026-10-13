@@ -1,0 +1,50 @@
+{
+  "_note": "amd64 calibration measured on the mainnet capacity host cap-nyc1 (157.230.180.62, DigitalOcean c-32: 32 vCPU Intel Xeon Gold 6248, 62 GiB, kernel 7.0.0) in a scratch checkout of 910593b on 2026-10-13 with scripts/calibrate-recipe.ts (5 runs), the recipe re-pinned by scripts/deploy/arch-recipes.ts to the site's image. Not a Core record: no site has served this recipe on amd64 yet, and a site's reference runner calibrates the unit again when it first serves it.",
+  "host": "cap-nyc1",
+  "recipe_id": "794e82cf7b9b9e1c44918436b8d4813b72d16f3e784fe1e738071ac9afad1ee2",
+  "image": "lineage/solana:m1@sha256:5831e7b4543156d590db44814a65347a276308bb377132a5f64ddced2a99e1d2",
+  "deps_digest": "4315a0bc839d032525da7fe1b802f39af31ac11947d07e760acb15ad0ac91f19",
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 18,
+    "metrics": {
+      "write_cu": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 17195
+      },
+      "admin_cu": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 21684
+      },
+      "so_bytes": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 24720
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "794e82cf7b9b9e1c44918436b8d4813b72d16f3e784fe1e738071ac9afad1ee2",
+    "runs": 5,
+    "seed": "ca11b7a7e",
+    "snapshot_id": "",
+    "stable": [
+      "unknown::close_account_fail_unsigned",
+      "unknown::close_account_fail_wrong_authority",
+      "unknown::close_account_success",
+      "unknown::initialize_success",
+      "unknown::initialize_twice_fail",
+      "unknown::initialize_with_seed_success",
+      "unknown::reallocate_fail_unsigned",
+      "unknown::reallocate_fail_wrong_authority",
+      "unknown::reallocate_success",
+      "unknown::set_authority_fail_unsigned",
+      "unknown::set_authority_fail_wrong_authority",
+      "unknown::set_authority_success",
+      "unknown::write_fail_unsigned",
+      "unknown::write_fail_wrong_authority",
+      "unknown::write_success"
+    ]
+  }
+}

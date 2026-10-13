@@ -1,0 +1,49 @@
+{
+  "short_division": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "wide_ir",
+      "ratio": 0.7792931259377656,
+      "ci_low": 0.7792931259377656,
+      "ci_high": 0.7792931259377656,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.7792931259377656,
+          "ci_low": 0.7792931259377656,
+          "ci_high": 0.7792931259377656,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "engine_ir": {
+        "base": [
+          894753256
+        ],
+        "cand": [
+          892769594
+        ],
+        "ratio": 0.9977830066706123
+      },
+      "wide_ir": {
+        "base": [
+          142678909
+        ],
+        "cand": [
+          111188693
+        ],
+        "ratio": 0.7792931259377656
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "60e9b59c369b39a7c2b0d874f0f4a372c468cdec63a3d29fae10c27133b246de",
+    "eval_seconds": 146.8,
+    "date": "2026-10-13T12:30:41.498Z",
+    "match": true
+  }
+}

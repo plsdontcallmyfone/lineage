@@ -1,0 +1,40 @@
+{
+  "_note": "amd64 calibration measured on the mainnet capacity host cap-nyc1 (157.230.180.62, DigitalOcean c-32: 32 vCPU Intel Xeon Gold 6248, 62 GiB, kernel 7.0.0) in a scratch checkout of 910593b on 2026-10-13 with scripts/calibrate-recipe.ts (5 runs), the recipe re-pinned by scripts/deploy/arch-recipes.ts to the site's image. Not a Core record: no site has served this recipe on amd64 yet, and a site's reference runner calibrates the unit again when it first serves it.",
+  "host": "cap-nyc1",
+  "recipe_id": "656eb8d20d4696664f7feb7a2d6706e81f89c1f122aee1e1437032068dcbc71c",
+  "image": "lineage/python:m1@sha256:beb7b0264451a2bdc993fe5deee1e8b6275fbad7d83d593c69f7a40c64f1164d",
+  "deps_digest": "7bc0dffc558aff6b5356e8cdd9faeaa8d3b85f5d0d5088f7367f3760a5301eb0",
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 12,
+    "metrics": {
+      "encode_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 951710343
+      },
+      "decode_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 1784714884
+      },
+      "bech32_ir": {
+        "enabled": true,
+        "cv": 5.044716090021867e-9,
+        "base_value": 841006830
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "656eb8d20d4696664f7feb7a2d6706e81f89c1f122aee1e1437032068dcbc71c",
+    "runs": 5,
+    "seed": "ca11b7a7e",
+    "snapshot_id": "",
+    "stable": [
+      "tests.TestSegwitAddress::test_invalid_address",
+      "tests.TestSegwitAddress::test_invalid_address_enc",
+      "tests.TestSegwitAddress::test_invalid_checksum",
+      "tests.TestSegwitAddress::test_valid_address",
+      "tests.TestSegwitAddress::test_valid_checksum"
+    ]
+  }
+}

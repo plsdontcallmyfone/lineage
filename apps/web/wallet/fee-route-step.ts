@@ -4,59 +4,60 @@
 // to the launch (one hunk in main.ts). Nothing renders and no instruction is added unless the
 // feature is on both in Core (the lookup and claim routes exist) and on chain (the program's
 // feature bit), so the wizard is unchanged while the features are off.
+//
+// The fee route (owner 2026-10-12, plan section 11): one tick, off until the launcher ticks it. The
+// recipient is the repository the agent works on, keyed by the repository's numeric GitHub id, and
+// the share is the one number in the chain's ClaimConfig. Nothing is typed and nothing is chosen;
+// the rules are in fee-route-plan.ts.
 import { canonicalUrl, claimPdas, claims, decodeClaimConfig, decodeLaunchConfig, decodePool, FEATURES, launchPdas, poolPdas, pools, repoId, TOKEN_2022_PROGRAM,
   type ClaimConfig, type Ix } from "../../../packages/chain/src/browser/index.ts";
 import { html } from "../src/html.ts";
 import { NET, rpc } from "./chain.ts";
+import { fixedShareBps, planFeeRoute, repoNameOf, tickText, type LookedUpRepo } from "./fee-route-plan.ts";
 
-interface GhUser { id: number; login: string; name: string | null; avatar_url: string | null; type: string }
-const F: { el: HTMLElement | null; github: boolean; pools: boolean; cfg: ClaimConfig | null; user: GhUser | null; lookupErr: string | null; touched: boolean; timer: ReturnType<typeof setTimeout> | null;
-  poolMembers: number | null; repo: string } = { el: null, github: false, pools: false, cfg: null, user: null, lookupErr: null, touched: false, timer: null, poolMembers: null, repo: "" };
+const F: { el: HTMLElement | null; github: boolean; pools: boolean; cfg: ClaimConfig | null; looked: LookedUpRepo | null; lookupErr: string | null;
+  poolMembers: number | null; repo: string } = { el: null, github: false, pools: false, cfg: null, looked: null, lookupErr: null, poolMembers: null, repo: "" };
 
 const q = <T extends HTMLElement>(sel: string) => F.el?.querySelector<T>(sel) ?? null;
-const ownerOf = (repo: string) => /github\.com\/([A-Za-z0-9][A-Za-z0-9-]{0,38})\//i.exec(repo + "/")?.[1] ?? null;
-const pct = (bps: number) => Number((bps / 100).toFixed(2)).toString();
 
-async function lookup(login: string) {
-  F.user = null;
+/** Core resolves the repository in the field to its numeric id (the escrow key); a rename or a transfer keeps the id. */
+async function lookup(repo: string) {
+  const name = repoNameOf(repo);
+  F.looked = null;
   F.lookupErr = null;
-  if (!login) return paintUser();
+  paintRoute();
+  if (!name) return;
   try {
-    const res = await fetch(`/api/github/users/${encodeURIComponent(login)}`, { headers: { accept: "application/json" } });
+    const res = await fetch(`/api/github/repos/${name.split("/").map(encodeURIComponent).join("/")}`, { headers: { accept: "application/json" } });
     const j = await res.json().catch(() => null);
-    if (res.ok) F.user = j as GhUser;
-    else F.lookupErr = res.status === 404 ? `No GitHub account named ${login}.` : (j?.message ?? `lookup failed (HTTP ${res.status})`);
+    // a later value of the field may have replaced this lookup
+    if (repoNameOf(F.repo) !== name) return;
+    if (res.ok && typeof j?.id === "string" && typeof j?.full_name === "string") F.looked = { asked: name, id: j.id, full_name: j.full_name };
+    else F.lookupErr = res.status === 404 ? "GitHub has no public repository at this address." : (j?.message ?? `GitHub lookup failed (HTTP ${res.status})`);
   } catch (e) {
-    F.lookupErr = `lookup failed: ${(e as Error).message}`;
+    if (repoNameOf(F.repo) !== name) return;
+    F.lookupErr = `GitHub lookup failed: ${(e as Error).message}`;
   }
-  // a later keystroke may have replaced this lookup
-  if ((q<HTMLInputElement>('[name="l_fee_login"]')?.value.trim().replace(/^@/, "") ?? "").toLowerCase() === login.toLowerCase()) paintUser();
+  paintRoute();
 }
 
-function paintUser() {
-  const out = q("#w-fee-user");
-  if (!out) return;
-  const u = F.user;
-  out.innerHTML = (u
-    ? html`<span class="fr-user" data-fee-user="${String(u.id)}">${u.avatar_url ? html`<img src="${u.avatar_url}" alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer">` : ""}
-        <span><b>@${u.login}</b>${u.name ? html` <span class="dim">${u.name}</span>` : ""}<br><span class="wl-fine">GitHub account id ${String(u.id)}${u.type === "Organization" ? ". An organisation cannot sign in or post a gist: pick a person who can claim." : ". Fees are keyed to this id, so a rename changes nothing."}</span></span></span>`
-    : F.lookupErr ? html`<span class="wl-fine" style="color:var(--bad)">${F.lookupErr}</span>` : html`<span class="wl-fine">Type a GitHub username.</span>`).s;
-}
-
-function paintShare() {
-  const v = Number(q<HTMLInputElement>('[name="l_fee_bps"]')?.value ?? 0);
-  const out = q("#w-fee-pct");
-  if (out) out.textContent = `${pct(v)}%`;
+/** The tick's sentence and its state: it can only be ticked once the repository in the field is confirmed. */
+function paintRoute() {
+  const bps = fixedShareBps(F.cfg);
+  const text = q("#w-fee-text"), box = q<HTMLInputElement>('[name="l_fee_on"]'), note = q("#w-fee-note");
+  if (!text || !box || bps === null) return;
+  const ok = !!F.looked && F.looked.asked === repoNameOf(F.repo);
+  text.textContent = tickText(bps, ok ? F.looked!.full_name : null);
+  box.disabled = !ok;
+  if (!ok) box.checked = false;
+  box.dataset.feeRepo = ok ? F.looked!.id : "";
+  if (note) note.textContent = F.lookupErr ?? "";
 }
 
 function suggest(repo: string) {
+  if (repo === F.repo) return;
   F.repo = repo;
-  const input = q<HTMLInputElement>('[name="l_fee_login"]');
-  const owner = ownerOf(repo);
-  if (input && owner && !F.touched && input.value !== owner) {
-    input.value = owner;
-    void lookup(owner);
-  }
+  if (F.github) void lookup(repo);
   void readPool(repo);
 }
 
@@ -79,8 +80,9 @@ async function readPool(repo: string) {
 export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputElement | null): Promise<void> {
   F.el = root.querySelector<HTMLElement>("#w-fee-route");
   F.github = F.pools = false;
-  F.user = null;
-  F.touched = false;
+  F.looked = null;
+  F.lookupErr = null;
+  F.repo = "";
   if (!F.el) return;
   F.el.innerHTML = "";
   // the profile's flags first (config/profile.json `features`): off means no request is even made
@@ -94,7 +96,7 @@ export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputE
         fetch("/api/pools/config").then((r) => r.ok || r.status === 404 ? r.ok : Promise.reject(new Error(`HTTP ${r.status}`)))]);
       const features = lcA ? decodeLaunchConfig(lcA.data).features : 0;
       F.cfg = ccA ? decodeClaimConfig(ccA.data) : null;
-      F.github = want.github_fee_claims && !!(features & FEATURES.githubFees) && !!F.cfg && !F.cfg.paused && core;
+      F.github = want.github_fee_claims && !!(features & FEATURES.githubFees) && !!F.cfg && !F.cfg.paused && fixedShareBps(F.cfg) !== null && core;
       F.pools = want.agent_pools && !!(features & FEATURES.pools) && corePools;
       break;
     } catch {
@@ -103,32 +105,17 @@ export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputE
     }
   }
   if (!F.github && !F.pools) return;
-  const min = F.cfg?.minBps ?? 1000, max = F.cfg?.maxBps ?? 3000;
-  F.el.innerHTML = html`<style>
-      #w-fee-route .fr-user{display:flex;gap:10px;align-items:center;margin-top:8px}
-      #w-fee-route .fr-user img{border-radius:50%;flex:none}
-      #w-fee-route .fr-slide{display:flex;gap:12px;align-items:center}
-      #w-fee-route .fr-slide input[type=range]{flex:1}
-      #w-fee-route .fr-slide output{min-width:3.2em;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
-    </style>
-    ${F.github ? html`<fieldset data-fee-route-field><legend class="eyebrow">Share fees with a GitHub account</legend>
-      <label class="radio"><input type="checkbox" name="l_fee_on" checked> <span>Route a share of this agent's creator fees to a GitHub account. The account's owner claims them on the Claim page; you can redirect future fees later, after a delay, and never take back what has accrued.</span></label>
-      <div class="fr-slide" style="margin-top:10px"><span class="eyebrow">Share</span><input type="range" name="l_fee_bps" min="${String(min)}" max="${String(max)}" step="100" value="${String(min)}" aria-label="Share of the agent's fees"><output id="w-fee-pct">${pct(min)}%</output></div>
-      <span class="wl-help">From ${pct(min)}% to ${pct(max)}% of what the agent keeps of its creator fees. The rest pays for its compute.</span>
-      <label style="margin-top:10px"><span class="eyebrow">GitHub username</span><input name="l_fee_login" maxlength="39" placeholder="the repository's owner" autocomplete="off"></label>
-      <div id="w-fee-user"><span class="wl-fine">Type a GitHub username.</span></div>
+  const bps = fixedShareBps(F.cfg);
+  F.el.innerHTML = html`
+    ${F.github && bps !== null ? html`<fieldset data-fee-route-field data-fee-bps="${String(bps)}"><legend class="eyebrow">Share fees with the repository's owners</legend>
+      <label class="radio"><input type="checkbox" name="l_fee_on" disabled> <span id="w-fee-text">${tickText(bps, null)}</span></label>
+      <span class="wl-help">Anyone with admin on the repository on GitHub can claim the share on the Claim page. The rest of the agent's fees pays for its compute. Once set, the share cannot be removed.</span>
+      <span class="wl-fine" id="w-fee-note" style="color:var(--bad)"></span>
     </fieldset>` : ""}
     ${F.pools ? html`<fieldset data-pool-field><legend class="eyebrow">Repository pool</legend>
       <label class="radio"><input type="checkbox" name="l_pool_join" checked> <span>Join this repository's agent pool. Members route a slice of their fees into a shared vault that pays members by verified work, buys the members' tokens when a member's change is accepted, and burns at milestones.</span></label>
       <span class="wl-help" id="w-pool-note"></span>
     </fieldset>` : ""}`.s;
-  q<HTMLInputElement>('[name="l_fee_bps"]')?.addEventListener("input", paintShare);
-  q<HTMLInputElement>('[name="l_fee_login"]')?.addEventListener("input", (e) => {
-    F.touched = true;
-    const v = (e.target as HTMLInputElement).value.trim().replace(/^@/, "");
-    if (F.timer) clearTimeout(F.timer);
-    F.timer = setTimeout(() => void lookup(v), 350);
-  });
   repoInput?.addEventListener("input", () => suggest(repoInput.value.trim()));
   if (repoInput?.value) suggest(repoInput.value.trim());
 }
@@ -142,14 +129,12 @@ export async function launchExtras(a: { launcher: string; agent: string; agentMi
   // `creates`: the shared accounts each group makes when they do not exist yet, for the launch's rent line (launch-costs.ts)
   const out = { feeRoute: [] as Ix[], pool: [] as Ix[], lines: [] as string[], creates: {} as { feeRoute?: { escrow: string; vault: string }; pool?: { pool: string; vault: string } } };
   if (!F.el) return out;
-  if (F.github && q<HTMLInputElement>('[name="l_fee_on"]')?.checked) {
-    const bps = Number(q<HTMLInputElement>('[name="l_fee_bps"]')?.value ?? 0);
-    const typed = q<HTMLInputElement>('[name="l_fee_login"]')?.value.trim().replace(/^@/, "") ?? "";
-    if (!F.user || F.user.login.toLowerCase() !== typed.toLowerCase()) throw new Error(F.lookupErr ?? "The work: name the GitHub account that receives the fee share, or untick the share.");
-    if (!F.cfg || bps < F.cfg.minBps || bps > F.cfg.maxBps) throw new Error("The work: the fee share is outside the allowed range.");
-    out.feeRoute = [claims.setFeeRoute({ owner: a.launcher, agent: a.agent, agentMint: a.agentMint, lineMint: a.lineMint, githubId: BigInt(F.user.id), bps, lineTokenProgram: TOKEN_2022_PROGRAM })];
-    out.creates.feeRoute = { escrow: claimPdas.escrow(BigInt(F.user.id)), vault: claimPdas.vault(BigInt(F.user.id)) };
-    out.lines.push(`${pct(bps)}% of fees go to @${F.user.login}`);
+  // the route is built for the repository the launch itself names (a.repoUrl), never for a value read back from the page
+  const plan = F.github ? planFeeRoute({ ticked: q<HTMLInputElement>('[name="l_fee_on"]')?.checked === true, cfg: F.cfg, repoUrl: a.repoUrl, looked: F.looked }) : null;
+  if (plan) {
+    out.feeRoute = [claims.setFeeRoute({ owner: a.launcher, agent: a.agent, agentMint: a.agentMint, lineMint: a.lineMint, githubId: plan.githubId, bps: plan.bps, lineTokenProgram: TOKEN_2022_PROGRAM })];
+    out.creates.feeRoute = { escrow: claimPdas.escrow(plan.githubId), vault: claimPdas.vault(plan.githubId) };
+    out.lines.push(plan.line);
   }
   if (F.pools && q<HTMLInputElement>('[name="l_pool_join"]')?.checked) {
     const id = repoId(canonicalUrl(a.repoUrl));

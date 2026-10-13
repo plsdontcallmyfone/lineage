@@ -65,17 +65,18 @@ esac
 P="units-$TAG"
 BASE="/opt/$P"; STATE="/var/lib/$P"; ETC="/etc/$P"; ETCCORE="/etc/$P-core"; UHOME="/home/$P"
 LH="$UHOME/.config/lineage"
-PORT_CORE=$((9660 + OFF)); PORT_WEB=$((9661 + OFF)); PORT_GATE=$((9662 + OFF)); PORT_ID=$((9665 + OFF)); PORT_BIND=$((9667 + OFF)); PORT_IDX=$((9668 + OFF))
+PORT_CORE=$((9660 + OFF)); PORT_WEB=$((9661 + OFF)); PORT_GATE=$((9662 + OFF)); PORT_ID=$((9665 + OFF)); PORT_BINDSVC=$((9666 + OFF)); PORT_BIND=$((9667 + OFF)); PORT_IDX=$((9668 + OFF))
 SHARED=/var/lib/units-shared/e2b-spend
 ENVF="$ETC/site.env"
 [ -f "$ENVF" ] && . "$ENVF"
 DRY_RUN="${DRY_RUN:-0}"
 WITH_IDENTITY="${WITH_IDENTITY:-0}"
 UNITS_RECIPES="${UNITS_RECIPES:-fixture-b58,base58-py,minbpe}"
-PUBLIC_UNITS=("$P-core" "$P-indexer" "$P-web" "$P-gate")
+# the bind service (docs/plans/SEAMLESS-BIND.md section 9) is a public unit: health-checked, before the gate, never drained with the runtime
+PUBLIC_UNITS=("$P-core" "$P-indexer" "$P-web" "$P-bind" "$P-gate")
 # the GitHub identity service (WITH_IDENTITY=1): started and health-checked after the indexer, as on the first instance
 IDU="$P-identity"; ID_STORE="$STATE/identity"; ID_ETC="/etc/$P-identity"; ID_TIMER="$P-identity-cycle.timer"
-[ "$WITH_IDENTITY" = 1 ] && PUBLIC_UNITS=("$P-core" "$P-indexer" "$IDU" "$P-web" "$P-gate")
+[ "$WITH_IDENTITY" = 1 ] && PUBLIC_UNITS=("$P-core" "$P-indexer" "$IDU" "$P-web" "$P-bind" "$P-gate")
 # what belongs to one deployment (program ids, quote mint) and is moved by archive-state: Core's database,
 # the indexer's, the hosted runtime's state (agent keys, attempts, bind requests)
 DEPLOYMENT_DIRS=(core indexer runtime)
@@ -330,6 +331,7 @@ health_url() {
     "$P-indexer") echo "http://127.0.0.1:$PORT_IDX/market/summary" ;;
     "$P-web") echo "http://127.0.0.1:$PORT_WEB/live/status" ;;
     "$P-gate") echo "http://127.0.0.1:$PORT_GATE/gate/health" ;;
+    "$P-bind") echo "http://127.0.0.1:$PORT_BINDSVC/runtime/bind/health" ;;
     "$IDU") echo "http://127.0.0.1:$PORT_ID/identity/health" ;;
   esac
 }
@@ -337,10 +339,14 @@ restart_checked() {
   local u="$1" url code="" until t0
   t0="$(now_ms)"
   systemctl restart --job-mode=ignore-dependencies "$u" || { echo "  $u: restart failed" >&2; return 1; }
+  # the bind service runs only on an instance with a runtime authority key (its unit's condition)
+  if [ "$(systemctl show -p ConditionResult --value "$u")" = no ]; then echo "  $u skipped (unit condition not met)"; return 0; fi
   url="$(health_url "$u")"; until=$(( $(date +%s) + HEALTH_WAIT ))
   while [ "$(date +%s)" -lt "$until" ]; do
     code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
     if [ "$u" = "$P-indexer" ] && [ -n "$code" ] && [ "$code" != 000 ]; then break; fi
+    # the bind service up but not ready (503: its chain read failed) is the monitor's matter, never a failed activation
+    if [ "$u" = "$P-bind" ] && [ "$code" = 503 ]; then code=200; break; fi
     [ "$code" = 200 ] && break
     sleep 0.5
   done
@@ -354,7 +360,7 @@ restart_checked() {
 }
 # the identity units whenever their files are installed (also right after the flag was turned off)
 identity_units() { if [ -f "/etc/systemd/system/$IDU.service" ]; then echo "$ID_TIMER" "$IDU-cycle" "$IDU"; fi; }
-all_units() { echo $(identity_units) "$P-runtime" "$P-bootstrap" "${WORKER_UNITS[@]}" "$P-core" "$P-indexer" "$P-web" "$P-gate"; }
+all_units() { echo $(identity_units) "$P-runtime" "$P-bootstrap" "${WORKER_UNITS[@]}" "$P-core" "$P-indexer" "$P-web" "$P-bind" "$P-gate"; }
 stop_all() { systemctl disable -q --now $(all_units) 2>/dev/null || true; }
 
 # the instance's Caddy site block, beside the first instance's Caddyfile (never rewriting its site)
@@ -673,7 +679,7 @@ activate|activate-staged)
   fi
   phase "chain preflight"
   # its ports must be free, or held by its own units (a re-activate)
-  for port in $PORT_CORE $PORT_WEB $PORT_GATE $PORT_BIND $PORT_IDX $([ "$WITH_IDENTITY" = 1 ] && echo "$PORT_ID"); do
+  for port in $PORT_CORE $PORT_WEB $PORT_GATE $PORT_BINDSVC $PORT_BIND $PORT_IDX $([ "$WITH_IDENTITY" = 1 ] && echo "$PORT_ID"); do
     for pid in $(lsof -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true); do
       cg="$(cat "/proc/$pid/cgroup" 2>/dev/null || true)"
       case "$cg" in *"/$P-"*) ;; *) echo "port $port is held by pid $pid, which is not a $P unit; not activated" >&2; exit 1 ;; esac
@@ -763,7 +769,7 @@ status)
     st=$(systemctl is-active "$u" 2>/dev/null || true); en=$(systemctl is-enabled "$u" 2>/dev/null || true)
     printf '%-28s %-10s %s\n' "$u" "${st:-unknown}" "${en:-}"
   done
-  echo "ports     core $PORT_CORE, web $PORT_WEB, gate $PORT_GATE, runtime bind $PORT_BIND, indexer $PORT_IDX"
+  echo "ports     core $PORT_CORE, web $PORT_WEB, gate $PORT_GATE, bind service $PORT_BINDSVC, runtime $PORT_BIND, indexer $PORT_IDX"
   echo "site      ${SITE_NAMES:-not set}"
   echo "state     $([ -s "$ETC/state.json" ] && echo present || echo missing), overlay $([ -s "$ETC/profile.local.json" ] && echo present || echo missing), rpc $(have_rpc && echo present || echo missing), Core authority key $([ -f "$ETCCORE/core-authority.json" ] && echo present || echo missing), runtime authority key $([ -f "$LH/$NETWORK/runtime-authority.json" ] && echo present || echo missing)"
   h="$(curl -s -m 5 "http://127.0.0.1:$PORT_CORE/v1/health" 2>/dev/null || true)"; echo "core      ${h:-not answering}"

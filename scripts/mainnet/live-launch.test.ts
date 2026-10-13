@@ -42,7 +42,7 @@ test("a plan outside the limits is never signed", () => {
   const base = parsePlan(forkRow, rows, ok);
   const bad = (over: Partial<Plan>, o = { maxSol: 0.15, balanceSol: 0.5 }) => planProblem({ ...base, ...over }, o);
   expect(bad({ built: false })).toMatch(/no built launch/);
-  expect(bad({ txs: base.txs.slice(0, 1) })).toMatch(/1 transactions/);
+  expect(bad({ txs: base.txs.slice(0, 1) })).toMatch(/1 launch transactions/);
   expect(bad({ txs: [base.txs[1]!, base.txs[0]!] })).toMatch(/first transaction/);
   expect(bad({ txs: [base.txs[0]!, { ...base.txs[1]!, bytes: 1233 }] })).toMatch(/1233 bytes/);
   const withAccount = [base.txs[0]!, { ...base.txs[1]!, groups: ["sol-to-units", "initial-buy", "credits", "units-account", "tip"] }];
@@ -57,7 +57,23 @@ test("a plan outside the limits is never signed", () => {
   expect(bad({ must_hold_sol: null, total_sol: 0.2 })).toMatch(/0.2 SOL, over the limit/);
 });
 
+test("a hosted launch's binding rides as one more transaction, last and alone", () => {
+  const base = parsePlan(forkRow, rows, ok);
+  const bind = { groups: ["bind"], bytes: 340, v0: true };
+  expect(planProblem({ ...base, txs: [...base.txs, bind] }, { maxSol: 0.15, balanceSol: 0.5 })).toBeNull();
+  expect(planProblem({ ...base, txs: [base.txs[0]!, bind, ...base.txs.slice(1)] }, { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/binding is not a transaction of its own at the end/);
+  expect(planProblem({ ...base, txs: [...base.txs.slice(0, -1), { ...base.txs.at(-1)!, groups: [...base.txs.at(-1)!.groups, "bind"] }] }, { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/binding is not a transaction of its own/);
+});
+
+test("with the site's initial buy at zero the plan carries the credits alone, and an initial buy is then out of place", () => {
+  const base = parsePlan(forkRow, rows, ok);
+  const noBuy = base.txs.map((t) => ({ ...t, groups: t.groups.filter((g) => g !== "initial-buy") }));
+  expect(planProblem({ ...base, txs: noBuy }, { maxSol: 0.15, balanceSol: 0.5, initialBuy: false })).toBeNull();
+  expect(planProblem({ ...base, txs: noBuy }, { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/do not carry the initial buy/);
+  expect(planProblem(base, { maxSol: 0.15, balanceSol: 0.5, initialBuy: false })).toMatch(/initial buy is set to zero/);
+});
+
 test("a simulation that failed, or a Jupiter route, is not the measured launch", () => {
   expect(planProblem(parsePlan(forkRow, rows, "Simulation failed: {\"InstructionError\":[2,{\"Custom\":6001}]}"), { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/simulation/);
-  expect(planProblem(parsePlan("Jupiter swap 1; launch + soul (1092 bytes, v0)", rows, ok), { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/1 transactions/);
+  expect(planProblem(parsePlan("Jupiter swap 1; launch + soul (1092 bytes, v0)", rows, ok), { maxSol: 0.15, balanceSol: 0.5 })).toMatch(/1 launch transactions/);
 });

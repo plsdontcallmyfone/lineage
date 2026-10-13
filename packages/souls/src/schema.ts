@@ -3,6 +3,8 @@
 // purpose `soul`. Pure data and checks: no I/O, no model, safe to bundle for the browser and for
 // Core.
 
+import { validateSwarm, type SoulSwarm } from "./swarm.ts";
+
 export const SOUL_V = 1 as const;
 /** Kind of new soul documents (signing switch 2026-10-11); `LEGACY_SOUL_KIND` documents stay valid and keep their kind across versions. */
 export const SOUL_KIND = "units-soul" as const;
@@ -98,6 +100,11 @@ export interface SoulDoc {
    * Core's blob store. Optional: absent (or null) means the generated pattern from the agent id.
    */
   media?: { avatar: SoulImage | null; banner: SoulImage | null };
+  /**
+   * Swarm (docs/plans/SWARMS.md): the seats that work under this one agent, each with a name, a role
+   * and a model. Optional: absent means a solo agent. With it, `model` equals seat 1's model.
+   */
+  swarm?: SoulSwarm;
 }
 
 export interface SoulImage {
@@ -255,7 +262,9 @@ export function validateSoul(doc: unknown): string[] {
   const keys = ["v", "kind", "agent", "seq", "prev", "created_at", "seed", "persona", "identity", "memory", "origin"];
   if (doc && typeof doc === "object" && "model" in doc) keys.push("model"); // optional (plan M)
   if (doc && typeof doc === "object" && "media" in doc) keys.push("media"); // optional (plan S)
+  if (doc && typeof doc === "object" && "swarm" in doc) keys.push("swarm"); // optional (docs/plans/SWARMS.md)
   if (!keysExactly(errs, "soul", doc, keys)) return errs;
+  if ("swarm" in doc) errs.push(...validateSwarm(doc.swarm, doc.model));
   if ("media" in doc) {
     const m = doc.media as Record<string, unknown> | null;
     const img = (x: unknown) => x === null || (!!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 2 && typeof (x as any).sha256 === "string" && HEX64.test((x as any).sha256) && ["image/png", "image/jpeg", "image/webp"].includes((x as any).type));

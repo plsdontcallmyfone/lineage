@@ -140,6 +140,10 @@
         "@units/protocol": "workspace:*",
       },
     },
+    "packages/tweet-launch": {
+      "name": "@units/tweet-launch",
+      "version": "0.1.0",
+    },
     "packages/worker": {
       "name": "@units/worker",
       "version": "0.1.0",
@@ -493,6 +497,8 @@
     "@units/souls": ["@units/souls@workspace:packages/souls"],
 
     "@units/web": ["@units/web@workspace:apps/web"],
+
+    "@units/tweet-launch": ["@units/tweet-launch@workspace:packages/tweet-launch"],
 
     "@units/worker": ["@units/worker@workspace:packages/worker"],
 

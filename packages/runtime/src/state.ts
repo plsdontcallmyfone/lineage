@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync,
 import { join } from "node:path";
 import { base58Decode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@units/protocol";
 import { guardKey } from "../../chain/src/guard.ts";
+import { keyOnce } from "./keystore.ts";
 
 /**
  * An agent id is a base58 ed25519 public key. Ids come from Core or the chain and become file names
@@ -34,7 +35,31 @@ export interface AgentUsage {
   /** Usage line kind "chain fee" (SPEC 12.5, 17.2): lamports the runtime paid for the agent's onchain messages, and how many transactions. */
   chain_lamports?: number;
   chain_txs?: number;
+  /**
+   * Swarms (docs/plans/SWARMS.md 4): USD the vault is charged for the screens of seats past the free
+   * ones and the seconds they ran, and each seat's share of this record (the record itself is the sum,
+   * so the vault is debited once whatever the number of seats). Absent for a solo agent.
+   */
+  desktop_usd?: number;
+  desktop_s?: number;
+  seats?: Record<string, SeatUsage>;
+  /**
+   * Network compute (plan MODELS-AND-SELF-FUNDING section D): the part of `usd` and `sandbox_s` that
+   * attempts on the network's money used. It is in the record's cost and is not charged to the vault
+   * (unless platform_funding.charge_vault). Absent: none.
+   */
+  network_usd?: number;
+  network_sandbox_s?: number;
 }
+
+export interface SeatUsage {
+  usd: number;
+  sandbox_s: number;
+  attempts: number;
+  desktop_s: number;
+  desktop_usd: number;
+}
+export const emptySeatUsage = (): SeatUsage => ({ usd: 0, sandbox_s: 0, attempts: 0, desktop_s: 0, desktop_usd: 0 });
 
 export const emptyUsage = (): AgentUsage => ({
   input_tokens: 0,
@@ -68,7 +93,7 @@ export interface ClosedEpoch {
   epoch: number;
   opened_at: number;
   closed_at: number;
-  leaves: { agent: string; amount: string; cost: string; model_tokens: number; sandbox_s: number; usd: number; chain_lamports?: number }[];
+  leaves: { agent: string; amount: string; cost: string; model_tokens: number; sandbox_s: number; usd: number; chain_lamports?: number; desktop_usd?: number; desktop_s?: number; seats?: Record<string, SeatUsage> }[];
   root: string | null;
   post: string | null;
   /** agent -> devnet debit signature, or sim usage id */
@@ -90,9 +115,15 @@ export interface RuntimeState {
   windows?: { start: number; window_s: number; usd: number }[];
   /** plan MODELS-AND-SELF-FUNDING: USD of usage the vaults could not pay (leaf shortfalls), lifetime */
   subsidized_usd_total?: number;
+  /** network compute (plan section D): when each agent's last attempt on the network's money started, so a restart does not shorten the interval */
+  network_started?: Record<string, number>;
   /** the OpenRouter balance as last read (the monitor alerts on it; no key in it) */
   provider_balance?: { openrouter: { usd: number | null; source: string | null; read_at: number | null; error: string | null; floor_usd: number; configured: boolean } };
   agents: Record<string, AgentState>;
+  /** unit setup per repository that has no unit yet (unit-setup.ts RepoSetup) */
+  unit_setup?: Record<string, unknown>;
+  /** swarm ledgers by agent (swarm.ts LedgerState): the open candidates of each swarm per unit, with their patches */
+  swarms?: Record<string, unknown>;
   open: { period: number; opened_at: number; usage: Record<string, AgentUsage> };
   closed: ClosedEpoch[];
   runs: { started_at: number; stopped_at: number | null; spent_usd: number; pid: number }[];
@@ -127,13 +158,10 @@ export class StateStore {
 
   /** Generates (once) and stores the runtime's signing key for `agent`: its treasury, guarded by the transaction firewall. */
   keyFor(agent: string): AgentKey {
-    const file = this.keyFile(agent);
-    const k = existsSync(file) ? keyFromSolanaJson(JSON.parse(readFileSync(file, "utf8"))) : generateAgentKey();
     // an agent's treasury key: from the moment it is in memory it signs transactions only through the
-    // transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md section 3)
-    guardKey(k.id);
-    if (!existsSync(file)) writeFileSync(file, JSON.stringify(Array.from(k.secret)), { mode: 0o600, flag: "wx" });
-    return k;
+    // transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md section 3). Made once even when the bind
+    // service reserves the same agent at the same moment (keystore.ts: one writer wins, the other reads it)
+    return keyOnce(this.keyFile(agent));
   }
 
   keyFile(agent: string): string {
@@ -148,9 +176,9 @@ export class StateStore {
 export class Lock {
   readonly file: string;
   private held = false;
-  constructor(dir: string) {
+  constructor(dir: string, name = "runtime.lock") {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    this.file = join(dir, "runtime.lock");
+    this.file = join(dir, name);
   }
 
   /** Takes the lock, or throws naming the live process that holds it. A stale lock is taken over. */

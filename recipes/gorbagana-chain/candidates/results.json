@@ -1,0 +1,58 @@
+{
+  "hash_and_length_once": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "add_ir",
+      "ratio": 0.8804035288060332,
+      "ci_low": 0.8804035288060332,
+      "ci_high": 0.8804035288060332,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.8804035288060332,
+          "ci_low": 0.8804035288060332,
+          "ci_high": 0.8804035288060332,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "add_ir": {
+        "base": [
+          204464511
+        ],
+        "cand": [
+          180011277
+        ],
+        "ratio": 0.8804035288060332
+      },
+      "contains_ir": {
+        "base": [
+          216025555
+        ],
+        "cand": [
+          190942580
+        ],
+        "ratio": 0.8838888528720595
+      },
+      "concurrent_ir": {
+        "base": [
+          146068676
+        ],
+        "cand": [
+          134282203
+        ],
+        "ratio": 0.919308688743095
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d68",
+    "recipe_id": "c6ca47e424c732355b96a85b068e9c82d1602782e0df6d3948ecc9f281519fa8",
+    "eval_seconds": 83.7,
+    "date": "2026-10-13T11:45:55.245Z",
+    "match": true
+  }
+}

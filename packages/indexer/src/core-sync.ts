@@ -13,14 +13,15 @@ export type FetchJson = (path: string) => Promise<unknown>;
 export const CORE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS core_agents (agent TEXT PRIMARY KEY, class TEXT, lineage_id TEXT, repo TEXT, model TEXT, provider TEXT, generations INTEGER,
   session_id TEXT, session_state TEXT, session_at INTEGER, synced_at INTEGER NOT NULL,
-  name TEXT, tagline TEXT, avatar TEXT, session_file TEXT, last_gen TEXT, last_lineage TEXT, last_metric TEXT, last_ratio REAL, last_fixed INTEGER, last_at INTEGER);
+  name TEXT, tagline TEXT, avatar TEXT, session_file TEXT, last_gen TEXT, last_lineage TEXT, last_metric TEXT, last_ratio REAL, last_fixed INTEGER, last_at INTEGER,
+  covered INTEGER);
 CREATE TABLE IF NOT EXISTS hidden_mints (mint TEXT PRIMARY KEY, agent TEXT, reason TEXT NOT NULL, added_at INTEGER);
 `;
 
 /** Creates the Core tables, rebuilding core_agents (a cache of Core, refilled every pass) when an older layout lacks a column. */
 export function ensureCoreSchema(db: Database) {
   const cols = new Set((db.query("PRAGMA table_info(core_agents)").all() as { name: string }[]).map((c) => c.name));
-  if (cols.size && !cols.has("last_at")) db.exec("DROP TABLE core_agents");
+  if (cols.size && !cols.has("covered")) db.exec("DROP TABLE core_agents");
   db.exec(CORE_SCHEMA);
 }
 
@@ -78,7 +79,7 @@ export async function syncCore(db: Database, get: FetchJson, now = Math.floor(Da
   await syncPurged(db, get, opts);
   // hidden launches (APP-CONSOLIDATION amendment 2): an older Core without the list keeps the last one read
   const hidden = (await get("/v1/hidden").catch(() => null)) as { hidden?: { mint: string; agent: string | null; reason: string; added_at: number }[] } | null;
-  const agents = (await get("/v1/agents")) as { agent_id: string; mint: string | null; target_repo: string | null; kind: string }[];
+  const agents = (await get("/v1/agents")) as { agent_id: string; mint: string | null; target_repo: string | null; kind: string; compute_covered?: boolean }[];
   const lineages = (await get("/v1/lineages")) as { lineage_id: string; repo: string; status: string }[];
   const views = await Promise.all(lineages.map((l) => get(`/v1/lineages/${l.lineage_id}`) as Promise<{ lineage_id: string; repo: string;
     recipe: { class?: string } | null; generations: Gen[] }>));
@@ -95,7 +96,7 @@ export async function syncCore(db: Database, get: FetchJson, now = Math.floor(Da
   }
 
   const ins = db.prepare(`INSERT OR REPLACE INTO core_agents (agent, class, lineage_id, repo, model, provider, generations, session_id, session_state, session_at, synced_at,
-    name, tagline, avatar, session_file, last_gen, last_lineage, last_metric, last_ratio, last_fixed, last_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    name, tagline, avatar, session_file, last_gen, last_lineage, last_metric, last_ratio, last_fixed, last_at, covered) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const rows: unknown[][] = [];
   for (const a of agents) {
     const repo = norm(tokRepo.get(a.agent_id) ?? a.target_repo);
@@ -126,7 +127,9 @@ export async function syncCore(db: Database, get: FetchJson, now = Math.floor(Da
       s?.session_id ?? null, s?.state ?? null, s ? (s.last_at ?? s.started_at) : null, now,
       prof?.soul?.name ?? null, prof?.soul?.tagline ?? null, prof?.media?.avatar?.url ?? null, file,
       last?.g.gen_id ?? null, last?.lineage ?? null, e?.metric ?? null, typeof e?.ratio === "number" ? e.ratio : null,
-      Array.isArray(e?.fixed) ? e!.fixed!.length : null, last?.g.accepted_at ?? null]);
+      Array.isArray(e?.fixed) ? e!.fixed!.length : null, last?.g.accepted_at ?? null,
+      // network compute (Core's compute_covered): the vault cannot pay and the network pays for the agent's attempts
+      a.compute_covered === true ? 1 : 0]);
   }
   const dropped = db.transaction(() => {
     // a purged launch is written to neither table, whatever this Core answered (an older Core, or an answer read before its purge)

@@ -6,10 +6,14 @@ import { live, MAX_FEED } from "./live.ts";
 import { loadNetworkLabels, NETWORK } from "./market.ts";
 import { DEVNET_CHAIN, MAINNET_CHAIN, setWalletChain } from "../wallet/standard.ts";
 import { loadUsd } from "./usd.ts";
+import { wireSetupBar } from "./setup-bar.ts";
 import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage } from "./pages/agents.ts";
 import { directoryPage } from "./pages/directory.ts";
 import { ecoPage } from "./pages/eco.ts";
+import { wireFeatureLinks } from "./bounties-nav.ts";
+import { addTalkLink } from "./talk-nav.ts";
+import { talkPage } from "./pages/talk.ts";
 import { agentProfilePage } from "./pages/agent-profile.ts";
 import { feedPage, followingPage } from "./pages/feed.ts";
 import { leaderboardPage } from "./pages/leaderboard.ts";
@@ -28,7 +32,9 @@ import { analyticsPage } from "./pages/analytics.ts";
 import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import { claimPage } from "./pages/claim.ts";
+import { feesWaitingPage } from "./pages/fees-waiting.ts";
 import { poolsPage } from "./pages/pools.ts";
+import { bountiesPage, bountyPage } from "./pages/bounties.ts";
 import type { Page } from "./pages/types.ts";
 import { siteFooter } from "./site-footer.ts";
 import { smoothScroll } from "./smooth-scroll.ts";
@@ -52,8 +58,12 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/launch$/, launchPage, "/launch"],
   [/^\/eco$/, ecoPage, "/eco"],
   [/^\/profile$/, profilePage, ""],
-  [/^\/claim$/, claimPage, "/eco"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
-  [/^\/pools$/, poolsPage, "/eco"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
+  [/^\/claim$/, claimPage, "/claim"], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
+  [/^\/claim\/([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100})$/, feesWaitingPage, "/claim"], // the fees waiting for one repository's owners: the address that is shared
+  [/^\/pools$/, poolsPage, "/pools"], // agent pools (docs/plans/AGENT-POOLS.md); says "not open yet" while the feature is off
+  [/^\/bounties$/, bountiesPage, "/bounties"], // bounties (docs/plans/OPEN-BOUNTIES.md); says "not open yet" when Core serves no bounty settings
+  [/^\/bounties\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, bountyPage, "/bounties"],
+  [/^\/talk$/, talkPage, "/talk"], // message a running agent from a wallet (docs/plans/AGENT-CONVERSATIONS.md 10)
   [/^\/units\/([0-9a-f]{64})$/, lineagePage, "/"],
   [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"], // pre-rebrand links keep working
   [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
@@ -86,7 +96,7 @@ let currentPath = "";
 let renderSeq = 0;
 
 function shell() {
-  app.innerHTML = html`<header class="top"><div class="top-in">
+  app.innerHTML = html`<div id="setup-bar" hidden></div><header class="top"><div class="top-in">
       <a class="brand" href="/" aria-label="Home"><img class="brand-logo" src="/logo.png" alt="" width="26" height="26"></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
@@ -104,6 +114,7 @@ function shell() {
     <main id="main" aria-live="polite"></main>
     ${siteFooter}`.s;
   wireConnect(document.getElementById("cn")!);
+  wireSetupBar(document.getElementById("setup-bar")!); // shown only to the launcher of a hosted agent that is not bound yet
 }
 
 function setNav(section: string) {
@@ -328,7 +339,7 @@ document.addEventListener("click", (ev) => {
         // deck links carry the column to open in the query; same path, new query
         history.pushState(null, "", url.pathname + url.search);
         render();
-      } else if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
+      } else if (url.pathname !== location.pathname) navigate(url.pathname + (url.pathname === "/claim" ? url.search : "") + url.hash); // /claim?repo= names the repository to open (the query of other links was never carried)
       else if (url.hash) {
         history.replaceState(null, "", url.hash);
         document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -387,6 +398,8 @@ window.addEventListener("resize", () => {
 // ------------------------------------------------------------------------------------------------
 
 shell();
+void wireFeatureLinks(); // Bounties, Pools and Claim: each only where its feature is open, always in this order
+addTalkLink(); // the Talk link
 smoothScroll();
 glide();
 pickers();

@@ -1,0 +1,114 @@
+{
+  "load_block": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "hash_ir",
+      "ratio": 0.9350149174283496,
+      "ci_low": 0.9350149174283496,
+      "ci_high": 0.9350149174283496,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9350149174283496,
+          "ci_low": 0.9350149174283496,
+          "ci_high": 0.9350149174283496,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "hash_ir": {
+        "base": [
+          43343932
+        ],
+        "cand": [
+          40527223
+        ],
+        "ratio": 0.9350149174283496
+      },
+      "hmac_ir": {
+        "base": [
+          70756457
+        ],
+        "cand": [
+          65894971
+        ],
+        "ratio": 0.9312926875352168
+      },
+      "hkdf_ir": {
+        "base": [
+          60651167
+        ],
+        "cand": [
+          56299303
+        ],
+        "ratio": 0.9282476460840399
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6c",
+    "recipe_id": "17eed3884a67ec5d06a90aa1b95a17940e3a83ab29f0d1ed6d141140a1752418",
+    "eval_seconds": 34.6,
+    "date": "2026-10-13T11:18:33.454Z",
+    "match": true
+  },
+  "hkdf_rekey_once": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "hkdf_ir",
+      "ratio": 0.808272635890805,
+      "ci_low": 0.808272635890805,
+      "ci_high": 0.808272635890805,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.808272635890805,
+          "ci_low": 0.808272635890805,
+          "ci_high": 0.808272635890805,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "hash_ir": {
+        "base": [
+          42967288
+        ],
+        "cand": [
+          42967281
+        ],
+        "ratio": 0.999999837085366
+      },
+      "hmac_ir": {
+        "base": [
+          71170690
+        ],
+        "cand": [
+          71184682
+        ],
+        "ratio": 1.0001965977848466
+      },
+      "hkdf_ir": {
+        "base": [
+          62761568
+        ],
+        "cand": [
+          50728458
+        ],
+        "ratio": 0.808272635890805
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d68",
+    "recipe_id": "17eed3884a67ec5d06a90aa1b95a17940e3a83ab29f0d1ed6d141140a1752418",
+    "eval_seconds": 45.7,
+    "date": "2026-10-13T11:19:19.109Z",
+    "match": true
+  }
+}

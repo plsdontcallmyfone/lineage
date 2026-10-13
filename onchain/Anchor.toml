@@ -9,11 +9,13 @@ skip-lint = false
 units_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
 units_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
 units_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
+units_bounty = "9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR"
 
 [programs.devnet]
 units_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
 units_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
 units_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
+units_bounty = "9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR"
 
 # Mainnet ids: built only with the cargo feature `mainnet` (cargo build-sbf --features mainnet).
 # Their keypairs live outside the repo at ~/.config/lineage/mainnet/{registry,launch,msg}-program-keypair.json.
@@ -21,6 +23,8 @@ units_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
 units_registry = "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay"
 units_launch = "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq"
 units_msg = "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
+# units_bounty: NOT deployed on mainnet (docs/MAINNET-RUNBOOK.md "Bounty escrow program"); keypair ~/.config/units/mainnet/bounty-program-keypair.json
+units_bounty = "BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK"
 
 [provider]
 # Never the machine-wide default: pass the dedicated key explicitly (see DEPLOY.md).
@@ -28,4 +32,4 @@ cluster = "devnet"
 wallet = "~/.config/lineage/devnet-deployer.json"
 
 [workspace]
-members = ["programs/units-registry", "programs/units-launch", "programs/units-msg"]
+members = ["programs/units-registry", "programs/units-launch", "programs/units-msg", "programs/units-bounty"]

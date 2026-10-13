@@ -1,0 +1,61 @@
+{
+  "at": "2026-10-13T13:17:39.022Z",
+  "machine": "darwin arm64, bun 1.3.13",
+  "step_ms": 25,
+  "seconds": 14,
+  "agent_loop_restart": {
+    "window_ms": 4004,
+    "direct": {
+      "requests": 153,
+      "answered": 153,
+      "failed": 0,
+      "longest_ms": 33
+    },
+    "through_gate": {
+      "requests": 77,
+      "answered": 77,
+      "failed": 0,
+      "longest_ms": 36
+    }
+  },
+  "bind_service_restart": {
+    "ms_to_leave": 4,
+    "ms_to_start": 106,
+    "gap_between_answers_ms": 137,
+    "direct": {
+      "requests": 31,
+      "answered": 27,
+      "failed": 4,
+      "longest_ms": 13
+    },
+    "through_gate": {
+      "requests": 15,
+      "answered": 15,
+      "failed": 0,
+      "longest_ms": 261
+    }
+  },
+  "whole_run": {
+    "direct": {
+      "requests": 537,
+      "answered": 533,
+      "failed": 4,
+      "longest_ms": 33
+    },
+    "through_gate": {
+      "requests": 269,
+      "answered": 269,
+      "failed": 0,
+      "longest_ms": 261
+    }
+  },
+  "service_counters_after": {
+    "reservations": 803,
+    "cosigns": 802,
+    "bound_with_launch": 0,
+    "bound_after": 0,
+    "sent_by_service": 0,
+    "launches_unbound": 0
+  },
+  "reservations_live_after": 803
+}

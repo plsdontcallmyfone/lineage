@@ -1,6 +1,8 @@
 import { accountDisc, type Address } from "./codec.ts";
 import { decodeChallenge, decodeChallengeConfig, decodeChallengeGate, type ChallengeAccount, type ChallengeConfig, type ChallengeGate } from "./challenge.ts";
 import { bountyPdas, decodeBounty, decodeBountyConfig, decodeBountyLedger, type BountyAccount, type BountyConfig, type BountyLedger } from "./bounty.ts";
+import { decodeOpenBounty, decodeOpenBountyConfig, openBountyPdas, type OpenBountyAccount, type OpenBountyConfig } from "./open-bounty.ts";
+import { BOUNTY_PROGRAM_ID } from "./programs.ts";
 import { decodeAgentLaunch, decodeLaunchConfig, LAUNCH_PROGRAM_ID, launchPdas, type AgentLaunch, type LaunchConfig } from "./launch.ts";
 import { decodeAgent, decodeClaimReceipt, decodeConfig, decodeEpoch, decodeSlashReceipt, REGISTRY_PROGRAM_ID, registryPdas, type AgentRecord,
   type ClaimReceipt, type EpochRecord, type RegistryConfig, type SlashReceipt } from "./registry.ts";
@@ -97,6 +99,20 @@ export class ChainReader {
   async bounty(address: Address): Promise<BountyAccount | null> {
     const a = owned(await this.rpc.getAccountInfo(address), this.launchProgram);
     return a ? decodeBounty(a.data) : null;
+  }
+  /** The `units_bounty` Config; null where the program is not deployed or not initialized (open bounties are then not offered). */
+  async openBountyConfig(): Promise<OpenBountyConfig | null> {
+    const a = owned(await this.rpc.getAccountInfo(openBountyPdas.config()), BOUNTY_PROGRAM_ID);
+    return a ? decodeOpenBountyConfig(a.data) : null;
+  }
+  /** Every `Bounty` of `units_bounty`, with its address. */
+  async openBounties(): Promise<(OpenBountyAccount & { address: Address })[]> {
+    const all = await this.rpc.getProgramAccounts(BOUNTY_PROGRAM_ID, { memcmp: [{ offset: 0, bytes: accountDisc("Bounty") }] });
+    return all.map((a) => ({ ...decodeOpenBounty(a.data), address: a.address }));
+  }
+  async openBountyAccount(address: Address): Promise<OpenBountyAccount | null> {
+    const a = owned(await this.rpc.getAccountInfo(address), BOUNTY_PROGRAM_ID);
+    return a ? decodeOpenBounty(a.data) : null;
   }
   async bountyLedger(agent: Address): Promise<BountyLedger | null> {
     const a = owned(await this.rpc.getAccountInfo(bountyPdas.ledger(agent)), this.launchProgram);

@@ -3,6 +3,7 @@
 //
 //   bun packages/indexer/src/main.ts [--port 9668] [--host 127.0.0.1] [--db <file>] [--interval 15]
 //     [--min-gap-ms 250] [--holders-every 600] [--max-idle 300] [--no-ws] [--once] [--core http://127.0.0.1:9660] [--core-every 60]
+//     [--supply-every 300] [--dev-wallet <address>] [--no-supply]
 //
 // --interval: seconds between passes and the poll interval of an active source; a source with nothing
 // new is polled less often (doubling up to --max-idle seconds) unless logsSubscribe reports activity.
@@ -10,19 +11,22 @@
 // RPC: the network profile's (config/profile.json, UNITS_NETWORK; SPEC 14.10). devnet: packages/chain's
 // resolver (UNITS_DEVNET_RPC, ~/.config/lineage/rpc.env, else public devnet); mainnet: the keyed
 // UNITS_MAINNET_RPC, no public fallback.
+// --supply-every: seconds between supply passes (supply.ts: the quote coin's supply, burns, holders and the developer
+// wallet's own coins); --dev-wallet: that wallet, by default the `admin` of the profile's state file.
 // The URL is never printed (redactRpc). --once runs one full pass and exits (no HTTP server).
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { Rpc } from "@units/chain";
+import { Rpc, type Address } from "@units/chain";
 import { redactRpc } from "@units/chain/src/endpoint.ts";
-import { applyNetworkProfile, rpcUrlFor } from "@units/chain/src/profile-node.ts";
+import { applyNetworkProfile, rpcUrlFor, stateFor } from "@units/chain/src/profile-node.ts";
 import { marketApi } from "./api.ts";
 import { syncCore } from "./core-sync.ts";
 import { openDb } from "./db.ts";
 import { Indexer } from "./indexer.ts";
 import { throttledTransport } from "./rpc.ts";
+import { SupplyIndexer } from "./supply.ts";
 import { chainQuoteUsd, REFRESH_S } from "./usd.ts";
 
 const argv = process.argv.slice(2);
@@ -47,6 +51,10 @@ const { transport, stats } = throttledTransport(url, { minGapMs: Number(arg("min
 const rpc = new Rpc(transport, "confirmed");
 const ix = new Indexer(db, rpc, { holdersEveryS: Number(arg("holders-every", "600")), pollEveryS: Number(arg("interval", "15")),
   maxIdleS: Number(arg("max-idle", "300")), log });
+// supply.ts: its own loop on the same throttled transport; the developer wallet is public (the programs' admin)
+const devWallet = arg("dev-wallet", String((stateFor(profile) as { admin?: unknown } | null)?.admin ?? "")) || null;
+const supply = new SupplyIndexer(db, rpc, (sig) => ix.getTx(sig), () => (ix.lineMint ? { mint: ix.lineMint, decimals: ix.lineDecimals, tokenProgram: ix.lineTokenProgram } : null),
+  { devWallet: devWallet as Address | null, log });
 const startedAt = Math.floor(Date.now() / 1000);
 let ws: { connected: boolean; subscriptions: number; notifications: number } = { connected: false, subscriptions: 0, notifications: 0 };
 
@@ -72,8 +80,12 @@ function status() {
     trades: count("SELECT COUNT(*) AS n FROM trades"),
     fee_cranks: count("SELECT COUNT(*) AS n FROM fee_cranks"),
     transactions: count("SELECT COUNT(*) AS n FROM seen"),
+    // sources whose last pass failed and that have not completed one for 15 minutes: their coin's trades are behind the chain
+    stuck_sources: sources.filter((s) => s.last_error && !/^skipped /.test(s.last_error) && (s.last_ok_at == null || now - s.last_ok_at > 900)).length,
+    tx_version_max: ix.txVersion,
     rpc_stats: { calls: stats.calls, errors: stats.errors, http_429: stats.http429, last_error: stats.lastError, last_error_at: stats.lastErrorAt },
     logs_subscribe: ws,
+    supply: flag("no-supply") ? null : supply.status(),
     sources,
   };
 }
@@ -164,6 +176,7 @@ log(`indexer: rpc ${rpcShown}, db ${dbPath}`);
 if (flag("once")) {
   const r = await ix.cycle();
   log(`once: ${r.txs} new transaction(s), ${r.errors} error(s), ${ix.lastCycleMs} ms`);
+  if (!flag("no-supply")) await supply.pass();
   console.log(JSON.stringify({ ...status(), sources: undefined }, null, 1));
   process.exit(r.errors ? 1 : 0);
 }
@@ -180,6 +193,26 @@ async function usdLoop() {
   }
 }
 void usdLoop();
+// supply, burns and the developer wallet (supply.ts): a pass about every --supply-every seconds; a history read that
+// stopped at its budget goes on at once
+let supplyFailed: string | null = null;
+async function supplyLoop() {
+  const every = Number(arg("supply-every", "300"));
+  for (;;) {
+    let more = false;
+    try {
+      more = (await supply.pass()).more;
+      if (supplyFailed) log("supply: reading again");
+      supplyFailed = null;
+    } catch (e) {
+      const why = (e as Error).message;
+      if (why !== supplyFailed) log(`supply pass failed: ${why}`);
+      supplyFailed = why;
+    }
+    await new Promise((res) => setTimeout(res, (more ? 1 : ix.lineMint ? every : 5) * 1000));
+  }
+}
+if (!flag("no-supply")) void supplyLoop();
 const handle = marketApi(db, status, { quote: profile.quote.symbol, usd: () => usd.current() });
 // Core: target class, verified generations, latest session and model per agent for the token directory
 const core = arg("core", (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "http://127.0.0.1:9660").replace(/\/+$/, "");

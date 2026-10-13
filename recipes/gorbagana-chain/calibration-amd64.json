@@ -1,0 +1,103 @@
+{
+  "_note": "amd64 calibration measured with scripts/calibrate-recipe.ts (5 runs) on the mainnet capacity host cap-nyc1 (157.230.180.62, 32 vCPU Xeon Gold 6248) in a scratch copy of its release 8132e5a on 2026-10-13, after scripts/deploy/arch-recipes.ts re-pinned the recipe to that host's lineage/rust:m1 (the same image id as the site's). Not read back from Core: the site's reference runner calibrates again at deploy with its own seed. The committed calibration.json is the arm64 (Apple M4) one. canaries and candidates are the verdicts of scripts/check-canaries.ts on the same host (metric ratios, candidate over base).",
+  "host": "cap-nyc1",
+  "recipe_id": "e96254f6e75afbd1a416aeaf60c6cfe2a1a5518e37159976fa6c3bb849ec7a2a",
+  "image_digest": "sha256:98fec984eaa8a4c9a0d6823b32b915e882547062b7edb6a64eed99d027bfd152",
+  "deps_digest": "0659b1e2d83ab56222649a7edf23383a5d8e7539271a2838293081e8475b23d5",
+  "prepare_seconds": 36.7,
+  "calibration_wall_seconds": 60.4,
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 98,
+    "metrics": {
+      "add_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 149988301
+      },
+      "contains_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 169188411
+      },
+      "concurrent_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 122975066
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "e96254f6e75afbd1a416aeaf60c6cfe2a1a5518e37159976fa6c3bb849ec7a2a",
+    "runs": 5,
+    "seed": "ca11b7a7e",
+    "snapshot_id": "",
+    "stable": [
+      "src/lib.rs::bloom::test::test_add_contains",
+      "src/lib.rs::bloom::test::test_atomic_bloom",
+      "src/lib.rs::bloom::test::test_atomic_bloom_round_trip",
+      "src/lib.rs::bloom::test::test_bloom_filter",
+      "src/lib.rs::bloom::test::test_debug",
+      "src/lib.rs::bloom::test::test_filter_math",
+      "src/lib.rs::bloom::test::test_random",
+      "src/lib.rs::bloom::test::test_wincode_compatibility_bloom",
+      "tests/lineage_props.rs::bloom_matches_model",
+      "tests/lineage_props.rs::concurrent_bloom_matches_model",
+      "tests/lineage_props.rs::fixed_size_items_match_model",
+      "tests/lineage_props.rs::hash_at_index_is_keyed_fnv1a",
+      "tests/lineage_props.rs::interval_filter_adds_and_finds",
+      "tests/lineage_props.rs::wire_form_round_trips",
+      "tests/lineage_upstream.rs::test_add_contains",
+      "tests/lineage_upstream.rs::test_atomic_bloom",
+      "tests/lineage_upstream.rs::test_atomic_bloom_round_trip",
+      "tests/lineage_upstream.rs::test_bloom_filter",
+      "tests/lineage_upstream.rs::test_debug",
+      "tests/lineage_upstream.rs::test_filter_math",
+      "tests/lineage_upstream.rs::test_random",
+      "tests/lineage_upstream.rs::test_wincode_compatibility_bloom"
+    ]
+  },
+  "canaries": {
+    "mask_modulo": {
+      "expect": "tests_fail",
+      "outcome": "rejected",
+      "reason": "tests_fail",
+      "metrics": {
+        "add_ir": 1.000000149192253,
+        "contains_ir": 0.9999999814065126,
+        "concurrent_ir": 1.1890263222992918
+      }
+    },
+    "drop_empty_guard": {
+      "expect": "equivalence_changed",
+      "outcome": "rejected",
+      "reason": "equivalence_changed",
+      "metrics": {
+        "add_ir": 1,
+        "contains_ir": 0.9986521697548717,
+        "concurrent_ir": 0.9999999924354149
+      }
+    },
+    "contains_first": {
+      "expect": "no_improvement",
+      "outcome": "rejected",
+      "reason": "no_improvement",
+      "metrics": {
+        "add_ir": 1.1369020846240663,
+        "contains_ir": 1.0308486594031632,
+        "concurrent_ir": 1.0000000792094283
+      }
+    }
+  },
+  "candidates": {
+    "hash_and_length_once": {
+      "expect": "accepted",
+      "outcome": "accepted",
+      "reason": null,
+      "metrics": {
+        "add_ir": 0.984334919898047,
+        "contains_ir": 0.9840865032130159,
+        "concurrent_ir": 0.9860938366781408
+      }
+    }
+  }
+}

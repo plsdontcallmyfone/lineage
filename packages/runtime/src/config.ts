@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRail, type OpenRouterRailConfig, type RailName } from "./rail.ts";
 import { efficiencyError, type RuntimeEfficiency } from "../../worker/src/proposers/efficiency.ts";
+import { unitSetupError, type UnitSetupConfig } from "./unit-setup.ts";
 
 // Hosted runtime configuration (SPEC 17.2). Prices and caps are configuration, never constants:
 // `compute_price_*` is the published rate at which model spend and sandbox time are converted into
@@ -58,6 +59,16 @@ export interface RuntimeConfig {
   openrouter_floor_usd?: number;
   /** Seconds between spend reports to Core (vault, burn, runway per agent; default 60; 0 = off). */
   spend_report_s?: number;
+  /**
+   * Network compute (plan MODELS-AND-SELF-FUNDING section D, owner 2026-10-13): an agent whose vault
+   * cannot pay for an attempt keeps working on the network's OpenRouter balance, one attempt every
+   * `min_interval_s` (default 900), each capped at `attempt_max_usd` (null or absent: the normal
+   * attempt cap), under the global cap and the OpenRouter balance gate. Absent or `enabled: false`: off.
+   * `charge_vault` (default false): false charges nothing of such an attempt to the agent's vault, so
+   * its fees add up until it can pay for an attempt itself; true makes the vault pay what it holds
+   * toward that usage at each usage epoch (never more).
+   */
+  platform_funding?: { enabled: boolean; min_interval_s?: number; attempt_max_usd?: number | null; charge_vault?: boolean };
   /** An attempt whose allowed spend would be lower than this is not started. */
   min_attempt_usd: number;
   /**
@@ -91,6 +102,8 @@ export interface RuntimeConfig {
   max_concurrent: number;
   /** Slots grow to one per funded bound agent up to this ceiling (default max_concurrent): what the server carries. */
   max_concurrent_ceiling?: number;
+  /** Unit setup (unit-setup.ts): a hosted agent on a repository with no unit drafts its recipe. Absent: on, with the defaults there. */
+  unit_setup?: UnitSetupConfig;
   /** Seconds between the end of a funded agent's attempt and its next one (TEST 30); failures back off 30 s doubling to 15 min. */
   attempt_gap_s?: number;
   /** Optional: author only on these lineage ids. */
@@ -106,6 +119,13 @@ export interface RuntimeConfig {
   follows?: Partial<import("./follows.ts").FollowsConfig>;
   /** devnet: serve the bind endpoint (bind.ts) on 127.0.0.1 at this port, so hosted launches bind from the Wallet page; absent = off. */
   bind_port?: number;
+  /**
+   * The bind surface runs as its own process (`lineage-runtime bind`, bind-service.ts; the deploy kit's
+   * units-bind unit) on this port, so it answers while this runtime drains or restarts. When set, this
+   * runtime serves no /runtime/bind or /runtime/unbound route and keeps no reservations (the service owns
+   * reservations.json); bind_port still serves the desktops and the genesis proof.
+   */
+  bind_service_port?: number;
   /**
    * Agent desktops (SPEC 17.7, packages/desktop): live desktops on our own server, at most this many
    * at once (TEST 2 on the site; absent or 0 = none). The stream is served on bind_port (or
@@ -183,6 +203,9 @@ export interface RuntimeConfig {
   desktop_owner?: string;
 }
 
+/** Defaults of cfg.platform_funding. */
+export const PLATFORM_FUNDING_DEFAULTS = { enabled: false, min_interval_s: 900, attempt_max_usd: null as number | null, charge_vault: false };
+
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
   state_dir: join((process.env.UNITS_HOME ?? process.env.LINEAGE_HOME) ?? join(homedir(), ".lineage"), "runtime", "default"),
   model: "claude-opus-5-5",
@@ -236,8 +259,16 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     for (const k of ["model_calls", "call_input_tokens", "call_output_tokens", "recheck_s"])
       if (m[k] !== undefined && !(typeof m[k] === "number" && Number.isFinite(m[k]) && (m[k] as number) >= 0)) throw new Error(`runtime config: min_useful_attempt.${k} is a number of 0 or more`);
   }
+  if (c.platform_funding !== undefined) {
+    const f = c.platform_funding as Record<string, unknown> | null;
+    if (!f || typeof f !== "object" || Array.isArray(f) || typeof f.enabled !== "boolean") throw new Error("runtime config: platform_funding is { enabled: true or false, min_interval_s, attempt_max_usd }");
+    if (f.min_interval_s !== undefined && !(typeof f.min_interval_s === "number" && Number.isFinite(f.min_interval_s) && f.min_interval_s >= 0)) throw new Error("runtime config: platform_funding.min_interval_s is a number of seconds, 0 or more");
+    if (f.attempt_max_usd !== undefined && f.attempt_max_usd !== null && !(typeof f.attempt_max_usd === "number" && Number.isFinite(f.attempt_max_usd) && f.attempt_max_usd >= 0)) throw new Error("runtime config: platform_funding.attempt_max_usd is a non-negative number or null");
+    if (f.charge_vault !== undefined && typeof f.charge_vault !== "boolean") throw new Error("runtime config: platform_funding.charge_vault is true or false");
+  }
   if (c.attempt_gap_s !== undefined && !(typeof c.attempt_gap_s === "number" && c.attempt_gap_s >= 0 && c.attempt_gap_s <= 3600)) throw new Error("runtime config: attempt_gap_s is 0 to 3600 seconds");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
+  if (c.bind_service_port !== undefined && !(Number.isInteger(c.bind_service_port) && c.bind_service_port > 0 && c.bind_service_port < 65536 && c.bind_service_port !== c.bind_port)) throw new Error("runtime config: bind_service_port is a TCP port other than bind_port");
   if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");
   if (c.desktops_max !== undefined && !(Number.isInteger(c.desktops_max) && c.desktops_max >= 0 && c.desktops_max <= 16)) throw new Error("runtime config: desktops_max is a whole number from 0 to 16");
   // E2B sells up to 1,100 sandboxes at once (e2b.dev/pricing, read 2026-10-12)
@@ -255,6 +286,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.desktop_hosts_file !== undefined && typeof c.desktop_hosts_file !== "string") throw new Error("runtime config: desktop_hosts_file is a path");
   if (c.desktop_usd_per_day !== undefined && !(typeof c.desktop_usd_per_day === "number" && c.desktop_usd_per_day >= 0)) throw new Error("runtime config: desktop_usd_per_day must be a non-negative number");
   if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");
+  const suErr = unitSetupError(c.unit_setup);
+  if (suErr) throw new Error(`runtime config: ${suErr}`);
   if (c.efficiency !== undefined) {
     const err = efficiencyError(c.efficiency);
     if (err) throw new Error(`runtime config: ${err}`);

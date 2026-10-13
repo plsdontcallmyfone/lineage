@@ -8,6 +8,7 @@ One Anchor 0.31.1 workspace, three programs (`units_registry`, `units_launch`, `
 | `programs/units-registry` | `units_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
 | `programs/units-launch` | `units_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on pump.fun quoted in `$UNITS` (`register_pump_launch` checks the curve the same transaction's top-level `create_v2` wrote; this program never calls pump.fun), the creator-fee crank, the graduation record, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/pump.rs` holds pump.fun ids, PDAs, account readers and the instructions-sysvar check. |
 | `programs/units-msg` | `units_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
+| `programs/units-bounty` | `units_bounty` (`9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR`): escrows of bounties any wallet posts (SPEC 14.16, docs/plans/OPEN-BOUNTIES.md 8). Reads the registry's Config and Epochs, calls no other units program. Built on its own into `target/bounty` (and `target/bounty-mainnet` with `--features mainnet`), never into `target/deploy`; its suite `tests/tests/open_bounty.rs` loads `target/bounty/units_bounty.so`; `scripts/bounty-mutations.sh` removes its checks one at a time and expects the covering test to fail. |
 | `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `init_auth.rs` (each `initialize` refused for any signer but the upgrade authority), `client_vectors.rs` |
 | `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `units_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
 | `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@units/protocol` (`scripts/make-fixtures.ts`) |
@@ -36,6 +37,15 @@ cargo test --offline -p lineage-onchain-tests              # LiteSVM suites (loa
 cargo test --offline -p units-registry --lib             # leaf encoder unit tests
 bun scripts/make-fixtures.ts --check                       # from the repo root: bun onchain/scripts/make-fixtures.ts --check
 bun test packages/chain                                    # from the repo root
+```
+
+`units_bounty` is built and tested on its own (it is not in `target/deploy`, so the commands above never touch it):
+
+```sh
+cargo build-sbf --offline --manifest-path programs/units-bounty/Cargo.toml --sbf-out-dir target/bounty && rm -f target/bounty/*-keypair.json
+cargo test --offline -p units-onchain-tests --test open_bounty
+scripts/bounty-mutations.sh                                # each of 24 checks removed in a scratch copy: its test must fail
+UPDATE_VECTORS=1 cargo test --offline -p units-onchain-tests --test open_bounty vectors   # after an instruction or layout change, then bun test packages/chain
 ```
 
 `cargo build-sbf` builds; `anchor deploy` does not. Rebuild both programs before the LiteSVM

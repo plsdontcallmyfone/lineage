@@ -1,6 +1,8 @@
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
 import { canonicalJson, hashJson, verifyStatement } from "./protocol.ts";
+import { swarmsOf } from "./swarms.ts";
+import { featureOn } from "./features.ts";
 
 // Hosted runtime surfaces in Core (SPEC 13.7, 17.2; identity plan I5): provenance records per
 // candidate and the public, idempotent usage records the runtime posts in the simulated mode.
@@ -115,6 +117,12 @@ export class Hosted {
     if (typeof body.sig !== "string") throw bad("bad_sig", "sig is required");
     if (r.commit_id !== c.commit_id) throw bad("bad_provenance", "record.commit_id is not this candidate's commit id");
     if (r.agent !== c.author) throw bad("bad_provenance", "record.agent is not this candidate's author");
+    // a swarm's candidate names the seat that wrote it (docs/plans/SWARMS.md 1); only the runtime authority attests one
+    if (r.seat !== undefined) {
+      const core = this.c as unknown as Core;
+      const seatErr = r.runtime !== "hosted" ? "record.seat is attested by the hosted runtime only" : !featureOn(core, "swarms") ? "record.seat: swarms are switched off" : swarmsOf(core).checkProvenanceSeat(c.author, r.seat);
+      if (seatErr) throw bad("bad_provenance", seatErr);
+    }
     const lineage = this.c.db.query<{ recipe_id: string }, [string]>("SELECT recipe_id FROM lineages WHERE lineage_id = ?").get(c.lineage_id);
     if (r.lineage_id !== c.lineage_id || r.recipe_id !== lineage?.recipe_id) throw bad("bad_provenance", "record.lineage_id and recipe_id must be the candidate's");
     const agent = this.c.db.query<{ hosted: number }, [string]>("SELECT hosted FROM agents WHERE agent_id = ?").get(c.author);

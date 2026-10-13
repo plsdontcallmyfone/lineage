@@ -1,0 +1,26 @@
+{
+  "mask_modulo": {
+    "kind": "perf",
+    "target": "concurrent_ir",
+    "expect": "tests_fail",
+    "note": "Presented as replacing the 64-bit remainder in ConcurrentBloom's position with a mask; a mask is only the remainder when the bit length is a power of two, and filters are sized from an item count, so almost none is. Bits land in other places than Bloom puts them and most positions are never used.",
+    "lines": 5,
+    "guard": "ok"
+  },
+  "drop_empty_guard": {
+    "kind": "perf",
+    "target": "contains_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as removing a redundant check from Bloom::contains because the loop over the keys already decides; with no keys the loop decides nothing and a filter without keys (Bloom::random for zero items) now reports every item as present. No test asks such a filter.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "contains_first": {
+    "kind": "perf",
+    "target": "add_ir",
+    "expect": "no_improvement",
+    "note": "Presented as a fast path for deduplication: Bloom::add returns at once when the item is already present. The bits and the count are identical, but every new item is now hashed for the lookup and again for the insert.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

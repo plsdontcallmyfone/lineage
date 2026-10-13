@@ -6,6 +6,7 @@ import { validateSoul, type SoulDoc } from "./schema.ts";
 import { soulSafety } from "./safety.ts";
 
 export * from "./schema.ts";
+export * from "./swarm.ts";
 export * from "./safety.ts";
 export * from "./memory.ts";
 export * from "./auto.ts";

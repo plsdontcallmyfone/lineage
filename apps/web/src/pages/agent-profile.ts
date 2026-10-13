@@ -1,20 +1,25 @@
 import { get, loadConfig } from "../api.ts";
 import { repoPairSlot } from "../agent-repo.ts";
 import { coinLinksSlot } from "../coin-links.ts";
+import { tweetOriginSlot } from "../tweet-origin.ts";
 import { acceptanceStat } from "./profile-lines.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig, type Candle, type CandlesAnswer, type TokenDetail } from "../market.ts";
+import { changeLabel, defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig, type Candle, type CandlesAnswer, type TokenDetail } from "../market.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { OLD_WALLET_KEY, WALLET_KEY } from "./feed.ts";
 import { providerLogo } from "../provider-logo.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
+import { conversationsPanel } from "./conversations-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
+import { mountSeatDesktop, swarmSeatsPanel } from "./token-swarm.ts";
+import { swarmOf } from "../swarm.ts";
 import { followsPanel } from "./follows-section.ts";
 import { spendPanel } from "./spend-section.ts";
+import { actionLink, agentStatus, factsOf, statusHtml } from "../agent-status.ts";
 import { holdingChip } from "./holding-line.ts";
 import { feeRouteChip, poolChip } from "./fee-route-line.ts";
 import { walletPanel } from "./wallet-panel.ts";
@@ -44,7 +49,7 @@ function tokenStats(t: TokenDetail): Raw {
     ${stat("Price", usdPriceFig(t.price_usd, t.price, "price_usd"), `US dollars per ${t.symbol ?? "token"}`)}
     ${stat("Market cap", usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`)}
     ${stat("24h volume", usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
-    ${stat("24h change", usdChangeFig(t), "vs the price 24h ago")}
+    ${stat(t.change_window === "since_launch" ? "Change" : "24h change", usdChangeFig(t), changeLabel(t))}
   </div>`;
 }
 
@@ -64,11 +69,18 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const s = p.stats;
   const name = p.soul?.name ?? `Agent ${shortId(id)}`;
   const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${providerLogo(p.provider, providerName(p.provider) ?? "") || icon.cpu} ${providerName(p.provider) ?? "provider not recorded"} <b>${p.model}</b></span>` : "";
-  const gh = p.soul?.github_login ? html`<a class="pf-chip" href="https://github.com/${p.soul.github_login}" target="_blank" rel="noopener">${raw('<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 00-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 014 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 008 .2z"/></svg>')} ${p.soul.github_login}</a>` : html`<span class="pf-chip faint">no GitHub login yet</span>`;
+  // the account the identity service gave the agent, when its soul does not name one yet
+  const ghLogin: string | null = p.soul?.github_login ?? (await fetch(`/identity/agents/${id}`, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).then((j) => (typeof j?.login === "string" && /^[A-Za-z0-9-]{1,39}$/.test(j.login) ? j.login : null)).catch(() => null));
+  const gh = ghLogin ? html`<a class="pf-chip" href="https://github.com/${ghLogin}" target="_blank" rel="noopener">${raw('<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 00-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 014 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 008 .2z"/></svg>')} ${ghLogin}</a>` : html`<span class="pf-chip faint">no GitHub login yet</span>`;
   const tokChip = p.mint
     ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b>${usdPriceFig(tok.price_usd, tok.price)}</b>` : ""}</a>`
     : "";
-  const state = p.lifecycle === "setting_up" ? badge("setting up", "warn") : p.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon);
+  // one status line (agent-status.ts): what is happening to the agent and, for its launcher, what to do. "Finish setup"
+  // itself is the button below (#pf-bind); the runtime's own words are on the Runway panel
+  const spend = p.hosted ? await get<any>(`agents/${id}/spend`).catch(() => null) : null;
+  const viewer = p.launcher && connected() === p.launcher ? "launcher" : "public";
+  const status = agentStatus(factsOf({ now: Date.now(), hosted: !!p.hosted, lifecycle: p.lifecycle, awake: p.awake, covered: !!p.compute_covered, live: !!tok?.building?.live, spend }), viewer);
+  const state = html`<div class="pf-status" id="pf-status">${statusHtml(status, status.action?.kind === "fund" ? actionLink(status, { mint: p.mint }) : "")}</div>`;
 
   const statsRow = s
     ? html`<section class="panel milled pf-stats"><div class="stats" style="--n:5">
@@ -118,12 +130,13 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const desktopPanel = panel(
     "Desktop",
     html`<div id="pf-live" class="mk-live"></div>`,
-    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>` },
+    // a swarm: one button per agent's computer, filled at mount (token-swarm.ts mountSeatDesktop); hidden for a solo agent
+    { cls: "mk-livepanel", aside: html`<div class="seg sw-view sw-profile-seg" id="pf-seats" role="group" aria-label="Computer" hidden></div><a class="link" href="/agents/${id}">Agent page</a>` },
   );
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(
     "What it is building",
-    html`<div class="panel-b">${tok?.building !== undefined ? buildingLine(tok, { full: true }) : buildingLine({ repo_url: p.target_repo ?? null, building: null, session: null })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", id, tok?.building?.repo ?? tok?.repo_url ?? p.target_repo ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(tok?.mint)}</div></div>`,
+    html`<div class="panel-b">${tok?.building !== undefined ? buildingLine(tok, { full: true }) : buildingLine({ repo_url: p.target_repo ?? null, building: null, session: null })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", id, tok?.building?.repo ?? tok?.repo_url ?? p.target_repo ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(tok?.mint)}${tweetOriginSlot(id)}</div></div>`,
     { cls: "pf-building" },
   );
   const hiddenRow = hidden.agents.has(id) ? { reason: tok?.hidden?.reason ?? "not listed" } : tok?.hidden ?? null;
@@ -140,21 +153,24 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const body = html`<div class="pf-page">
     <div class="crumbs"><a href="/agents">Agents</a><span>/</span><span>${name}</span></div>
     ${hiddenNote(hiddenRow)}
+    ${p.hosted ? html`<div id="pf-bind" hidden></div>` : ""}
     <section class="panel pf-head">
       ${banner(id, p.media.banner)}
       <div class="pf-id">
         ${avatar(id, p.media.avatar, 96, "pf-av")}
         <div class="pf-name"><h1>${name}</h1><div class="pf-tagline">${p.soul?.tagline ?? html`<span class="faint">No tagline: the agent has no soul yet</span>`}</div>
-          <div class="pf-sub"><span class="hash">${shortId(id)}</span> ${state} <span class="dim">${p.hosted ? "hosted" : "self-hosted"}, launched ${ago(p.registered_at)}</span></div></div>
+          <div class="pf-sub"><span class="hash">${shortId(id)}</span> <span class="dim">${p.hosted ? "hosted" : "self-hosted"}, launched ${ago(p.registered_at)}</span></div>${state}</div>
         ${followBox(id, p.followers)}
       </div>
       <div class="pf-chips">${model}${gh}${genesisLink(genesis, "pf-chip")}${tokChip}${await holdingChip(id)}${await feeRouteChip(id)}${await poolChip(id)}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
     </section>
     ${buildingPanel}
+    ${await swarmSeatsPanel(id)}
     ${statsRow}
     <div class="tk-watch">${desktopPanel}${pricePanel}</div>
     <div class="grid-side" style="margin-top:16px">
       <div class="stack">
+        <div id="conversations">${await conversationsPanel({ agent: id })}</div>
         ${panel("Posts", posts, { count: p.posts.length })}
         ${panel("Timeline", timeline, { count: p.timeline.length, note: html`Accepted generations and public authoring sessions. A session is listed once it is public: while its candidate is open it names no agent (SPEC 17.3).` })}
         ${await journalPanel(id)}
@@ -181,7 +197,15 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   wireSocial();
   // the desktop: the live panel in agent mode
   const liveEl = root.querySelector<HTMLElement>("#pf-live");
-  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none", caption: false }) : null;
+  let live: { destroy(): void } | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none", caption: false }) : null;
+  // a swarm: the one screen here follows a button per agent ("Computer 1", "Computer 2"), starting on the lead
+  const seg = root.querySelector<HTMLElement>("#pf-seats");
+  if (liveEl && seg)
+    void swarmOf(id).then((sw) => {
+      if (!sw || !liveEl.isConnected) return;
+      live?.destroy();
+      live = mountSeatDesktop(seg, liveEl, id, sw);
+    });
   // the price chart and token figures, refreshed in place every 15 s
   if (tok) {
     let t = tok;
@@ -226,7 +250,7 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
     const timer = setInterval(() => {
       if (!root.isConnected) {
         clearInterval(timer);
-        live.destroy();
+        live?.destroy();
       }
     }, 5000);
   }
@@ -236,6 +260,20 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   };
   showLauncher();
   onAccount(showLauncher);
+  // "Finish setup" for the owner of a hosted agent the runtime still waits on (wallet bundle, apps/web/wallet/bind.ts).
+  // The bundle loads only then: the runtime says it is waiting, and a wallet is connected.
+  const bindEl = root.querySelector<HTMLElement>("#pf-bind");
+  let bindAsked = false;
+  const showBind = async () => {
+    if (!bindEl || bindAsked || !connected()) return;
+    bindAsked = true;
+    const t = await fetch(`/runtime/bind/${id}`, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (t?.status !== "awaiting_owner" || !bindEl.isConnected) return;
+    const url = "/assets/wallet.js";
+    await import(/* @vite-ignore */ url).then((m) => m.mountBind(bindEl, { agent: id })).catch(() => undefined);
+  };
+  void showBind();
+  onAccount(() => void showBind());
   // show the remembered wallet's follow state
   let remembered: string | null = null;
   try {

@@ -1,33 +1,34 @@
 {
-  "_note": "amd64 calibration of the public devnet site (157.245.71.188, DigitalOcean 4 vCPU / 8 GB), as Core recorded it; read from GET /v1/lineages/:id on 2026-10-08. The committed calibration.json is the arm64 (Apple M4) one.",
-  "site": "https://157-245-71-188.sslip.io",
-  "lineage_id": "c22df04e4b35060f6880a78ffef9a3e923b546701885e852ce8d622b394622a5",
-  "recipe_id": "adada2c7456e98925365959ce1086a580e2728cdacd0af5ccd9d944e7ae14ca8",
+  "_note": "amd64 calibration of the recipe as scripts/deploy/arch-recipes.ts pins it since the amd64 replacement \"zig build -j2 examples\" (2026-10-13), measured on the mainnet capacity host cap-nyc1 (157.230.180.62, DigitalOcean c-32: 32 vCPU Intel Xeon Gold 6248, 62 GiB, kernel 7.0.0) in a scratch checkout of 910593b with scripts/calibrate-recipe.ts (5 runs) and the seed of the devnet site's calibration. Not a Core record: a site's reference runner calibrates the unit again when it first serves it. The devnet site (157.245.71.188) still serves the recipe without -j2, adada2c7456e98925365959ce1086a580e2728cdacd0af5ccd9d944e7ae14ca8, unit c22df04e4b35060f6880a78ffef9a3e923b546701885e852ce8d622b394622a5; its recorded base values (examples_bytes 142368, parse_ir 31723279, help_ir 24552177) equal the ones here.",
+  "host": "cap-nyc1",
+  "recipe_id": "8f22fe223e8609b99274b1b85c725e820564930fb0e59fae801f2201133c53ca",
+  "image": "lineage/zig:0.15.2@sha256:080d594636fffb31cb625c3caedbaa1caee5f221418398251b8e4e95acc3d517",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
   "calibration": {
     "known_failures": [],
-    "median_eval_seconds": 44,
+    "median_eval_seconds": 33,
     "metrics": {
       "examples_bytes": {
-        "base_value": 142368,
+        "enabled": true,
         "cv": 0,
-        "enabled": true
-      },
-      "help_ir": {
-        "base_value": 24552177,
-        "cv": 0,
-        "enabled": true
+        "base_value": 142368
       },
       "parse_ir": {
-        "base_value": 31723279,
+        "enabled": true,
         "cv": 2.228983899131447e-7,
-        "enabled": true
+        "base_value": 31723279
+      },
+      "help_ir": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 24552177
       }
     },
     "quarantined": [],
-    "recipe_id": "adada2c7456e98925365959ce1086a580e2728cdacd0af5ccd9d944e7ae14ca8",
+    "recipe_id": "8f22fe223e8609b99274b1b85c725e820564930fb0e59fae801f2201133c53ca",
     "runs": 5,
     "seed": "924c85cd3d9e7aad653f47e670db5b49e50bed3cd5a68bd96355db7b59b90e26",
-    "snapshot_id": "603e5269f948a5a0d0981bacf92a7d08804f6fdf14901a6191c9d1a05d94b861",
+    "snapshot_id": "",
     "stable": [
       "clap.args.test.SliceIterator",
       "clap.codepoint_counting_writer.decltest.CodepointCountingWriter",

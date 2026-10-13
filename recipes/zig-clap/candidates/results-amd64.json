@@ -1,0 +1,58 @@
+{
+  "slim_report": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "examples_bytes",
+      "ratio": 0.9922454484153742,
+      "ci_low": 0.9922454484153742,
+      "ci_high": 0.9922454484153742,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9922454484153742,
+          "ci_low": 0.9922454484153742,
+          "ci_high": 0.9922454484153742,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "examples_bytes": {
+        "base": [
+          142368
+        ],
+        "cand": [
+          141264
+        ],
+        "ratio": 0.9922454484153742
+      },
+      "parse_ir": {
+        "base": [
+          32184440
+        ],
+        "cand": [
+          32184450
+        ],
+        "ratio": 1.0000003107091502
+      },
+      "help_ir": {
+        "base": [
+          24542715
+        ],
+        "cand": [
+          24542715
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "8f22fe223e8609b99274b1b85c725e820564930fb0e59fae801f2201133c53ca",
+    "eval_seconds": 58.7,
+    "date": "2026-10-13T11:44:52.452Z",
+    "match": true
+  }
+}

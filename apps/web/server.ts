@@ -53,6 +53,7 @@ import { chainBrowserPlugin } from "../../packages/chain/src/browser/plugin.ts";
 import { Faucet } from "./wallet/faucet.ts";
 import { publishSoul, SoulDrafts } from "./wallet/souls.ts";
 import sites from "../../config/sites.json" with { type: "json" };
+import { CLAIM_SHARE_PATH, loadClaimPreview, withPreview } from "./claim-preview.ts";
 
 const arg = (n: string, d?: string) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -94,6 +95,7 @@ const MARKET = (arg("market", (process.env.UNITS_MARKET ?? process.env.LINEAGE_M
 // the GitHub identity service (packages/identity); on the site Caddy routes /identity/* to it directly
 const IDENTITY = (arg("identity", (process.env.UNITS_IDENTITY ?? process.env.LINEAGE_IDENTITY) ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
 const UPSTREAM = (arg("upstream", SITE_BACKEND ? SITE : "") ?? "").replace(/\/+$/, "");
+const RUNTIME_GIVEN = process.argv.includes("--runtime");
 const RUNTIME = (arg("runtime", (process.env.UNITS_RUNTIME ?? process.env.LINEAGE_RUNTIME) ?? "http://127.0.0.1:9667") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
@@ -429,9 +431,11 @@ const server = Bun.serve({
   async fetch(req, srv) {
     const url = new URL(req.url);
     const p = url.pathname;
-    if (UPSTREAM && (/^\/(souls|social|runtime|identity)\//.test(p) || p === "/chain/faucet")) return toUpstream(req, url);
+    // --runtime given by hand: the bind endpoints go to that runtime even beside --upstream (a local runtime tried against a deployed site)
+    const localBind = RUNTIME_GIVEN && /^\/runtime\/(bind|unbound)\//.test(p);
+    if (UPSTREAM && !localBind && (/^\/(souls|social|runtime|identity)\//.test(p) || p === "/chain/faucet")) return toUpstream(req, url);
     if (p.startsWith("/chain/")) return chainRoute(req, p);
-    if (p.startsWith("/runtime/bind/")) {
+    if (p.startsWith("/runtime/bind/") || p.startsWith("/runtime/unbound/")) {
       // local development: the hosted runtime's bind endpoint (on the site the gate routes it)
       const r = await fetch(`${RUNTIME}${p}`, { method: req.method, headers: { "content-type": "application/json" }, body: req.method === "POST" ? await req.text() : undefined }).catch(() => null);
       return r ? new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } }) : Response.json({ error: "runtime_unavailable", message: "the hosted runtime is not running here" }, { status: 503 });
@@ -460,12 +464,26 @@ const server = Bun.serve({
     }
     // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md 5): the gist proof, the wallet statement and the attestation request are
     // POSTs Core verifies itself (a session token and a wallet signature); forwarded unchanged with a body cap
-    const feeClaim = /^\/api\/fee-claims\/(proofs\/gist|wallet|attest)$/.exec(p);
+    // the owner mark of a bounty's poster (docs/plans/OPEN-BOUNTIES.md 9) goes the same way: a session and a repository id, checked by Core
+    // and so does a request for a repository (docs/plans/OPEN-BOUNTIES.md 10): a statement the wallet signed
+    const feeClaim = /^\/api\/(fee-claims\/(?:proofs\/gist|wallet|attest)|bounties\/owner-proof(?:\/forget)?|repo-requests)$/.exec(p);
     if (feeClaim && req.method === "POST") {
       const body = await req.arrayBuffer();
       if (body.byteLength > 8 * 1024) return Response.json({ error: "too_large", message: "body too large" }, { status: 413 });
       try {
-        const res = await fetch(`${CORE}/v1/fee-claims/${feeClaim[1]}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        const res = await fetch(`${CORE}/v1/${feeClaim[1]}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+      } catch (e) {
+        return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });
+      }
+    }
+    // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a reply bot's link led to. Core
+    // stores it only for a launch it has already read from the chain; forwarded unchanged with a body cap
+    if (p === "/api/tweet-launches" && req.method === "POST") {
+      const body = await req.arrayBuffer();
+      if (body.byteLength > 1024) return Response.json({ error: "too_large", message: "body too large" }, { status: 413 });
+      try {
+        const res = await fetch(`${CORE}/v1/tweet-launches`, { method: "POST", headers: { "content-type": "application/json" }, body });
         return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
       } catch (e) {
         return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });
@@ -544,6 +562,14 @@ const server = Bun.serve({
       const f = Bun.file(join(DIR, "public/providers", provLogo[1]!));
       if (!(await f.exists())) return new Response("not found", { status: 404 });
       return new Response(f, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
+    }
+    // the shareable page of the fees waiting for one repository's owners: the same document with its own title and
+    // description, so a posted link previews with them (claim-preview.ts)
+    const share = CLAIM_SHARE_PATH.exec(p);
+    if (share && req.method === "GET") {
+      const name = `${share[1]}/${share[2]}`;
+      const origin = (process.env.UNITS_SITE_URL ?? "").replace(/\/+$/, "") || null;
+      return new Response(withPreview(await indexHtml().text(), await loadClaimPreview(CORE, name), origin ? `${origin}/claim/${name}` : null), { headers: { ...PAGE_HEADERS, "cache-control": "no-cache" } });
     }
     return new Response(indexHtml(), { headers: PAGE_HEADERS });
   },

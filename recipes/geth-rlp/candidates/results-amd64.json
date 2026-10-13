@@ -1,0 +1,58 @@
+{
+  "bigint_words": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 0.8654486132528435,
+      "ci_low": 0.8654486132528435,
+      "ci_high": 0.8654486132528435,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.8654486132528435,
+          "ci_low": 0.8654486132528435,
+          "ci_high": 0.8654486132528435,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          43680241
+        ],
+        "cand": [
+          37803004
+        ],
+        "ratio": 0.8654486132528435
+      },
+      "decode_ir": {
+        "base": [
+          128556403
+        ],
+        "cand": [
+          128556605
+        ],
+        "ratio": 1.0000015712947414
+      },
+      "stream_ir": {
+        "base": [
+          140920349
+        ],
+        "cand": [
+          138972151
+        ],
+        "ratio": 0.9861751832590196
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d62",
+    "recipe_id": "6b3484b89dd34fc99e548f021912d0a1c406e1cd553227fc2ae54f8141e84957",
+    "eval_seconds": 1267.1,
+    "date": "2026-10-13T12:56:00.314Z",
+    "match": true
+  }
+}

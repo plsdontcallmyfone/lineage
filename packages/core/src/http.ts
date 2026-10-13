@@ -1,5 +1,6 @@
 import type { Server } from "bun";
 import { bountiesOf } from "./bounties.ts";
+import { openBountiesOf } from "./open-bounties.ts";
 import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { findingsOf } from "./findings.ts";
@@ -15,7 +16,10 @@ import { sessionsOf } from "./sessions.ts";
 import { journalOf } from "./journal.ts";
 import { jsonlResponse, learningsOf, schemaDoc } from "./learnings.ts";
 import { readDump, recordDump, sharedFindingsOf } from "./shared-findings.ts";
+import { unitDryOf } from "./unit-dry.ts";
 import { socialOf } from "./social.ts";
+import { conversationsOf } from "./conversations.ts";
+import { talkOf } from "./talk.ts";
 import { guardConfigOf } from "./guard-config.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
@@ -32,9 +36,15 @@ import { deploymentsOf } from "./deployments.ts";
 import { analyticsOf } from "./analytics.ts";
 import { viewersOf } from "./viewers.ts";
 import { unitsFees } from "./units-fees.ts";
+import { tweetLaunchesOf } from "./tweet-launches.ts";
+import { repoCheckOf } from "./repo-check.ts";
+import { repoRequestsOf } from "./repo-requests.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
+import { bountyOwnersOf } from "./bounty-owners.ts";
 import { poolsOf } from "./pools.ts";
 import { purgeOf } from "./purge.ts";
+import { swarmsOf } from "./swarms.ts";
+import { featureOn } from "./features.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -51,6 +61,8 @@ interface Ctx {
   body: string;
   json: () => unknown;
   agent: string | null;
+  /** the seat of a swarm the signed request speaks for (header x-units-seat; swarms.ts), null for a solo agent or with the flag off */
+  seat: number | null;
 }
 
 interface Route {
@@ -134,7 +146,12 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf]) of(core);
+  for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf, modelsOf]) of(core);
+  conversationsOf(core); // sets the conversation gate on core.messages
+  talkOf(core); // the tables of messages from people (the admin hides one by id)
+  // swarms (docs/plans/SWARMS.md): its module and tables exist only where the flag is on
+  const swarmsOn = featureOn(core, "swarms");
+  if (swarmsOn) swarmsOf(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -183,6 +200,9 @@ export function buildRoutes(core: Core): Route[] {
     }),
     route("GET", "/v1/chain", "none", () => (core.chainMode ? (core.chainView?.() ?? { mode: "devnet", read_at: null }) : { mode: "sim" })),
     route("GET", "/v1/lineages", "none", () => core.listLineages()),
+    // units that run dry (src/unit-dry.ts, docs/plans/AGENT-EFFICIENCY.md 8.1): GET /v1/units/dry[?repo=] and /v1/units/:id/dry (unit-alias.ts)
+    route("GET", "/v1/lineages/dry", "none", (c) => unitDryOf(core).list({ repo: q(c, "repo") })),
+    route("GET", "/v1/lineages/:id/dry", "none", (c) => unitDryOf(core).one(c.params.id!)),
     route("GET", "/v1/lineages/:id", "none", (c) => core.lineageView(c.params.id!)),
     route("GET", "/v1/lineages/:id/tree", "none", (c) => core.tree(c.params.id!, q(c, "gen"))),
     route("GET", "/v1/lineages/:id/file", "none", (c) => core.live.file(c.params.id!, q(c, "gen"), q(c, "path"))),
@@ -209,11 +229,22 @@ export function buildRoutes(core: Core): Route[] {
         const off = q(c, "agent") ? new Map() : unlisted(c);
         return sessionsOf(core)
           .list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: int(c, "limit") }, c.agent)
-          .filter((s) => !s.agent || !off.has(s.agent));
+          .filter((s) => !s.agent || !off.has(s.agent))
+          // swarms on: which seat of a swarm a session is (null for a solo agent's); public like the session itself
+          .map((s) => (swarmsOn ? { ...s, seat: swarmsOf(core).sessionSeat(s.session_id) } : s));
       }),
     ),
-    route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") }))),
-    route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
+    route("GET", "/v1/sessions/:id", "optional", (c) =>
+      core.tx(() => {
+        const v = sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") });
+        return swarmsOn ? { ...v, seat: swarmsOf(core).sessionSeat(v.session_id) } : v;
+      }),
+    ),
+    route("POST", "/v1/sessions", "agent", (c) => {
+      const s = sessionsOf(core).start(c.agent!, c.json());
+      if (c.seat !== null) swarmsOf(core).noteSession(s.session_id, c.agent!, c.seat); // which seat of a swarm the session is (swarms.ts)
+      return s;
+    }),
     route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/end", "agent", (c) => sessionsOf(core).end(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/recording", "agent", (c) => sessionsOf(core).recording(c.agent!, c.params.id!, c.json())),
@@ -264,6 +295,16 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, int(c, "limit"))),
     route("GET", "/v1/runtime/waiting", "none", () => runtimeSpendOf(core).waitingList()),
     route("GET", "/v1/agents/:id/spend", "none", (c) => runtimeSpendOf(core).of(c.params.id!)), // vault, burn, runway (plan MODELS-AND-SELF-FUNDING)
+    // can an agent work on this repository? asked by the launch form before the launcher pays (repo-check.ts)
+    route("GET", "/v1/repo-check", "none", (c) => repoCheckOf(core).check(q(c, "repo"))),
+    // "Request a repository" (repo-requests.ts, docs/plans/OPEN-BOUNTIES.md 10): a wallet-signed request for a unit on a repository that has none
+    route("GET", "/v1/repo-requests", "none", (c) => repoRequestsOf(core).list(q(c, "wallet"))),
+    route("GET", "/v1/repo-requests/check", "none", (c) => repoRequestsOf(core).check(q(c, "repo"), q(c, "wallet"))),
+    route("GET", "/v1/repo-requests/draft-plan", "runtime", () => repoRequestsOf(core).draftPlan()),
+    route("POST", "/v1/repo-requests", "none", (c) => repoRequestsOf(core).create(c.json())),
+    route("POST", "/v1/repo-requests/drafts", "runtime", (c) => repoRequestsOf(core).recordDraft(c.json())),
+    route("GET", "/v1/admin/repo-requests/config", "admin", () => repoRequestsOf(core).config()),
+    route("POST", "/v1/admin/repo-requests/config", "admin", (c) => repoRequestsOf(core).setConfig(c.json())),
     // collaboration (SPEC 12.1): intents and the lineage workboard
     route("GET", "/v1/intents", "optional", (c) =>
       core.collab.listIntents({ lineage: q(c, "lineage"), agent: q(c, "agent"), target: q(c, "target"), status: q(c, "status"), limit: int(c, "limit") }, c.agent),
@@ -301,6 +342,13 @@ export function buildRoutes(core: Core): Route[] {
     // the $UNITS coin's own creator fees (owner 2026-10-12: half compute, half buyback and burn): the fee keeper's public log, read only
     route("GET", "/v1/units-fees", "none", (c) => unitsFees({ file: process.env.UNITS_FEES_LOG, limit: int(c, "limit") })),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
+    // agent conversations (docs/plans/AGENT-CONVERSATIONS.md): threads, the settings, and an agent's moments (public rows only)
+    route("GET", "/v1/conversations", "none", (c) => core.tx(() => conversationsOf(core).threads({ agent: q(c, "agent"), lineage: q(c, "lineage"), repo: q(c, "repo"), before: int(c, "before"), limit: int(c, "limit"), hidden: withHidden(c) }))),
+    route("GET", "/v1/conversations/config", "none", () => conversationsOf(core).settings()),
+    // messages from people to agents (talk.ts): what a sender needs, and what an agent was sent
+    route("GET", "/v1/talk", "none", () => core.tx(() => talkOf(core).board())),
+    route("GET", "/v1/talk/:id", "none", (c) => core.tx(() => talkOf(core).view(c.params.id!, { wallet: q(c, "wallet"), limit: int(c, "limit") }))),
+    route("GET", "/v1/agents/:id/conversation", "none", (c) => core.tx(() => conversationsOf(core).context(c.params.id!))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),
     route("GET", "/v1/agents/:id/followers", "none", (c) => socialOf(core).followers(c.params.id!, int(c, "limit"), withHidden(c))),
@@ -331,6 +379,10 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, int(c, "epoch"))),
     route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
     // souls (SPEC 14.8, packages/core/src/souls.ts): public once launched; PUT is self-authenticating (the doc's signature)
+    // swarms (docs/plans/SWARMS.md): 404 feature_off while the flag is off
+    route("GET", "/v1/swarms/config", "none", (c) => swarmsOf(core).config(q(c, "wallet") ?? null)), // ?wallet=: whether that wallet may launch a swarm now (settings.launchers)
+    route("GET", "/v1/swarms", "none", (c) => swarmsOf(core).list(withHidden(c))),
+    route("GET", "/v1/agents/:id/swarm", "none", (c) => swarmsOf(core).view(c.params.id!)),
     route("GET", "/v1/agents/:id/soul", "none", (c) => soulsOf(core).view(c.params.id!)),
     route("PUT", "/v1/agents/:id/soul", "none", (c) => core.tx(() => soulsOf(core).put(c.params.id!, c.json()))),
     route("GET", "/v1/souls/:digest", "none", (c) => soulsOf(core).byDigest(c.params.digest!)),
@@ -348,13 +400,14 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/pools/config", "admin", (c) => poolsOf(core).setConfig(c.json())),
     route("POST", "/v1/admin/pools/run", "admin", () => poolsOf(core).keeperStep()),
     // GitHub fee routing and claims (docs/plans/GITHUB-FEE-CLAIMS.md 5); every route is 404 feature_off while the flag is off
-    route("GET", "/v1/github/users/:login", "none", (c) => feeClaimsOf(core).user(c.params.login!)),
+    route("GET", "/v1/github/repos/:owner/:repo", "none", (c) => feeClaimsOf(core).repo(c.params.owner!, c.params.repo!)),
     route("GET", "/v1/agents/:id/fee-route", "none", (c) => feeClaimsOf(core).routeView(c.params.id!)),
     route("GET", "/v1/fee-claims/providers", "none", () => feeClaimsOf(core).providers()),
-    route("GET", "/v1/fee-claims/recipients", "none", (c) => feeClaimsOf(core).recipientByLogin(q(c, "login") ?? "")),
+    route("GET", "/v1/fee-claims/waiting", "none", (c) => feeClaimsOf(core).waiting(q(c, "repo"))), // fees waiting for the owners: public, no sign-in
+    route("GET", "/v1/fee-claims/recipients", "none", (c) => feeClaimsOf(core).recipientByRepo(q(c, "repo") ?? "")),
     route("GET", "/v1/fee-claims/recipients/:github_id", "none", (c) => feeClaimsOf(core).recipient(c.params.github_id!)),
     route("GET", "/v1/fee-claims/oauth/start", "none", (c) => {
-      const s = feeClaimsOf(core).oauthStart(q(c, "return_to"));
+      const s = feeClaimsOf(core).oauthStart(q(c, "return_to"), q(c, "repo"));
       return q(c, "json") === "1" ? s : new Response(null, { status: 302, headers: { location: s.url, "cache-control": "no-store" } });
     }),
     route("GET", "/v1/fee-claims/oauth/callback", "none", async (c) => {
@@ -364,7 +417,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/fee-claims/session", "none", (c) => feeClaimsOf(core).session(q(c, "session"))),
     route("POST", "/v1/fee-claims/proofs/gist", "none", (c) => feeClaimsOf(core).gistProof(c.json())),
     route("POST", "/v1/fee-claims/wallet", "none", (c) => feeClaimsOf(core).bindWallet((c.json() as { session?: unknown })?.session, c.json())),
-    route("POST", "/v1/fee-claims/attest", "none", (c) => feeClaimsOf(core).attest((c.json() as { session?: unknown })?.session)),
+    route("POST", "/v1/fee-claims/attest", "none", (c) => feeClaimsOf(core).attest((c.json() as { session?: unknown })?.session, (c.json() as { repo_id?: unknown })?.repo_id)),
     route("GET", "/v1/fee-claims/attestations", "none", (c) => feeClaimsOf(core).attestations(q(c, "github_id"))),
     // agent wallets (docs/plans/AGENT-WALLET-SAFETY.md 2): the treasury (registry signing key) and the compute vault, balances read from chain
     route("GET", "/v1/agents/:id/wallet", "none", (c) => agentWalletOf(core).view(c.params.id!)),
@@ -374,6 +427,13 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).genesisOf(c.params.id!)), // GitHub genesis proof (docs/plans/GITHUB-GENESIS.md)
     route("POST", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).addGenesis(c.params.id!, c.json())),
     route("POST", "/v1/agents/:id/links", "agent", (c) => linksOf(core).add(c.agent, c.params.id!, c.json())),
+    // launch from a tweet (docs/plans/TWEET-LAUNCH.md 4): the launch page hands in the launch a link led to; only an existing launch can be named
+    route("POST", "/v1/tweet-launches", "none", (c) => tweetLaunchesOf(core).claim(c.json())),
+    route("GET", "/v1/tweet-launches/:id", "none", (c) => tweetLaunchesOf(core).get(c.params.id!)),
+    // where a launch started: the reply bot's signed statement of the tweet a link answers, and the two public reads of it
+    route("POST", "/v1/tweet-links", "agent", (c) => tweetLaunchesOf(core).register(c.agent, c.json())),
+    route("GET", "/v1/tweet-links/:id", "none", (c) => tweetLaunchesOf(core).resolve(c.params.id!)),
+    route("GET", "/v1/agents/:id/tweet-origin", "none", (c) => tweetLaunchesOf(core).originOf(c.params.id!)),
     route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
     route("DELETE", "/v1/agents/:id/links/:service/:handle", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!, c.params.handle!))),
     route("GET", "/v1/agents/:id/card", "none", (c) => erc8004Of(core).card(c.params.id!, c.url.origin)),
@@ -395,8 +455,17 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/challenges/:id", "none", (c) => challengesOf(core).one(c.params.id!)),
     route("POST", "/v1/challenges", "agent", (c) => challengesOf(core).open(c.agent!, c.json())),
     route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
+    route("GET", "/v1/bounties/board", "none", () => bountiesOf(core).board()), // the Bounties page (docs/plans/OPEN-BOUNTIES.md)
+    // "Posted by an owner of owner/repo" (bounty-owners.ts, docs/plans/OPEN-BOUNTIES.md 9): the proof is the fee claims' sign-in and wallet statement
+    route("GET", "/v1/bounties/owners", "none", (c) => bountyOwnersOf(core).view(q(c, "repo"), q(c, "wallet"))),
+    route("GET", "/v1/bounties/owner-proof", "none", () => bountyOwnersOf(core).offer()),
+    route("POST", "/v1/bounties/owner-proof", "none", (c) => bountyOwnersOf(core).prove(c.json())),
+    route("POST", "/v1/bounties/owner-proof/forget", "none", (c) => bountyOwnersOf(core).forget(c.json())),
+    route("POST", "/v1/admin/bounty-owners/config", "admin", (c) => bountyOwnersOf(core).setConfig(c.json())),
+    route("GET", "/v1/bounties/:id/view", "none", (c) => bountiesOf(core).detail(c.params.id!)),
     route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
     route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),
+    route("GET", "/v1/bounties/:id/claim", "none", (c) => openBountiesOf(core).claim(c.params.id!)), // the escrow program's claim proof (open-bounties.ts)
     route("PUT", "/v1/bounties/:id/terms", "none", (c) => bountiesOf(core).setTerms(c.params.id!, c.json())),
     route("GET", "/v1/lineages/:id/bounties", "none", (c) => bountiesOf(core).hints(c.params.id!)),
     route("GET", "/v1/epochs", "none", (c) => core.listEpochs({ retired: q(c, "retired") === "1", limit: int(c, "limit"), before: int(c, "before") })),
@@ -442,7 +511,8 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/replays/:id/reveal", "agent", (c) => core.revealReplay(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/epochs/:n/claim", "agent", (c) => core.claim(c.agent!, epochN(c), c.json())),
     route("POST", "/v1/activity", "agent", (c) => core.live.postActivity(c.agent!, c.json())),
-    route("POST", "/v1/heartbeat", "agent", (c) => core.live.postHeartbeat(c.agent!, c.json())),
+    // a swarm's seats 2 and up keep their own heartbeat row (swarms.ts); seat 1 and every solo agent use the agent's row, as before
+    route("POST", "/v1/heartbeat", "agent", (c) => (c.seat !== null && c.seat > 1 ? swarmsOf(core).heartbeat(c.agent!, c.seat, c.json()) : core.live.postHeartbeat(c.agent!, c.json()))),
     route("PUT", "/v1/blobs/:sha", "agent", async (c) => {
       const sha = c.params.sha!;
       if (!/^[0-9a-f]{64}$/.test(sha)) throw bad("bad_digest", "blob name must be a lowercase sha256 hex");
@@ -484,6 +554,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
+    route("POST", "/v1/admin/conversations/config", "admin", (c) => core.tx(() => conversationsOf(core).setConfig(c.json()))),
     route("POST", "/v1/admin/launch-fronting", "admin", (c) => prepayOf(core).setFronting(c.json())),
     route("POST", "/v1/admin/guard-config", "admin", (c) => guardConfigOf(core).set(c.agent!, c.json())), // SPEC 10.1 rule 6
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
@@ -495,8 +566,11 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
     route("POST", "/v1/admin/runtime/spend", "runtime", (c) => {
       const spend = runtimeSpendOf(core); // its tables are made outside the transaction, so a refused report cannot roll them back
-      return core.tx(() => spend.report(c.agent!, c.json()));
+      const out = core.tx(() => spend.report(c.agent!, c.json()));
+      if (swarmsOn) core.tx(() => swarmsOf(core).reportSeats(c.json())); // the seat part of the report (swarms.ts)
+      return out;
     }),
+    route("POST", "/v1/admin/swarms/config", "admin", (c) => core.tx(() => swarmsOf(core).setConfig(c.json()))),
     route("POST", "/v1/admin/epochs/close", "admin", () => core.closeEpoch()),
     route("POST", "/v1/admin/tick", "admin", () => (core.tick(), { ok: true, now: core.now() })),
     route("POST", "/v1/admin/chain/sync", "admin", async () => {
@@ -592,6 +666,7 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
         params,
         body,
         agent,
+        seat: agent && req.headers.has("x-units-seat") && featureOn(core, "swarms") ? swarmsOf(core).seatOf(agent, req.headers.get("x-units-seat")) : null,
         json: () => {
           if (!body) return {};
           try {
