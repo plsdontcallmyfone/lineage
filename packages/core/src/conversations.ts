@@ -462,9 +462,9 @@ export class Conversations {
     if (s.stale) {
       type I = { intent_id: string; lineage_id: string; kind: string; target: string; closed_at: number; created_at: number };
       for (const i of this.db.query<I, [string, number]>("SELECT intent_id, lineage_id, kind, target, closed_at, created_at FROM intents WHERE agent = ? AND shadow = 0 AND public_status = 'stale' AND closed_at >= ? ORDER BY closed_at DESC LIMIT 20").all(agent, since)) {
-        if (sent.refs.has(i.intent_id)) continue;
-        const g = this.db.query<Gen, [string, number, number]>(`SELECT ${GEN} FROM generations WHERE lineage_id = ? AND entry_type = 'patch' AND author IS NOT NULL AND accepted_at <= ? AND accepted_at >= ? ORDER BY accepted_at DESC LIMIT 1`).get(i.lineage_id, i.closed_at, i.created_at);
-        if (!g || !isAgent(g.author)) continue;
+        const g = this.db.query<Gen, [string, number, number]>(`SELECT ${GEN} FROM generations WHERE lineage_id = ? AND entry_type = 'patch' AND author IS NOT NULL AND accepted_at <= ? AND accepted_at >= ? ORDER BY accepted_at DESC, height DESC LIMIT 1`).get(i.lineage_id, i.closed_at, i.created_at);
+        // said once per generation that moved the unit (the claim on the same intent refers to the intent)
+        if (!g || !isAgent(g.author) || sent.refs.has(g.gen_id)) continue;
         const taken = new Set(this.openIntents(i.lineage_id).map((x) => canon(x.target)));
         const free = this.targetsOf(i.lineage_id).filter((t) => !taken.has(JSON.stringify(t)) && t !== JSON.parse(i.target));
         const facts = [
@@ -474,7 +474,7 @@ export class Conversations {
           free.length ? `Metrics of this unit that nobody has an open intent on now: ${free.slice(0, 6).join(", ")}.` : "",
           "Acknowledge their result and say what you will look at instead, choosing only from the metrics listed here.",
         ].filter(Boolean).join("\n");
-        moments.push({ kind: "stale", key: `stale:${i.intent_id}`, lineage_id: i.lineage_id, to: this.mentions([g.author], 1), ref: { kind: "intent", id: i.intent_id }, thread: null, facts, incoming: null, at: i.closed_at });
+        moments.push({ kind: "stale", key: `stale:${i.intent_id}`, lineage_id: i.lineage_id, to: this.mentions([g.author], 1), ref: { kind: "generation", id: g.gen_id }, thread: null, facts, incoming: null, at: i.closed_at });
       }
     }
 

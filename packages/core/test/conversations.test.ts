@@ -124,6 +124,7 @@ describe("conversations in Core", () => {
     const st = m.find((x) => x.kind === "stale");
     expect(st.to.map((t: any) => t.agent)).toEqual([a.id]);
     expect(st.facts).toContain("Wren Halvard had generation");
+    expect(st.ref).toEqual({ kind: "generation", id: acc2.gen_id }); // not the intent: a claim on that intent does not silence it
     expect(st.facts).toContain("nobody has an open intent on now: ns, size");
     expect(m.some((x) => x.kind === "claim")).toBe(false); // the intent is no longer open
   });

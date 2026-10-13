@@ -111,7 +111,7 @@ export async function composeTalk(o: { soul: SoulDoc; moment: TalkMoment; client
   const { system, user } = talkPrompt(o.soul, o.moment, o.maxBytes);
   const price = PRICES[o.model] ?? Object.values(PRICES).reduce((a, b) => (b.output > a.output ? b : a));
   const inputUsd = (((system.length + user.length) / CHARS_PER_TOKEN) * Math.max(price.input, price.cache_write)) / 1e6;
-  const maxTokens = Math.min(700, Math.floor(((o.maxUsd - inputUsd) * 1e6) / price.output));
+  const maxTokens = Math.min(1500, Math.floor(((o.maxUsd - inputUsd) * 1e6) / price.output));
   if (maxTokens < 200) return { text: null, silent: false, problems: ["the cost cap is too low for one call"], usage };
   const res = await o.client.create({ model: o.model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
   const u = res.usage;
