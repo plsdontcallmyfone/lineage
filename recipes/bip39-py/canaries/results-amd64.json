@@ -1,0 +1,167 @@
+{
+  "no_zfill": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "2 stable tests fail: tests.test_mnemonic.MnemonicTest::test_to_entropy, tests.test_mnemonic.MnemonicTest::test_vectors",
+    "effect": null,
+    "metrics": {
+      "entropy_ir": {
+        "base": [
+          1020174593
+        ],
+        "cand": [],
+        "ratio": null
+      },
+      "check_ir": {
+        "base": [
+          863149875
+        ],
+        "cand": [
+          507617815
+        ],
+        "ratio": 0.5880992741845673
+      },
+      "mnemonic_ir": {
+        "base": [
+          273487823
+        ],
+        "cand": [
+          270228801
+        ],
+        "ratio": 0.9880834840679543
+      },
+      "expand_ir": {
+        "base": [
+          374371272
+        ],
+        "cand": [
+          374322642
+        ],
+        "ratio": 0.99987010221233
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d6e",
+    "recipe_id": "2b2862d457d79669c9eafe1a5684d6f15fa5167c0d27cfdebf7f9f2c861cea8b",
+    "eval_seconds": 114.2,
+    "date": "2026-10-13T11:23:38.615Z",
+    "match": true
+  },
+  "skip_word_normalize": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "entropy_ir": {
+        "base": [
+          1026280746
+        ],
+        "cand": [
+          1017315448
+        ],
+        "ratio": 0.9912642831555177
+      },
+      "check_ir": {
+        "base": [
+          870411038
+        ],
+        "cand": [
+          870407710
+        ],
+        "ratio": 0.9999961765190758
+      },
+      "mnemonic_ir": {
+        "base": [
+          273049834
+        ],
+        "cand": [
+          273026398
+        ],
+        "ratio": 0.9999141695138332
+      },
+      "expand_ir": {
+        "base": [
+          382355102
+        ],
+        "cand": [
+          382332184
+        ],
+        "ratio": 0.9999400609541232
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d73",
+    "recipe_id": "2b2862d457d79669c9eafe1a5684d6f15fa5167c0d27cfdebf7f9f2c861cea8b",
+    "eval_seconds": 177.8,
+    "date": "2026-10-13T11:26:36.434Z",
+    "match": true
+  },
+  "set_membership": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0361 vs required 0.9900",
+    "effect": {
+      "metric": "expand_ir",
+      "ratio": 1.036061870612547,
+      "ci_low": 1.036061870612547,
+      "ci_high": 1.036061870612547,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.036061870612547,
+          "ci_low": 1.036061870612547,
+          "ci_high": 1.036061870612547,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "entropy_ir": {
+        "base": [
+          1026280746
+        ],
+        "cand": [
+          1026300289
+        ],
+        "ratio": 1.0000190425476423
+      },
+      "check_ir": {
+        "base": [
+          870411038
+        ],
+        "cand": [
+          870440682
+        ],
+        "ratio": 1.000034057472511
+      },
+      "mnemonic_ir": {
+        "base": [
+          273049840
+        ],
+        "cand": [
+          273141807
+        ],
+        "ratio": 1.0003368139677358
+      },
+      "expand_ir": {
+        "base": [
+          382355096
+        ],
+        "cand": [
+          396143536
+        ],
+        "ratio": 1.036061870612547
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "2b2862d457d79669c9eafe1a5684d6f15fa5167c0d27cfdebf7f9f2c861cea8b",
+    "eval_seconds": 77.3,
+    "date": "2026-10-13T11:27:53.763Z",
+    "match": true
+  }
+}

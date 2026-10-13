@@ -1,0 +1,142 @@
+{
+  "lsb_checksum": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "1 stable tests fail: github.com/cosmos/go-bip39::TestBip39",
+    "effect": null,
+    "metrics": {
+      "mnemonic_ir": {
+        "base": [
+          24328810
+        ],
+        "cand": [
+          24322035
+        ],
+        "ratio": 0.9997215235763689
+      },
+      "entropy_ir": {
+        "base": [
+          22825204
+        ],
+        "cand": [
+          22807435
+        ],
+        "ratio": 0.9992215184582797
+      },
+      "valid_ir": {
+        "base": [
+          10646848
+        ],
+        "cand": [
+          10643404
+        ],
+        "ratio": 0.9996765239815577
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d6c",
+    "recipe_id": "666ec10222d3743415b37bb292bc7076c3d658073608cfb5edf94fdd2c07b529",
+    "eval_seconds": 456,
+    "date": "2026-10-13T11:31:41.111Z",
+    "match": true
+  },
+  "skip_revalidate": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "mnemonic_ir": {
+        "base": [
+          24065004
+        ],
+        "cand": [
+          24065004
+        ],
+        "ratio": 1
+      },
+      "entropy_ir": {
+        "base": [
+          22638256
+        ],
+        "cand": [
+          17390874
+        ],
+        "ratio": 0.7682073212706845
+      },
+      "valid_ir": {
+        "base": [
+          10534897
+        ],
+        "cand": [
+          10534897
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d73",
+    "recipe_id": "666ec10222d3743415b37bb292bc7076c3d658073608cfb5edf94fdd2c07b529",
+    "eval_seconds": 400.8,
+    "date": "2026-10-13T11:38:21.907Z",
+    "match": true
+  },
+  "fieldsfunc": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.5767 vs required 0.9900",
+    "effect": {
+      "metric": "valid_ir",
+      "ratio": 1.5766710521010232,
+      "ci_low": 1.5766710521010232,
+      "ci_high": 1.5766710521010232,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.5766710521010232,
+          "ci_low": 1.5766710521010232,
+          "ci_high": 1.5766710521010232,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "mnemonic_ir": {
+        "base": [
+          24361034
+        ],
+        "cand": [
+          24361034
+        ],
+        "ratio": 1
+      },
+      "entropy_ir": {
+        "base": [
+          22827075
+        ],
+        "cand": [
+          25901911
+        ],
+        "ratio": 1.1347012703116803
+      },
+      "valid_ir": {
+        "base": [
+          10664090
+        ],
+        "cand": [
+          16813762
+        ],
+        "ratio": 1.5766710521010232
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d66",
+    "recipe_id": "666ec10222d3743415b37bb292bc7076c3d658073608cfb5edf94fdd2c07b529",
+    "eval_seconds": 345.4,
+    "date": "2026-10-13T11:44:07.309Z",
+    "match": true
+  }
+}

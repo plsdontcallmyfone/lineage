@@ -1,0 +1,49 @@
+{
+  "hex_table": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "hex_ir",
+      "ratio": 0.41907986068906833,
+      "ci_low": 0.41907986068906833,
+      "ci_high": 0.41907986068906833,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.41907986068906833,
+          "ci_low": 0.41907986068906833,
+          "ci_high": 0.41907986068906833,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "hash_ir": {
+        "base": [
+          119853900
+        ],
+        "cand": [
+          119854017
+        ],
+        "ratio": 1.0000009761885096
+      },
+      "hex_ir": {
+        "base": [
+          30810791
+        ],
+        "cand": [
+          12912182
+        ],
+        "ratio": 0.41907986068906833
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d68",
+    "recipe_id": "1b95fe6709b95a0812cfae8965903ab80f8a281a7a4392fb09491caa18ca3080",
+    "eval_seconds": 53.2,
+    "date": "2026-10-13T11:19:59.299Z",
+    "match": true
+  }
+}

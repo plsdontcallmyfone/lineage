@@ -1,0 +1,142 @@
+{
+  "trust_loader_signers": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "1 stable tests fail: tests/functional.rs::test_process_store_with_bad_additional_signer",
+    "effect": null,
+    "metrics": {
+      "init_cu": {
+        "base": [
+          273517
+        ],
+        "cand": [
+          273201
+        ],
+        "ratio": 0.9988446787585415
+      },
+      "store_cu": {
+        "base": [
+          387237
+        ],
+        "cand": [
+          386905
+        ],
+        "ratio": 0.9991426439105767
+      },
+      "so_bytes": {
+        "base": [
+          138392
+        ],
+        "cand": [
+          138208
+        ],
+        "ratio": 0.99867044337823
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d74",
+    "recipe_id": "d4d1e6500299e12f754c63c9933e01d05d21e54c4103d26f827954cc1d0a10e4",
+    "eval_seconds": 125.4,
+    "date": "2026-10-13T11:54:35.274Z",
+    "match": true
+  },
+  "cap_copy": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "init_cu": {
+        "base": [
+          274739
+        ],
+        "cand": [
+          274744
+        ],
+        "ratio": 1.0000181990907735
+      },
+      "store_cu": {
+        "base": [
+          372911
+        ],
+        "cand": [
+          372912
+        ],
+        "ratio": 1.0000026816049943
+      },
+      "so_bytes": {
+        "base": [
+          138392
+        ],
+        "cand": [
+          138408
+        ],
+        "ratio": 1.0001156136192844
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d63",
+    "recipe_id": "d4d1e6500299e12f754c63c9933e01d05d21e54c4103d26f827954cc1d0a10e4",
+    "eval_seconds": 101.8,
+    "date": "2026-10-13T11:56:17.084Z",
+    "match": true
+  },
+  "owned_signers": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0020 vs required 0.9900",
+    "effect": {
+      "metric": "store_cu",
+      "ratio": 1.0020269683803145,
+      "ci_low": 1.0020269683803145,
+      "ci_high": 1.0020269683803145,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.0020269683803145,
+          "ci_low": 1.0020269683803145,
+          "ci_high": 1.0020269683803145,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "init_cu": {
+        "base": [
+          308327
+        ],
+        "cand": [
+          309554
+        ],
+        "ratio": 1.0039795412013868
+      },
+      "store_cu": {
+        "base": [
+          391718
+        ],
+        "cand": [
+          392512
+        ],
+        "ratio": 1.0020269683803145
+      },
+      "so_bytes": {
+        "base": [
+          138392
+        ],
+        "cand": [
+          138672
+        ],
+        "ratio": 1.002023238337476
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6f",
+    "recipe_id": "d4d1e6500299e12f754c63c9933e01d05d21e54c4103d26f827954cc1d0a10e4",
+    "eval_seconds": 102.2,
+    "date": "2026-10-13T11:57:59.234Z",
+    "match": true
+  }
+}
