@@ -1,4 +1,5 @@
 import type { Core } from "./core.ts";
+import { seatScale } from "./swarms.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
 import { canonicalJson, H, hashJson, Rng, satisfies, signStatement, verifyStatement, type AgentKey, type Calibration, type Capabilities, type Recipe } from "./protocol.ts";
 
@@ -313,9 +314,11 @@ export class Collab {
     const now = this.c.now();
     // an intent counts against the cap until it publicly ends, even after it led to a commit
     const live = this.db.query<{ c: number }, [string]>("SELECT COUNT(*) AS c FROM intents WHERE agent = ? AND public_status = 'open'").get(agent)!.c;
-    if (live >= this.c.cfg.max_intents_per_agent) throw new ApiError(429, "too_many_intents", `max_intents_per_agent is ${this.c.cfg.max_intents_per_agent}`);
+    // a swarm's seats each file intents under the one agent id (docs/plans/SWARMS.md 2): both caps count per seat; 1 for a solo agent
+    const seats = seatScale(this.c as unknown as Core, agent);
+    if (live >= this.c.cfg.max_intents_per_agent * seats) throw new ApiError(429, "too_many_intents", `max_intents_per_agent is ${this.c.cfg.max_intents_per_agent}`);
     const hour = this.db.query<{ c: number }, [string, number]>("SELECT COUNT(*) AS c FROM intents WHERE agent = ? AND created_at > ?").get(agent, now - 3_600_000)!.c;
-    if (hour >= this.c.cfg.intent_rate_per_hour) throw new ApiError(429, "intent_rate", `at most intent_rate_per_hour (${this.c.cfg.intent_rate_per_hour}) intents per agent per hour`);
+    if (hour >= this.c.cfg.intent_rate_per_hour * seats) throw new ApiError(429, "intent_rate", `at most intent_rate_per_hour (${this.c.cfg.intent_rate_per_hour}) intents per agent per hour`);
     const id = H("intent", agent, l.lineage_id, l.tip, kind, canonicalJson(target), String(now));
     if (this.db.query("SELECT 1 FROM intents WHERE intent_id = ?").get(id)) throw conflict("duplicate_intent", "same intent filed in the same millisecond");
     this.db

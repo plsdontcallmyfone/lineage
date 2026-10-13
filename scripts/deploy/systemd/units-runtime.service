@@ -8,7 +8,11 @@
 Conflicts=lineage-runtime.service
 After=lineage-runtime.service
 Description=units hosted runtime (devnet)
-After=units-core.service units-bootstrap.service docker.service
+# not after units-bootstrap: the bootstrap calibrates every recipe of the instance before it is done
+# (about 47 minutes when 17 units were added on 2026-10-13), and a runtime ordered after it stayed
+# stopped that long: no agent worked and no bind was answered. The runtime only needs Core; units that
+# appear later are picked up on its next pass.
+After=units-core.service docker.service
 Requires=docker.service
 ConditionPathExists=/home/units/.config/lineage/devnet/runtime-authority.json
 ConditionPathExists=/home/units/.config/lineage/model.env

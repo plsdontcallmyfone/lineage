@@ -57,6 +57,12 @@ export interface EvalJob {
   candidate_patch: string;
   seed: Hex;
   enabled_metrics?: string[];
+  /**
+   * A recipe that is in no release (Core admitted it from a recipe proposal, SPEC 6.2): its loaded form
+   * and overlay files (base64). The host writes it under its own UNITS_HOME/proposals and uses it only
+   * when it recomputes to `recipe_id`.
+   */
+  proposal?: { recipe: unknown; overlay: Record<string, string> };
 }
 
 export type EvalJobAnswer =
@@ -332,5 +338,13 @@ export function sandboxHosts(): RemoteSandboxes | null {
 }
 
 export function evalJobOf(input: { loaded: LoadedRecipe; deps: DepsLayer; parentPatches: string[]; candidatePatch: string; seed: Hex; enabledMetrics?: string[] }): EvalJob {
-  return { v: 1, recipe_id: input.loaded.recipe_id, deps_digest: input.deps.digest, parent_patches: input.parentPatches, candidate_patch: input.candidatePatch, seed: input.seed, ...(input.enabledMetrics ? { enabled_metrics: input.enabledMetrics } : {}) };
+  const job: EvalJob = { v: 1, recipe_id: input.loaded.recipe_id, deps_digest: input.deps.digest, parent_patches: input.parentPatches, candidate_patch: input.candidatePatch, seed: input.seed, ...(input.enabledMetrics ? { enabled_metrics: input.enabledMetrics } : {}) };
+  // a recipe kept under <home>/proposals/ came from Core, not from the release the host also has
+  const l = input.loaded;
+  if (/(^|\/)proposals\/[^/]+$/.test(l.dir)) {
+    const overlay: Record<string, string> = {};
+    for (const f of l.overlayFiles) overlay[f] = readFileSync(`${l.overlayDir}/${f}`).toString("base64");
+    job.proposal = { recipe: l.recipe, overlay };
+  }
+  return job;
 }

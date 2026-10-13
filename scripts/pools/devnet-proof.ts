@@ -65,6 +65,14 @@ const acct = async <T>(a: string, d: (b: Uint8Array) => T): Promise<T> => d((awa
 const min = (a: bigint, b: bigint) => (a < b ? a : b);
 const fmt = (n: bigint) => `${n / ONE}.${(n % ONE).toString().padStart(6, "0")}`;
 
+// The claim steps of this proof (section 7) were written when a fee route named a GitHub ACCOUNT. Since 2026-10-12 Core keys routes by
+// the REPOSITORY the agent works on and attests only for a repository admin (docs/plans/GITHUB-FEE-CLAIMS.md section 11), so
+// those steps cannot pass any more: two agents on one repository route to one escrow, and the lookup by login is gone. This run
+// spends devnet SOL and changes devnet's ClaimConfig before it reaches them, so it stops before sending anything until section 7 is rewritten for
+// the repository model. The pages and Core under that model are proven by scripts/claims/repo-page-proof.ts and
+// packages/core/test/fee-claims.test.ts; the program is unchanged.
+if (process.env.PROOF_ACCOUNT_MODEL_CLAIMS !== "1") throw new Error("scripts/pools/devnet-proof.ts: its claim steps predate repository-keyed fee routes (GITHUB-FEE-CLAIMS.md section 11) and would fail after spending; nothing was sent");
+
 await assertDevnet(rpc);
 const run = Date.now().toString(36);
 const dep = deployer();

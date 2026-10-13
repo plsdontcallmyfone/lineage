@@ -54,6 +54,9 @@ export interface TokenSummary {
   market_cap_usd?: number | null;
   volume_24h_usd?: number | null;
   change_24h_usd?: number | null;
+  /** the dollar price that change is measured from (null: no UNITS dollar price on record for that time), and whether "then" is 24 hours ago or the launch */
+  change_ref_usd?: number | null;
+  change_window?: "24h" | "since_launch";
   quote_reserve_usd?: number | null;
   migration_threshold_usd?: number | null;
   curve_progress: number | null;
@@ -115,11 +118,13 @@ export interface Candle {
   volume_usd?: number | null;
 }
 /** How a series was converted to dollars: every point at the price of its own time, all at today's, or some of each; null without a price. */
-export type UsdBasis = "at_time" | "current" | "mixed" | null;
+export type UsdBasis = "at_time" | "partial" | "current" | "mixed" | null;
 export interface CandlesAnswer {
   candles: Candle[];
   usd_basis?: UsdBasis;
   start_price_usd?: number | null;
+  /** the change shown beside the chart: its reference dollar price and the window (the indexer's summary) */
+  change?: { ref_usd: number | null; window: "24h" | "since_launch"; pct: number | null };
 }
 export interface Trade {
   signature: string;
@@ -229,14 +234,28 @@ export const usdPriceFig = (usd: number | null | undefined, quote: number | null
 /** A money amount in dollars: full on detail pages, compact ("$1.2M") on cards. */
 export const usdAmountFig = (usd: number | null | undefined, quote: number | null | undefined, field?: string, compact = false) =>
   usdFig(usd, { exists: quote != null, compact, field, title: quoteTitle(usd, quote) });
-/** The 24h change of the dollar price where the indexer has one, else of the price against the quote token (the title says which). */
-export function usdChangeFig(t: Pick<TokenSummary, "change_24h" | "change_24h_usd">): Raw {
-  const inUsd = t.change_24h_usd != null;
-  const n = inUsd ? t.change_24h_usd! : t.change_24h;
-  const text = fmtChange(n);
-  if (text === NO_DATA) return NONE;
-  return html`<span class="num mk-chg ${n! > 0 ? "up" : n! < 0 ? "down" : ""}" data-v="${n}" data-f="${inUsd ? "change_24h_usd" : "change_24h"}" title="${inUsd ? "change of the US dollar price over 24 hours" : `change against ${QUOTE} over 24 hours; the dollar price of ${QUOTE} 24 hours ago is not on record`}">${text}</span>`;
+/**
+ * The change of the US dollar price: the dollar price now over the dollar price 24 hours ago (at the launch for a coin
+ * younger than a day), the indexer's change_24h_usd. Never the change against the quote token: where the dollar price
+ * of "then" is not on record the figure reads USD_NA and its title says what is missing.
+ */
+export function usdChangeFig(t: Pick<TokenSummary, "change_24h" | "change_24h_usd" | "change_window">): Raw {
+  const n = t.change_24h_usd;
+  const since = t.change_window === "since_launch";
+  if (n == null || !Number.isFinite(n)) {
+    if (t.change_24h == null) return NONE;
+    return html`<span class="num usd-na" data-v="" data-f="change_24h_usd" title="${changeMissing(since)}">${USD_NA}</span>`;
+  }
+  return html`<span class="num mk-chg ${n > 0 ? "up" : n < 0 ? "down" : ""}" data-v="${n}" data-f="change_24h_usd" title="${since ? "change of the US dollar price since launch" : "change of the US dollar price over 24 hours"}">${fmtChange(n)}</span>`;
 }
+/** One plain line: why a dollar change cannot be shown. */
+export const changeMissing = (sinceLaunch: boolean) =>
+  `No US dollar change: the dollar price of ${QUOTE} ${sinceLaunch ? "at the launch" : "24 hours ago"} or now is not on record.`;
+/** What the change is measured against, for the line under the figure. */
+export const changeLabel = (t: Pick<TokenSummary, "change_window">) => (t.change_window === "since_launch" ? "since launch" : "vs the price 24h ago");
+/** A dollar price against the reference of the change: the same arithmetic as the indexer's change_24h_usd (value over reference, minus 1); null without both. */
+export const changeFrom = (refUsd: number | null | undefined, usd: number | null | undefined): number | null =>
+  refUsd == null || usd == null || !(refUsd > 0) || !Number.isFinite(usd) ? null : usd / refUsd - 1;
 
 /** What `amount` tokens (UI units) are worth in dollars at the token's dollar price from the indexer; null without one. */
 export const holdingUsd = (amount: number | null | undefined, t: Pick<TokenSummary, "price_usd"> | null | undefined): number | null =>
@@ -244,23 +263,27 @@ export const holdingUsd = (amount: number | null | undefined, t: Pick<TokenSumma
 
 /**
  * The indexer's candles in US dollars (its "_usd" fields in place of the quote-token ones), for the
- * charts; null when a candle has no dollar value (no price reading). `basis` is how they were converted.
+ * charts. A candle without a dollar value (no UNITS dollar price on record for its time) is left out,
+ * never drawn at another price; null when there are candles and none has one. `basis` says which case.
  */
-export function usdCandles(a: CandlesAnswer): { candles: Candle[]; basis: UsdBasis; start: number | null } | null {
+export function usdCandles(a: CandlesAnswer): { candles: Candle[]; basis: UsdBasis; start: number | null; missing: number } | null {
   const out: Candle[] = [];
   for (const c of a.candles) {
-    if (c.open_usd == null || c.high_usd == null || c.low_usd == null || c.close_usd == null || c.volume_usd == null) return null;
+    if (c.open_usd == null || c.high_usd == null || c.low_usd == null || c.close_usd == null || c.volume_usd == null) continue;
     out.push({ ...c, open: c.open_usd, high: c.high_usd, low: c.low_usd, close: c.close_usd, volume: c.volume_usd });
   }
-  return { candles: out, basis: a.usd_basis ?? null, start: a.start_price_usd ?? null };
+  if (a.candles.length && !out.length) return null;
+  const missing = a.candles.length - out.length;
+  return { candles: out, basis: missing ? "partial" : a.usd_basis ?? null, start: a.start_price_usd ?? null, missing };
 }
 /** One plain sentence for a chart caption: how its history was converted to dollars. */
 export function usdBasisNote(basis: UsdBasis, any = true): string {
   if (!any) return "";
-  if (basis === "at_time") return `In US dollars, each trade at the ${QUOTE} price of its own time.`;
+  if (basis === "at_time") return `In US dollars: each trade at the ${QUOTE} price of its own time, a quiet interval at that interval's, the latest at the current one.`;
+  if (basis === "partial") return `In US dollars at the ${QUOTE} price of each interval's own time. Some intervals are not drawn: no dollar price of ${QUOTE} is on record for them.`;
   if (basis === "current") return `In US dollars at today's ${QUOTE} price: its dollar price at the time of these trades is not on record.`;
   if (basis === "mixed") return `In US dollars: trades since the dollar price of ${QUOTE} has been recorded use the price of their own time, earlier ones today's.`;
-  return `${USD_NA}: the dollar price of ${QUOTE} could not be read, so no chart is drawn.`;
+  return `${USD_NA}: no dollar price of ${QUOTE} is on record for these trades, so no chart is drawn.`;
 }
 export const amountFig = (n: number | null | undefined, unit: string, field?: string) => fig(fmtAmount(n), n, unit, field);
 

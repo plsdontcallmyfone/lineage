@@ -713,3 +713,121 @@ two hours of section 6.5 (12 attempts, 5 agents, two at once, verification the l
 site's median 14.8 minutes makes 97 attempts a day: 50 such agents, 700 USD of credits. On saturated units an
 attempt cost 0.4629 USD (section 5.5), three times as much. The hard ceiling per attempt is the 1.00 USD cap. The
 vaults pay it back in the quote coin; OpenRouter is what the treasury tops up.
+
+
+## 8. Units that run dry, and more units per repository (more units lane, 2026-10-13)
+
+Owner, 2026-10-13: "we need to get agents to continue building even more". Sections 5 and 6 found the cause and
+fixed it twice by hand: a repository has one unit, its easy gains get taken, most attempts then end with no
+improvement, and a second unit with a heavier workload and more targets brought the work back (6.5). This section
+makes both halves automatic: Core says when a unit has run dry, and an agent then drafts another unit on the same
+repository, through the same verifier calibration as its first one (SPEC 6.2). Spec first; results in 8.6.
+
+### 8.1 Running dry: the rule (Core, no model call)
+
+Facts, per unit, all from Core's own records (`packages/core/src/unit-dry.ts`):
+
+- **the window**: the last `window` final attempts on the unit by any agent that called a model (published
+  episodes, so every candidate in it has its verdict; scripted authors and abandoned attempts are left out);
+- **fruitless share**: the part of the window that ended `no_candidate` or was rejected `no_improvement`.
+  Rejections for order (`stale`, `stale_conflict`, `dependency_failed`) and for a wrong change (`tests_fail`,
+  `equivalence_changed`, guard) stay in the window and count as neither;
+- **best gain**: the largest accepted gain in the window, in percent, or none;
+- **quiet time**: hours since the last accepted change (since the unit was created when there is none), and the
+  final attempts that ended in that time;
+- **share that is not the library** at the tip, per metric, where the unit records it: a recipe metric may carry
+  `fixed_command` (the same run stopped before the first library call, the `--inputs-only` of 6.1), calibration
+  then records `fixed_value` beside `base_value`, and the share is `fixed_value / (base_value x the accepted
+  ratios on that metric)`. It is a lower bound (a change accepted on one metric may also speed up another). Units
+  calibrated before this section record nothing, and the fact is then absent, not guessed.
+
+A unit is **dry** when the window holds at least `min_attempts` attempts and one of these is true:
+
+1. `fruitless`: the fruitless share is at least `fruitless_share` and the best gain is under `small_gain_pct`
+   (or there is none);
+2. `quiet`: no change was accepted for `quiet_hours` while at least `min_attempts` final attempts ended;
+3. `fixed`: every metric that records its share has at least `fixed_share` of its tip value outside the library,
+   and the best gain is under `small_gain_pct`.
+
+A unit with fewer than `min_attempts` final attempts is never dry (it is `fresh`), and one accepted change of
+`small_gain_pct` or more inside the window keeps rules 1 and 3 off. Settings, network config `dry`:
+
+| setting | default | from |
+|---|---|---|
+| `window` | 12 | the 12 attempts of two hours in 6.5 |
+| `min_attempts` | 8 | two thirds of the window |
+| `fruitless_share` | 0.6 | "most" |
+| `small_gain_pct` | 3 | the first units' last accepted effects were 1.0 to 3.9% (6.5) |
+| `quiet_hours` | 24 | the day without a candidate of section 5 |
+| `fixed_share` | 0.5 | 35 to 60% at the saturated tips (5.6) |
+
+Published: `GET /v1/units/dry[?repo=]` (every active unit: `dry`, `fresh`, the rule that fired, the facts, one
+plain sentence) and `GET /v1/lineages/:id/dry`. The unit page and the project page show the sentence when the unit
+is dry, for example "Most recent attempts found nothing more to improve here: 9 of the last 12 ended without an
+improvement." Every number in a sentence is one of the facts above.
+
+### 8.2 Another unit on the same repository
+
+`packages/runtime/src/more-units.ts`, runtime config `more_units`. For each repository of its bound agents the
+hosted runtime reads `GET /v1/units/dry` and starts a draft when **every** active unit of the repository is dry and
+none of the refusals below applies. One bound, awake agent of the repository (the lowest id that can pay) runs the
+drafter of SPEC 6.2 as an attempt, metered to its compute vault. The draft is on the same commit as the
+repository's units, with the image and the format of one of them (so the class's toolchain and conventions come
+from the repository's own unit, whatever the class).
+
+What the drafter is given, beyond the first draft's prompt: for each existing unit its name, allowed paths, test
+command, every metric with its command, calibrated value, the accepted changes on it and their combined ratio, the
+share that is not the library where recorded, the last window's outcome counts, and the benchmark harness file.
+What it must propose is headroom the existing units do not have, one or more of: another part of the code (another
+module or crate with its own tests); a heavier or more realistic workload on the same code, as new targets; more
+targets (size where the class measures it).
+
+Refusals before any spend (structural, `duplicateUnit` in `packages/core/src/unit-dry.ts`, checked by the drafter
+when the recipe is written and by Core when the proposal arrives, before a verifier is drawn): a draft whose
+allowed paths overlap an existing active unit of the repository **and** that brings no target that unit lacks
+(same kind and name, or the same metric command) is a duplicate (`duplicate_unit`); a repository already at
+`max_per_repo` active units takes no proposal (`too_many_units`).
+
+Headroom the calibration must show for an additional unit (the signals of 6.1, checked on the drafter's trial and
+again by Core on the verifiers' merged calibration): every instruction-count metric (`parser: cachegrind-ir`)
+declares `fixed_command`, the verifiers agree on `fixed_value` within `det_tolerance`, and the share that is not
+the library is at most `max_fixed_share` at generation 0 (6.1's target: under 10%). A proposal that fails this is
+rejected with the metric and its share.
+
+Budget and limits, runtime config `more_units` (per repository):
+
+| setting | default | meaning |
+|---|---|---|
+| `enabled` | true | false: never draft another unit |
+| `max_per_repo` | 3 | active units of one repository, the first included (Core enforces its own `more_units.max_per_repo`, same default) |
+| `max_drafts` | 2 | drafts per additional unit |
+| `draft_max_usd` | 1.5 | model spend of one draft |
+| `repo_max_usd` | 3 | model spend on drafts per repository per cool-down |
+| `cooldown_days` | 7 | from the creation of the repository's newest unit, and from a set of drafts that ran out, to the next draft |
+| `retry_s` | 1800 | wait after a draft that did not pass, doubling |
+| `on_network_compute` | false | true: an agent whose vault is empty may draft on network compute (the platform's OpenRouter balance, under the global cap) |
+| `check_s` | 300 | how often the dry signal is read |
+
+Conservative on purpose: one more unit per repository a week, three units at most, about the cost of four
+fruitless attempts per draft (5.1: 0.37 USD each), and never the platform's money. To turn up: `max_per_repo`,
+then `cooldown_days` down; `on_network_compute` only with a global cap that has room for it.
+
+### 8.3 Using it, and retiring
+
+The worker's unit choice (6.2) reads the dry signal: units that are not dry come first (a fresh unit has no misses
+and ranks first among them), dry units last, and inside each group the order of 6.2, which already spreads agents
+over units and targets; a swarm's seats take their units in the same order. A dry unit is not closed or deleted:
+its accepted changes stay, agents still reach it when nothing else has a free target, and its page says so.
+
+### 8.4 Classes
+
+Nothing in the rule or the limits depends on the class. The drafter's prompt carries one short block per class
+(tests parser, where a benchmark program lives, how it is built offline) and the example is the repository's own
+unit. `fixed_command` applies to instruction-count metrics only: a size metric (zig) or a compute-unit metric
+(solana) has no start-up share and needs none.
+
+### 8.5 Not built here
+
+A reward for the drafter of a unit (SPEC 6.2, owner decision). Closing a dry unit. A workload that follows the
+tips (a unit whose easy gains are found again from generation 0 in a new unit is the pattern of 6.5, and it is
+what an additional unit on the same code buys; a unit starting from another unit's tip needs Core support).

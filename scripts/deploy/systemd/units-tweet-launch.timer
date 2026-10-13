@@ -1,0 +1,17 @@
+# Installed with every release, NOT enabled: `systemctl enable --now units-tweet-launch.timer` turns
+# the reply bot on (docs/MAINNET-RUNBOOK.md "Launch from a tweet"). A run is never started while the
+# previous one is still going (a oneshot service).
+[Unit]
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): the kit's rule for every unit; no unit of the old name exists
+Conflicts=lineage-tweet-launch.timer
+After=lineage-tweet-launch.timer
+Description=units: launch from a tweet every 2 minutes
+
+[Timer]
+OnActiveSec=1min
+OnBootSec=5min
+OnUnitInactiveSec=2min
+Unit=units-tweet-launch.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,195 @@
+{
+  "at": "2026-10-13T11:38:15.544Z",
+  "seconds": 417,
+  "program": "9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR",
+  "unit": "fadf5803417c85f3b5efa1ebb3e2504967294ec1bef41c966d45161f9bea4a70",
+  "metric": "train_ir",
+  "funder": "2oJyaBMkBKD1TSrNrX8KVsD5ppxGU3HtTbbnAHPEF78W",
+  "agent": "8e5wwcKqXWhNm56meYd4oPByMbcnzGRgBm4PFE83vpXb",
+  "agent_coin": "Gkok7u5Ekxwt5ZeFQYnTABcW39M4cBJW43SSdnZqvZcw",
+  "epoch": 1791891087,
+  "post_epoch": "2RwU9YdU2f1Qokhi1G2EVQVZkAwyzA2CBkCZbFv8fH7cysXLucbWrJXnCafFJAaqCXGV3VxJE31NcTnXXCe8sWHz",
+  "generation": "c5b96a187837118fc65982b443e5ccf45b8b7724a69f9b26eb6bda451581a2a4",
+  "result": {
+    "accepted_at": 1791891273,
+    "author": "8e5wwcKqXWhNm56meYd4oPByMbcnzGRgBm4PFE83vpXb",
+    "epoch": 1791891087,
+    "gen_id": "c5b96a187837118fc65982b443e5ccf45b8b7724a69f9b26eb6bda451581a2a4",
+    "height": 1,
+    "improvement_bps": 4788,
+    "kind": "bounty_result",
+    "lineage_id": "fadf5803417c85f3b5efa1ebb3e2504967294ec1bef41c966d45161f9bea4a70",
+    "target": "train_ir"
+  },
+  "bounties": {
+    "paid": "7j2V9JF3frJEiMNHjVkNJCEudwZt83fwoVKbtnBD8Ykh",
+    "refunded": "8nPUQP2fEHzqghvaGm5RnYJgoEeTjYKgL7oFDQHDqdzm",
+    "held": "EVQyghaNftKTCjDzuNdZvFnvFd3LCJyHSnSJVGLqL2qz",
+    "open": "29wBBpyJaUvtfgxYZufmoVk1uFeuq3J2iKzqaQFF7Di6"
+  },
+  "sol_spent_by_all_keys": "0.014517440",
+  "passed": 32,
+  "of": 32,
+  "results": [
+    {
+      "check": "units_bounty is initialized on the registry's mint and launch program",
+      "ok": true,
+      "detail": "program 9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR, mint CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62"
+    },
+    {
+      "check": "the funder owns no agent",
+      "ok": true,
+      "detail": "2oJyaBMkBKD1TSrNrX8KVsD5ppxGU3HtTbbnAHPEF78W"
+    },
+    {
+      "check": "verifier ref registered on chain",
+      "ok": true,
+      "detail": "GiSibEMYzg3Y4EGG4QKx9drpTGC36du3XJE2dPZsHXuA bond 0"
+    },
+    {
+      "check": "verifier v1 registered on chain and bonded",
+      "ok": true,
+      "detail": "FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD bond 5000000"
+    },
+    {
+      "check": "verifier v2 registered on chain and bonded",
+      "ok": true,
+      "detail": "DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj bond 5000000"
+    },
+    {
+      "check": "a TEST agent is launched on chain on the unit's repository, with a compute vault",
+      "ok": true,
+      "detail": "agent 8e5wwcKqXWhNm56meYd4oPByMbcnzGRgBm4PFE83vpXb, coin Gkok7u5Ekxwt5ZeFQYnTABcW39M4cBJW43SSdnZqvZcw"
+    },
+    {
+      "check": "Core reads the escrow program from chain and offers posting to any wallet",
+      "ok": true,
+      "detail": "{\"program\":\"9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR\",\"mint\":\"CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62\",\"token_program\":\"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb\",\"admin\":\"CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih\",\"min_amount\":\"1000000\",\"min_ttl_s\":3600,\"max_ttl_s\":2592000,\"refund_grace_s\":86400,\"contest_s\":3600,\"fee_bps\":0,\"paused\":false,\"opened\":\"20\"}"
+    },
+    {
+      "check": "this Core's epochs start far above the registry's",
+      "ok": true,
+      "detail": "first epoch 1791891087; registry last 20"
+    },
+    {
+      "check": "the unit exists, two bonded verifiers are qualified, the agent is active and awake",
+      "ok": true,
+      "detail": "unit fadf5803417c"
+    },
+    {
+      "check": "settings are the admin's: another signer is refused",
+      "ok": true,
+      "detail": "Unauthorized"
+    },
+    {
+      "check": "three bounties escrowed exactly 8 test UNITS from the funder's own token account",
+      "ok": true,
+      "detail": "20000000 -> 12000000; the three opens cost the funder 0.011963160 SOL (rent of 3 bounty and 3 escrow accounts, fees)"
+    },
+    {
+      "check": "the bounty holds its terms and the settings in force at the open",
+      "ok": true,
+      "detail": "min_epoch 21, deadline 1791894813"
+    },
+    {
+      "check": "an open below the minimum, and an open from somebody else's token account, are refused",
+      "ok": true,
+      "detail": "InvalidArgs / ConstraintTokenOwner"
+    },
+    {
+      "check": "a posted reward cannot be taken back: the program has no cancel instruction, and a refund before the refund time is refused for its funder too",
+      "ok": true,
+      "detail": "cancel by the funder: InstructionFallbackNotFound; by another wallet: InstructionFallbackNotFound; refund now: NotExpired; escrow still 1000000 base units, refund time 1791894873"
+    },
+    {
+      "check": "Core's board: posting open to any wallet, the bounty listed with its unit, metric and requirement",
+      "ok": true,
+      "detail": "23 bounties; https://github.com/karpathy/minbpe"
+    },
+    {
+      "check": "agents see it as a workboard hint of the unit",
+      "ok": true,
+      "detail": "3 hints"
+    },
+    {
+      "check": "the agent's candidate is accepted by two onchain-bonded verifiers' replays",
+      "ok": true,
+      "detail": "accepted  "
+    },
+    {
+      "check": "the epoch's record root is on the registry, and the registry's cursor is exactly what it was",
+      "ok": true,
+      "detail": "epoch 1791891087 2RwU9YdU2f1Qokhi1G2EVQVZkAwyzA2CBkCZbFv8fH7cysXLucbWrJXnCafFJAaqCXGV3VxJE31NcTnXXCe8sWHz; cursor 3 posted, last 20"
+    },
+    {
+      "check": "Core names the agent's generation as the winner by the program's rule",
+      "ok": true,
+      "detail": "generation c5b96a187837 height 1, 4788 bps (required 1000)"
+    },
+    {
+      "check": "the 95% bounty has no winner: the same generation does not meet it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "forged claims are refused: a better result than measured, another author, another account to pay, a result below the terms, an epoch posted before the bounty",
+      "ok": true,
+      "detail": "BadProof / AccountNotInitialized / ConstraintSeeds / ImprovementTooLow / BeforeOpen"
+    },
+    {
+      "check": "the claim stands on chain for the agent, payable after the contest time",
+      "ok": true,
+      "detail": "contest until 1791891327; a payout before any claim: ConstraintSeeds"
+    },
+    {
+      "check": "a replayed claim, a payout inside the contest time and a refund over a standing claim are refused",
+      "ok": true,
+      "detail": "NotEarlier / ContestOpen / NotExpired"
+    },
+    {
+      "check": "the payout landed: the agent's compute vault gained exactly the reward, the escrow account is closed and its rent is back with the funder",
+      "ok": true,
+      "detail": "420000000 -> 425000000"
+    },
+    {
+      "check": "a second payout is refused",
+      "ok": true,
+      "detail": "AccountNotInitialized"
+    },
+    {
+      "check": "Core mirrors the payout",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a paused program still returns an expired reward, while it refuses a new bounty",
+      "ok": true,
+      "detail": "open while paused: Paused; cancel while paused: InstructionFallbackNotFound"
+    },
+    {
+      "check": "the expired bounty refunded its funder exactly; before expiry, inside the grace, and into another wallet's account, the refund is refused; a claim after expiry is refused",
+      "ok": true,
+      "detail": "2000000 base units out and back (12000000 before the open, 12000000 after the refund); before expiry NotExpired; in the grace NotExpired; to another account ConstraintTokenOwner; a claim after expiry Expired"
+    },
+    {
+      "check": "a second refund is refused",
+      "ok": true,
+      "detail": "AccountNotInitialized"
+    },
+    {
+      "check": "Core's board shows the outcomes: paid, returned, and the two bounties nobody could take back still held",
+      "ok": true,
+      "detail": "paid, refunded, open, open"
+    },
+    {
+      "check": "the funder holds what it started with, less the reward that was won and the 3 test UNITS still escrowed (the 95% bounty and the one it tried to take back)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the settings are restored; open bounties kept the ones they were opened with",
+      "ok": true,
+      "detail": "{\"minAmount\":\"1000000\",\"minTtlS\":3600,\"maxTtlS\":2592000,\"refundGraceS\":86400,\"contestS\":3600,\"feeBps\":0,\"paused\":false}"
+    }
+  ]
+}

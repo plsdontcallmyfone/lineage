@@ -121,6 +121,7 @@ strong, b { font-weight: 500; }
 .num { font-variant-numeric: tabular-nums; }
 .dim { color: var(--ts); }
 .faint { color: var(--tt-aa); }
+[data-coin-links]:not(:empty) + [data-tweet-origin]:not(:empty)::before { content: "·"; color: var(--tt-aa); margin: 0 .3em; }
 .unit { color: var(--tt); font-weight: 400; margin-left: 3px; }
 .nowrap { white-space: nowrap; }
 .right { text-align: right; }
@@ -1147,6 +1148,14 @@ a.eco-btn { text-decoration: none; }
 .lz-drop-t b { font: 500 14px/1.2 var(--display); letter-spacing: -.01em; color: var(--tp); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lz-avrow { display: flex; align-items: center; gap: 12px; }
 .lz-work .banner { margin-bottom: 0; }
+/* the repository check's one line (wallet/repo-check.ts): whether agents can work on it */
+.lz-rc { margin: 0 0 10px; font-size: 13.5px; line-height: 1.5; color: var(--ts); overflow-wrap: anywhere; }
+.lz-rc[data-kind="ready"], .lz-rc[data-kind="setup"] { color: var(--tp); }
+.lz-rc[data-kind="ready"]::before, .lz-rc[data-kind="setup"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--good); vertical-align: 1px; }
+.lz-rc[data-kind="cannot"] { color: var(--tp); padding: 10px 12px; border: 1px solid var(--warn); border-radius: 8px; }
+.lz-rc[data-kind="checking"] { color: var(--tt); }
+.lz-anyway { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; color: var(--tp); cursor: pointer; }
+.lz-anyway input { margin-top: 3px; flex: none; accent-color: var(--ac); }
 .lz-rec { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--bg); }
 .lz-rec + .lz-rec { margin-top: 8px; }
 .lz-rec-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -1220,7 +1229,33 @@ a.eco-btn { text-decoration: none; }
 .me-sum { border-bottom: 1px solid var(--border); }
 .me-agents { padding: 16px; }
 .me-cr { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
-.me-cr-st { display: flex; flex-wrap: wrap; gap: 4px; }
+.me-cr-st { display: flex; flex-direction: column; gap: 6px; }
+.me-cr-note { margin: 0; font-size: 12px; color: var(--tt); }
+/* the one status line of an agent (src/agent-status.ts): label, sentence and, when the launcher must act, one button */
+.as { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.as-l { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1.2 var(--sans); letter-spacing: -.01em; color: var(--tp); }
+.as-l::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--tt); flex: none; }
+.as-l.good::before { background: var(--good); }
+.as-l.warn::before { background: var(--warn); }
+.as-l.info::before { background: var(--ac); }
+.as-s { margin: 0; font: 400 13px/1.5 var(--sans); color: var(--ts); overflow-wrap: anywhere; }
+.as-a { margin-top: 2px; }
+.pf-status { margin-top: 8px; max-width: 62ch; }
+.mk-building .as, .pf-building .as { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+[data-agent-status]:empty { display: none; }
+/* the launched screen's progress list (wallet/launch-progress.ts) */
+.lp-steps { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.lp-step { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.lp-step > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lp-step b { font: 500 14px/1.3 var(--sans); letter-spacing: -.01em; color: var(--tp); }
+.lp-t { font: 400 13px/1.5 var(--sans); color: var(--ts); overflow-wrap: anywhere; }
+.lp-dot { flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--border); background: transparent; box-sizing: border-box; }
+.lp-step[data-state="done"] .lp-dot { border-color: var(--good); background: var(--good); }
+.lp-step[data-state="now"] .lp-dot { border-color: var(--ac); }
+.lp-step[data-state="todo"] b, .lp-step[data-state="todo"] .lp-t { color: var(--tt); }
+.lp-now { padding-top: 12px; border-top: 1px solid var(--border); }
+/* why the agent is not working yet: a wrapping line, never a one-line chip (it can be a long sentence) */
+.me-cr-why { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--warn, #8a5a00); overflow-wrap: anywhere; }
 .me-cr-k { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
 .me-cr-k > div { min-width: 0; }
 .me-cr-k dt { font: 500 12px/1.3 var(--sans); color: var(--tt); letter-spacing: -.01em; }
@@ -1569,3 +1604,36 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 .deck-column:nth-of-type(4n+4) { --dk-sc: #3d8bff; }
 .deck-column { position: relative; }
 .deck-column[data-scrolls]::after { content: ""; position: absolute; right: 3px; top: 0; width: 4px; height: 28px; background: var(--dk-sc); transform: translateY(var(--dk-y, 0)); pointer-events: none; z-index: 2; }
+
+/* launch form, swarm rows (apps/web/wallet/swarm-step.ts): name, model, role; the model drops under the name at phone width */
+.lz-seat-g { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: end; }
+@media (max-width: 640px) {
+  .lz-seat-g { grid-template-columns: minmax(0, 1fr) auto; }
+  .lz-seat-g > label:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* the "finish setting up" bar above the navigation and its popup (apps/web/wallet/setup-bar.ts); present only for the launcher of an unbound hosted agent */
+#setup-bar[hidden] { display: none; }
+.sb { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px var(--pad-x); background: var(--bg2); border-bottom: 1px solid var(--border); font: 500 13px/1.3 var(--display); color: var(--ts); }
+.sb-ic { display: inline-flex; color: var(--warn); }
+.sb-ic svg { width: 15px; height: 15px; }
+.sb-t { min-width: 0; }
+.sb-go { height: 30px; max-width: 100%; padding: 0 14px; border: 0; border-radius: 15px; corner-shape: squircle; background: var(--btn-p-bg); color: var(--btn-p-fg); font: 500 13px/1 var(--display); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-go:hover { background: #000; }
+.sb-x { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: 14px; background: transparent; color: var(--tt); cursor: pointer; }
+.sb-x:hover { background: var(--pill); color: var(--tp); }
+.sb-x svg { width: 14px; height: 14px; }
+.sb-ov { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 16px; background: color-mix(in srgb, #000 38%, transparent); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.sb-modal { width: min(460px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px 22px 22px; border-radius: 24px; corner-shape: squircle; background: var(--bg2); color: var(--tp); box-shadow: 0 24px 80px -20px #0006, inset 0 0 0 1px var(--border); font-family: var(--display); }
+.sb-mh { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sb-mh h2 { margin: 0; font: 500 22px/1.2 var(--display); letter-spacing: -.03em; }
+.sb-p { margin: 8px 0 14px; color: var(--ts); font-size: 14px; line-height: 1.5; }
+.sb-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.sb-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sb-who b { font-weight: 500; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-who .dim { font-size: 13px; }
+.sb-note { grid-column: 1 / -1; color: var(--ts); font-size: 13px; line-height: 1.45; min-height: 0; }
+.sb-note:empty { display: none; }
+@media (max-width: 480px) { .sb { justify-content: flex-start; padding: 8px 12px; } .sb-t { flex: 1 1 calc(100% - 40px); } .sb-go { flex: 1 1 auto; } .sb-modal { padding: 18px 16px 18px; border-radius: 20px; } }
+.pf-bind { margin-bottom: 16px; }
+.pf-bind .panel-b { padding: 16px; }

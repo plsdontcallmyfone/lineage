@@ -142,13 +142,14 @@ describe("market API in US dollars", () => {
     const api = marketApi(db, () => ({}), { now: () => NOW, usd: () => reading(0.002) });
     sample(db, NOW - 20 * 3600 - 60, 0.001); // the stored price at the 20 h trade and the crank
     sample(db, NOW - 86400 - 600, 0.0016); // and the one 24 h ago
+    sample(db, NOW - 3600 - 60, 0.002); // and at the 1 h trade
     const r = await get(api, "tokens");
     expect(r.usd).toMatchObject({ ok: true, usd: 0.002, read_at: NOW - 10 });
     const t = r.tokens[0];
     expect(t).toMatchObject({ price: 0.5, market_cap: 500_000_000, volume_24h: 140, quote_usd: 0.002, fees_to_compute: 5 });
     expect(t.price_usd).toBeCloseTo(0.001, 12);
     expect(t.market_cap_usd).toBeCloseTo(1_000_000, 6);
-    // 24h volume: the 20 h trade at its own stored price (90 x 0.001), the 1 h trade at the current one (50 x 0.002)
+    // 24h volume: each trade at the price stored for its own time (90 x 0.001, 50 x 0.002)
     expect(t.volume_24h_usd).toBeCloseTo(0.09 + 0.1, 12);
     // change: 0.5 x 0.002 now against 0.4 x 0.0016 a day ago
     expect(t.change_24h).toBeCloseTo(0.25, 12);
@@ -170,26 +171,27 @@ describe("market API in US dollars", () => {
     expect(await get(api, "quote-usd")).toMatchObject({ quote: "UNITS", ok: true, usd: 0.002, sources: { pair_usd: "Jupiter Price API V3" } });
   });
 
-  test("history: a trade, candle or crank uses the price stored for its own time, else today's, and says which", async () => {
+  test("history: a trade or candle uses the price stored for its own time and has no dollar value without one (never today's in its place)", async () => {
     const db = setup();
     const api = marketApi(db, () => ({}), { now: () => NOW, usd: () => reading(0.002) });
     sample(db, NOW - 20 * 3600 - 60, 0.001);
     const tr = (await get(api, `tokens/${A.mint}/trades`)).trades;
-    expect(tr.map((x: any) => x.usd_basis)).toEqual(["current", "at_time", "current"]);
+    expect(tr.map((x: any) => x.usd_basis)).toEqual([null, "at_time", null]);
     expect(tr[1].quote_amount_usd).toBeCloseTo(0.09, 12);
     expect(tr[1].price_usd).toBeCloseTo(0.00045, 12);
-    expect(tr[0].quote_amount_usd).toBeCloseTo(0.1, 12);
-    expect(tr[0].price_after_usd).toBeCloseTo(0.001, 12);
-    const c = await get(api, `tokens/${A.mint}/candles?tf=1h&from=0`);
-    expect(c.usd_basis).toBe("mixed");
+    expect([tr[0].quote_amount_usd, tr[0].price_usd, tr[0].price_after_usd]).toEqual([null, null, null]);
+    // one 24h trade without a reading: the 24h volume has no dollar value
+    expect((await get(api, `tokens/${A.mint}`)).volume_24h_usd).toBeNull();
+    const c = await get(api, `tokens/${A.mint}/candles?tf=1h&from=0&fill=0`);
+    expect(c.usd_basis).toBe("partial");
+    expect(c.unpriced).toBe(2);
     expect(c.candles).toHaveLength(3);
     expect(c.candles[1]).toMatchObject({ close: 0.45, volume: 90 });
     expect(c.candles[1].close_usd).toBeCloseTo(0.00045, 12);
     expect(c.candles[1].volume_usd).toBeCloseTo(0.09, 12);
-    // a candle opens at the close before it, in dollars too
-    expect(c.candles[1].open_usd).toBeCloseTo(c.candles[0].close_usd, 12);
-    expect(c.candles[2].high_usd).toBeCloseTo(0.001, 12);
-    expect(c.start_price_usd).toBeCloseTo(0.0005, 12);
+    expect([c.candles[0].close_usd, c.candles[2].close_usd, c.candles[2].high_usd]).toEqual([null, null, null]);
+    // no reading on record for the launch: no start line in dollars
+    expect(c.start_price_usd).toBeNull();
     const f = await get(api, `tokens/${A.mint}/fees`);
     expect(f.cranks[0]).toMatchObject({ amount: 1, usd_basis: "at_time" });
     expect(f.cranks[0].to_treasury_usd).toBeCloseTo(0.0003, 12);
@@ -197,11 +199,13 @@ describe("market API in US dollars", () => {
     const fl = await get(api, "flows");
     expect(fl.usd).toMatchObject({ ok: true, usd: 0.002, sol_usd: 200 });
     expect(fl.cranks[0].quote_usd).toBeCloseTo(0.001, 12);
-    // every candle with a stored price: at_time; none stored: current
+    // every candle with a stored price: at_time, and a candle opens at the close before it, in dollars too; none stored: no dollars at all
     for (const t of [NOW - 2 * 86400, NOW - 3600]) sample(db, t - 30, 0.0015);
-    expect((await get(api, `tokens/${A.mint}/candles?tf=1h&from=0`)).usd_basis).toBe("at_time");
+    const all = await get(api, `tokens/${A.mint}/candles?tf=1h&from=0&fill=0`);
+    expect(all.usd_basis).toBe("at_time");
+    expect(all.candles[1].open_usd).toBeCloseTo(all.candles[0].close_usd, 12);
     db.exec("DELETE FROM quote_usd_samples");
-    expect((await get(api, `tokens/${A.mint}/candles?tf=1h&from=0`)).usd_basis).toBe("current");
+    expect((await get(api, `tokens/${A.mint}/candles?tf=1h&from=0&fill=0`)).usd_basis).toBeNull();
     expect((await get(api, "flows")).cranks[0].quote_usd).toBeNull();
   });
 
@@ -216,7 +220,7 @@ describe("market API in US dollars", () => {
         fees_to_compute_usd: null, quote_reserve_usd: null });
       const d = await get(api, `tokens/${A.mint}`);
       expect([d.start_price_usd, d.fees.claimed_usd, d.compute_vault.balance_usd]).toEqual([null, null, null]);
-      const c = await get(api, `tokens/${A.mint}/candles?tf=1h&from=0`);
+      const c = await get(api, `tokens/${A.mint}/candles?tf=1h&from=0&fill=0`);
       expect(c.usd_basis).toBeNull();
       expect(c.candles.map((x: any) => [x.open_usd, x.high_usd, x.low_usd, x.close_usd, x.volume_usd])).toEqual([[null, null, null, null, null], [null, null, null, null, null], [null, null, null, null, null]]);
       expect(c.candles[2]).toMatchObject({ close: 0.5, volume: 50 });

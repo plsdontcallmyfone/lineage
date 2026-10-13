@@ -1,0 +1,115 @@
+{
+  "no_dummy_prefix": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "7 stable tests fail: props::encode_edge_cases, props::encode_invalid_utf8, props::encode_matches_reference_bos, props::encode_matches_reference_eos, props::encode_matches_reference_long, props::encode_utf8, upstream::test_prompt_encodings",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          307901896
+        ],
+        "cand": [
+          303830454
+        ],
+        "ratio": 0.9867768206273079
+      },
+      "forward_ir": {
+        "base": [
+          63228205
+        ],
+        "cand": [
+          63228318
+        ],
+        "ratio": 1.0000017871770992
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d6e",
+    "recipe_id": "94896c0ef2132de67b6ee1b416d2db8fee81cc71ee0def12e427be4758ffa33b",
+    "eval_seconds": 574.9,
+    "date": "2026-10-13T11:32:07.509Z",
+    "match": true
+  },
+  "softmax_no_max": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          365392725
+        ],
+        "cand": [
+          365392725
+        ],
+        "ratio": 1
+      },
+      "forward_ir": {
+        "base": [
+          67018036
+        ],
+        "cand": [
+          66837340
+        ],
+        "ratio": 0.997303770584981
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d73",
+    "recipe_id": "94896c0ef2132de67b6ee1b416d2db8fee81cc71ee0def12e427be4758ffa33b",
+    "eval_seconds": 264.2,
+    "date": "2026-10-13T11:36:31.748Z",
+    "match": true
+  },
+  "matmul_prefetch": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0046 vs required 0.9900",
+    "effect": {
+      "metric": "forward_ir",
+      "ratio": 1.0045894549750385,
+      "ci_low": 1.0045894549750385,
+      "ci_high": 1.0045894549750385,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.0045894549750385,
+          "ci_low": 1.0045894549750385,
+          "ci_high": 1.0045894549750385,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          416036657
+        ],
+        "cand": [
+          416031299
+        ],
+        "ratio": 0.9999871213271478
+      },
+      "forward_ir": {
+        "base": [
+          63228205
+        ],
+        "cand": [
+          63518388
+        ],
+        "ratio": 1.0045894549750385
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "94896c0ef2132de67b6ee1b416d2db8fee81cc71ee0def12e427be4758ffa33b",
+    "eval_seconds": 174.2,
+    "date": "2026-10-13T11:39:25.899Z",
+    "match": true
+  }
+}

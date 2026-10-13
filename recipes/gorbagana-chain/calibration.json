@@ -1,0 +1,66 @@
+{
+  "recipe_id": "c6ca47e424c732355b96a85b068e9c82d1602782e0df6d3948ecc9f281519fa8",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "src/lib.rs::bloom::test::test_add_contains",
+    "src/lib.rs::bloom::test::test_atomic_bloom",
+    "src/lib.rs::bloom::test::test_atomic_bloom_round_trip",
+    "src/lib.rs::bloom::test::test_bloom_filter",
+    "src/lib.rs::bloom::test::test_debug",
+    "src/lib.rs::bloom::test::test_filter_math",
+    "src/lib.rs::bloom::test::test_random",
+    "src/lib.rs::bloom::test::test_wincode_compatibility_bloom",
+    "tests/lineage_props.rs::bloom_matches_model",
+    "tests/lineage_props.rs::concurrent_bloom_matches_model",
+    "tests/lineage_props.rs::fixed_size_items_match_model",
+    "tests/lineage_props.rs::hash_at_index_is_keyed_fnv1a",
+    "tests/lineage_props.rs::interval_filter_adds_and_finds",
+    "tests/lineage_props.rs::wire_form_round_trips",
+    "tests/lineage_upstream.rs::test_add_contains",
+    "tests/lineage_upstream.rs::test_atomic_bloom",
+    "tests/lineage_upstream.rs::test_atomic_bloom_round_trip",
+    "tests/lineage_upstream.rs::test_bloom_filter",
+    "tests/lineage_upstream.rs::test_debug",
+    "tests/lineage_upstream.rs::test_filter_math",
+    "tests/lineage_upstream.rs::test_random",
+    "tests/lineage_upstream.rs::test_wincode_compatibility_bloom"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "add_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 183578065
+    },
+    "contains_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 191552485
+    },
+    "concurrent_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 136382136
+    }
+  },
+  "median_eval_seconds": 76,
+  "seed": "ca11b7a7e",
+  "recipe_name": "gorbagana-chain",
+  "repo": "https://github.com/gorbagana-dev/gorbagana-chain",
+  "commit": "295fcd6f1cc02ad06ce58a1d3a7b98bb6586ee04",
+  "deps_digest": "35bca4eef44863c786c70e2d440cee113f563dd3d91ccf136d0c7c0a41c4d33a",
+  "image_digest": "sha256:ceb982bf874b01e6727906d82078b96aabd6462a38be78eaa6fba49394b5490f",
+  "date": "2026-10-13T11:40:24.191Z",
+  "calibration_wall_seconds": 64.8,
+  "counts": {
+    "stable": 22,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 64 s"
+  ]
+}

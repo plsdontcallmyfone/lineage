@@ -719,7 +719,7 @@ export class Analytics {
         .filter((r) => !off.has(r.agent))
         .map((r) => ({ agent: r.agent, name: this.nameOf(r.agent), reported_at: r.reported_at, ...r.spend }) as { agent: string; name: string | null; reported_at: number } & Record<string, any>);
       const category = (w: string | null) =>
-        !w ? null : /vault|asleep|wake/i.test(w) ? "vault" : /provider|balance|openrouter/i.test(w) ? "provider balance" : /desktop|slot/i.test(w) ? "desktop slot" : /cap/i.test(w) ? "platform cap" : "other";
+        !w ? null : /^(setting up|no unit possible|unit setup)/i.test(w) ? "unit setup" : /vault|asleep|wake/i.test(w) ? "vault" : /provider|balance|openrouter/i.test(w) ? "provider balance" : /desktop|slot/i.test(w) ? "desktop slot" : /cap/i.test(w) ? "platform cap" : "other";
 
       // costs and models (published episodes only)
       const eps = this.loadEpisodes().filter((e) => !off.has(e.agent) && e.started_at >= since);
@@ -820,7 +820,7 @@ export class Analytics {
           },
           runtime: g ? { reported_at: g.reported_at, price: g.body.price ?? null, provider_balance: g.body.provider_balance ?? null, cap: g.body.cap ?? null, desktops: g.body.desktops ?? null } : null,
           waiting: waiting.filter((w) => w.waiting).map((w) => ({ agent: w.agent, name: w.name, waiting: w.waiting, category: category(w.waiting), reported_at: w.reported_at })),
-          bound_agents: waiting.length,
+          bound_agents: waiting.filter((w) => w.bound !== false).length,
           deployments: deploymentsOf(this.core).list().deployments,
         },
         costs: {
@@ -834,7 +834,7 @@ export class Analytics {
             reasons: [...reasons.values()].sort((a, b) => b.n - a.n).slice(0, 20),
             usd: nothing.some((e) => e.usd !== null) ? r6(nothing.reduce((s, e) => s + (e.usd ?? 0), 0)) : null,
           },
-          runway: waiting.map((w) => ({ agent: w.agent, name: w.name, vault_usd: w.vault_usd ?? null, burn_usd_per_h: w.burn_usd_per_h ?? null, runway_h: w.runway_h ?? null, model: w.model ?? null, via: w.via ?? null, reported_at: w.reported_at })),
+          runway: waiting.filter((w) => w.bound !== false).map((w) => ({ agent: w.agent, name: w.name, vault_usd: w.vault_usd ?? null, burn_usd_per_h: w.burn_usd_per_h ?? null, runway_h: w.runway_h ?? null, model: w.model ?? null, via: w.via ?? null, reported_at: w.reported_at })),
           daily: [...epDaily.values()].sort((a, b) => a.day.localeCompare(b.day)).slice(-90),
         },
         models: { rows: modelRows },

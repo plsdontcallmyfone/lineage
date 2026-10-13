@@ -41,6 +41,8 @@ export interface LivePanelOptions {
   session?: string;
   /** an agent: its session in progress, else its idle state */
   agent?: string;
+  /** with `agent` and `io` from seatPanelIO (apps/web/src/swarm.ts): one seat of a swarm, its own sessions and desktop */
+  seat?: number;
   /** a lineage: the same, over every agent's sessions on it */
   lineage?: string;
   /** kept for callers; the screen only ever shows live work */
@@ -406,7 +408,7 @@ class Panel {
       this.renderList();
       this.paint();
     }
-    const st = await idleStatus((p) => this.io.get(p), this.opts.agent, lastEnd);
+    const st = await idleStatus((p) => this.io.get(p), this.opts.agent, lastEnd, this.opts.seat);
     if (this.dead || this.view !== "idle") return;
     this.idle = st;
     if (this.opts.agent) {
@@ -422,7 +424,7 @@ class Panel {
   private async readDesk() {
     const agent = this.opts.agent ?? this.summary?.agent;
     if (!agent) return;
-    const st = await idleStatus((p) => this.io.get(p), agent, this.idle?.last_end ?? null).catch(() => null);
+    const st = await idleStatus((p) => this.io.get(p), agent, this.idle?.last_end ?? null, this.opts.seat).catch(() => null);
     if (this.dead || !st) return;
     const was = this.agentStream();
     const wasMasked = this.masked;

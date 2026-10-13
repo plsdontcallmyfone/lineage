@@ -26,6 +26,17 @@ export interface Check {
   msg: string;
 }
 
+/** The bind service's health answer (packages/runtime/src/bind-service.ts), as far as the monitor reads it. */
+export interface BindHealth {
+  ok: boolean;
+  reserve?: { ok: boolean; live?: number; max?: number };
+  key_store?: { ok: boolean };
+  cosigner?: { ok: boolean };
+  chain?: { ok: boolean };
+  kept?: number;
+  counters?: { reservations: number; cosigns: number; bound_with_launch: number; bound_after: number; sent_by_service?: number; launches_unbound: number };
+}
+
 export interface Inputs {
   now: number;
   /** unit name -> { enabled, active } for units-* (and pre-rebrand lineage-*) units and caddy */
@@ -52,6 +63,11 @@ export interface Inputs {
   runtimeEnabled: boolean;
   /** GET /v1/runtime/waiting: the bound agents the runtime reports as not working (null: not read) */
   waiting?: { now?: number; agents: { agent: string; waiting: string; waiting_since: number | null; reported_at: number }[] } | null;
+  /**
+   * GET /runtime/bind/health of each bind service named in MONITOR_BIND (docs/plans/SEAMLESS-BIND.md section 9):
+   * whether a hosted launch can get its runtime key and co-signature right now. health null: it did not answer.
+   */
+  bind?: { name: string; health: BindHealth | null }[];
   souls: { enabled?: boolean; daily_usd?: number; spent_today_usd?: number } | null;
   /** name -> lamports (null when the read failed) */
   balances: { name: string; lamports: number | null }[];
@@ -222,6 +238,19 @@ export function evaluate(i: Inputs): Check[] {
     add("desktops", stuck.length ? "fail" : "ok", stuck.length
       ? `${stuck.length} funded agent${stuck.length === 1 ? " has" : "s have"} waited for a desktop over ${mins(LIMITS.desktopWaitMs)}: ${stuck.slice(0, 5).map((a) => `${a.agent.slice(0, 8)} for ${mins(i.now - a.waiting_since!)} (${a.waiting.replace(/^waiting for a desktop:?\s*/i, "").slice(0, 120)})`).join("; ")}`
       : n ? `${n} agent${n === 1 ? "" : "s"} waiting for a desktop, none over ${mins(LIMITS.desktopWaitMs)}` : "no agent is waiting for a desktop");
+  }
+
+  // the bind surface: down means hosted launches are refused by the launch form (the bind is required), so it fails loudly
+  for (const b of i.bind ?? []) {
+    const id = `bind:${b.name}`;
+    const h = b.health;
+    const c = h?.counters;
+    const counts = c ? `${c.reservations} reservations, ${c.cosigns} co-signs, ${c.bound_with_launch} bound with the launch, ${c.bound_after} bound after, ${c.launches_unbound} launched unbound` : "no counters";
+    if (!h) add(id, "fail", "the bind service does not answer /runtime/bind/health: hosted launches are refused until it does");
+    else if (!h.ok) add(id, "fail", `the bind service is not ready (${[["reserve", h.reserve?.ok], ["key store", h.key_store?.ok], ["co-signer", h.cosigner?.ok], ["chain", h.chain?.ok]].filter(([, ok]) => ok === false).map(([n]) => n).join(", ") || "no detail"}): hosted launches are refused until it is; ${counts}`);
+    else add(id, "ok", `bind service ok: ${counts}`);
+    // its own check, named by the count: every further unbound launch is a new warning, not a level that never changes
+    if (c && c.launches_unbound > 0) add(`${id}:unbound-${c.launches_unbound}`, "warn", `${c.launches_unbound} hosted launch${c.launches_unbound === 1 ? "" : "es"} on chain without the bind since the counters began: each waits for its owner's signature (journalctl -u units-bind, "NOT bound")`);
   }
 
   // spend
@@ -423,6 +452,12 @@ if (import.meta.main) {
   // other instances on this server (the mainnet instance has no monitor of its own): their Cores' waiting lists join the
   // desktops check. MONITOR_WAITING_CORES is a comma list of Core URLs, e.g. http://127.0.0.1:9760
   const moreWaiting = await Promise.all((env.MONITOR_WAITING_CORES ?? "").split(",").map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s)).map((u) => getJson<NonNullable<Inputs["waiting"]>>(`${u.replace(/\/+$/, "")}/v1/runtime/waiting`)));
+  // MONITOR_BIND: "name=http://127.0.0.1:9666,..." (remote.sh writes one entry per instance that runs the bind service)
+  const bind = await Promise.all((env.MONITOR_BIND ?? "").split(",").map((s) => s.trim().split("=")).filter((p) => p.length === 2 && /^https?:\/\/127\.0\.0\.1:\d+$/.test(p[1]!)).map(async ([name, url]) => {
+    // a 503 carries the same body (which part is not ready): read it whatever the status
+    const health = await fetch(`${url}/runtime/bind/health`, { signal: AbortSignal.timeout(8000) }).then((r) => r.json() as Promise<BindHealth>).catch(() => null);
+    return { name: name!, health: health && typeof health.ok === "boolean" ? health : null };
+  }));
   const verifiers = (env.MONITOR_VERIFIERS ?? "").split(",").filter(Boolean).map((id, k) => ({ name: ["verifier-ref", "verifier-v1", "verifier-v2"][k] ?? `verifier-${k}`, id }));
   const rpc = env.MONITOR_RPC ?? "https://api.devnet.solana.com";
   const balances = dry
@@ -459,6 +494,7 @@ if (import.meta.main) {
     verifiers: dry ? [] : verifiers,
     spend,
     runtimeEnabled: env.MONITOR_RUNTIME === "1",
+    bind,
     waiting: mergeWaiting([waiting.ok ? waiting.body : null, ...moreWaiting.map((w) => (w.ok ? w.body : null))]),
     souls: souls.ok ? souls.body! : null,
     balances,

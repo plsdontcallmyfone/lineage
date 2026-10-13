@@ -1,0 +1,85 @@
+diff --git a/bloom/src/bloom.rs b/bloom/src/bloom.rs
+--- a/bloom/src/bloom.rs
++++ b/bloom/src/bloom.rs
+@@ -2,13 +2,11 @@
+ 
+ use {
+     bv::BitVec,
+-    fnv::FnvHasher,
+     rand::{self, Rng},
+     serde::{Deserialize, Serialize},
+     solana_time_utils::AtomicInterval,
+     std::{
+         cmp, fmt,
+-        hash::Hasher,
+         marker::PhantomData,
+         ops::Deref,
+         sync::atomic::{AtomicU64, Ordering},
+@@ -123,21 +121,17 @@ impl<T: BloomHashIndex> Bloom<T> {
+             1f64.max(((m / n) * 2f64.ln()).round())
+         }
+     }
+-    fn pos(&self, key: &T, k: u64) -> u64 {
+-        key.hash_at_index(k)
+-            .checked_rem(self.bits.len())
+-            .unwrap_or(0)
+-    }
+     pub fn clear(&mut self) {
+         self.bits = BitVec::new_fill(false, self.bits.len());
+         self.num_bits_set = 0;
+     }
+     pub fn add(&mut self, key: &T) {
+-        if self.bits.is_empty() {
++        let len = self.bits.len();
++        if len == 0 {
+             return;
+         }
+         for k in &self.keys {
+-            let pos = self.pos(key, *k);
++            let pos = key.hash_at_index(*k) % len;
+             if !self.bits.get(pos) {
+                 self.num_bits_set = self.num_bits_set.saturating_add(1);
+                 self.bits.set(pos, true);
+@@ -145,11 +139,12 @@ impl<T: BloomHashIndex> Bloom<T> {
+         }
+     }
+     pub fn contains(&self, key: &T) -> bool {
+-        if self.keys.is_empty() || self.bits.is_empty() {
++        let len = self.bits.len();
++        if self.keys.is_empty() || len == 0 {
+             return false;
+         }
+         for k in &self.keys {
+-            let pos = self.pos(key, *k);
++            let pos = key.hash_at_index(*k) % len;
+             if !self.bits.get(pos) {
+                 return false;
+             }
+@@ -159,9 +154,24 @@ impl<T: BloomHashIndex> Bloom<T> {
+ }
+ 
+ fn slice_hash(slice: &[u8], hash_index: u64) -> u64 {
+-    let mut hasher = FnvHasher::with_key(hash_index);
+-    hasher.write(slice);
+-    hasher.finish()
++    // FNV-1a started from the key, as FnvHasher::with_key(hash_index) followed by write(slice)
++    const PRIME: u64 = 0x100000001b3;
++    let mut hash = hash_index;
++    let mut chunks = slice.chunks_exact(8);
++    for c in &mut chunks {
++        hash = (hash ^ c[0] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[1] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[2] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[3] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[4] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[5] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[6] as u64).wrapping_mul(PRIME);
++        hash = (hash ^ c[7] as u64).wrapping_mul(PRIME);
++    }
++    for b in chunks.remainder() {
++        hash = (hash ^ *b as u64).wrapping_mul(PRIME);
++    }
++    hash
+ }
+ 
+ impl<T: AsRef<[u8]>> BloomHashIndex for T {

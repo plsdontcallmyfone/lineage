@@ -1,0 +1,62 @@
+{
+  "at": "2026-10-13T13:26:23.879Z",
+  "network": "devnet",
+  "launcher": "FKQBjvfwfbwSynjRE8mT1ijSEc34JamjK1R3AgtvzYji",
+  "nonce_account": "Ecb7Tnn3AXbTt1m3ttvvB6ccTz1BC7WpJxqJx4379hzZ",
+  "rent_lamports": "1056640",
+  "signatures": {
+    "create": "rDXuTh5RQt5wQ4RFHzAURHZZdYoopDmn31LS9PJYzAwkRWBV4ak5TUffVjRqzNWGAZfiJWhbk2SxgZJWVsr8z1S",
+    "durable": "67NA52ScHVDtnmfa7EpCJj4M2CqpwVbG7ndcR8X7i7CXvJURvbQnCfCusrPhyBZfeqBjMViBpJd6AKidNjzM25Qy",
+    "close": "5eMeioXhdM8Km9KfymsFv3qS9sLM9nJwRRMKtXuEUffLU5rYdyWm5L5co541TLGbcHjdEs8VmxmnvS8yNTjfPNzR"
+  },
+  "landing_slot": 510639224,
+  "signed_blockhash": "GEkYRx2pvkszN4cneRTUfGWPn7YVrxogKSrYHL9kFDYo",
+  "stored_nonce": "FBTMu2HLQ2zphusm1HuYszBaUVhS9HuMTEZYNespRpXx",
+  "results": [
+    {
+      "check": "1a the stored nonce is not the blockhash the creation was signed with",
+      "ok": true,
+      "detail": "signed with GEkYRx2pvksz…, stored FBTMu2HLQ2zp…"
+    },
+    {
+      "check": "1b the stored nonce is sha256(\"DURABLE_NONCE\" + the blockhash before the landing block): unknowable when signing",
+      "ok": true,
+      "detail": "landing slot 510639224, previous blockhash 2tbKsiRcdXzm…"
+    },
+    {
+      "check": "1c the launcher is the authority; the account holds exactly the rent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "2 a transaction signed with the creation (the only blockhash known then) cannot land once that blockhash is gone",
+      "ok": true,
+      "detail": "sendTransaction: Transaction simulation failed: Blockhash not found"
+    },
+    {
+      "check": "3a a transaction signed over the stored nonce lands long after any blockhash of its time",
+      "ok": true,
+      "detail": "67NA52ScHVDtnmfa… in slot 510639780, 135 s after the run began"
+    },
+    {
+      "check": "3b landing advanced the nonce",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "3c the same bytes sent again are refused (already processed, or the nonce has moved)",
+      "ok": true,
+      "detail": "sendTransaction: Transaction simulation failed: Blockhash not found"
+    },
+    {
+      "check": "3d with anything before AdvanceNonceAccount the stored nonce is not accepted as a blockhash",
+      "ok": true,
+      "detail": "sendTransaction: Transaction simulation failed: Blockhash not found"
+    },
+    {
+      "check": "4 the authority withdrew the whole balance and the account is gone; the rent is back",
+      "ok": true,
+      "detail": "spent in all 15000 lamports (fees only)"
+    }
+  ]
+}

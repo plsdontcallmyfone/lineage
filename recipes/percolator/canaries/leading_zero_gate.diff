@@ -1,0 +1,14 @@
+diff --git a/src/v16.rs b/src/v16.rs
+--- a/src/v16.rs
++++ b/src/v16.rs
+@@ -719,8 +719,8 @@ impl V16Core {
+         if denominator == 0 {
+             return Err(V16Error::InvalidConfig);
+         }
+-        if let Some(product) = a.checked_mul(b) {
+-            return Ok(product / denominator);
++        if a.leading_zeros() + b.leading_zeros() >= 128 {
++            return Ok(a * b / denominator);
+         }
+         U256::from_u128(a)
+             .checked_mul(U256::from_u128(b))

@@ -864,6 +864,7 @@ UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain-plan       # read o
 MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain   # 3 registrations, 2 bonds, before activate
 UNITS_INSTANCE=mainnet WITH_RUNTIME=1 scripts/deploy/deploy.sh <host> activate   # only once the programs exist on mainnet
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> status | stop | start
+UNITS_FEATURE_OPEN_BOUNTIES=1 UNITS_FEATURE_BOUNTIES=1 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> activate   # Core's bounty switches: kept in site.env by later deploys, =0 turns one off
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> sweep-plan       # read only: what the keys on the server hold
 MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> sweep <recipient>   # their SOL and quote tokens back
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> remove [--purge [--force]]   # after the test; --purge deletes its keys, data and accounts
@@ -1104,6 +1105,111 @@ What a host costs and carries (heavy units, `bun scripts/deploy/sizing.ts --role
 Dry run: `scripts/deploy/capacity-host/dryrun.sh` (two local containers play two servers, the real
 `provision.sh` over real ssh, then `scripts/scale/proof.ts`). Results in
 `scripts/deploy/capacity-host/DRYRUN-LAST.json` and `scripts/scale/PROOF-LAST.json`.
+
+## Every class on the mainnet instance (2026-10-13)
+
+The mainnet instance served Python units, the Rust fixture and one Rust unit. This section is what was
+measured to serve the other non-CUDA recipes there (Rust, Go, Zig, C/C++, Solana, more Python), whose
+verifiers are two on the site server and two on the capacity host `cap-nyc1`. Nothing here was deployed.
+
+**How a recipe becomes a unit on an instance.**
+
+1. `UNITS_RECIPES` (deploy.sh / instance.sh `write_env`, kept in `/etc/<instance>/site.env`) names the recipes.
+2. On the server, `remote.sh` and `remote-instance.sh` (stage) read each named recipe's `class:` and
+   `image:`, and build `lineage/<class>:<tag>` from `images/<class>` unless the image in the server's
+   Docker carries the label `lineage.build-hash` of those build files. Both instances use the one Docker
+   daemon, so the images are the devnet instance's.
+3. `scripts/deploy/arch-recipes.ts` rewrites, in the release only, each recipe's `requires.arch` and its
+   image pin to the id of the image built there, applies `scripts/deploy/amd64/<name>.replace.json` and
+   copies `scripts/deploy/amd64/<name>/**` into the overlay. The recipe id follows from that text.
+4. The instance's bootstrap unit (`site-bootstrap.ts`) registers recipe and snapshot, and the reference
+   runner on the site calibrates each recipe that has no unit yet (5 runs, in list order). That creates
+   the unit.
+5. Core hands every eligible verifier whose declared capabilities satisfy the recipe's `requires` a
+   qualification for the unit: one base run with the calibration seed, passed when the stable tests and
+   every deterministic base value match within tolerance (`det_tolerance` 0.001, or the metric's own).
+6. A capacity host gets the release, the images and the dependency layers from the site
+   (`capacity-host/provision.sh ... update`, `RECIPES` defaults to the instance's `UNITS_RECIPES`), so
+   ids and digests are the site's. Its verifiers then qualify like any other.
+7. Canaries are loaded by Core from the private directory `/var/lib/<instance>/canaries/<recipe name>/`
+   only. `recipes/*/canaries` are public test fixtures and must not be put there.
+
+**State found.** The site server's Docker has all six images (python, rust, go, cpp, zig, solana), each
+with the build hash of the current `images/<class>`: a deploy reuses them. The devnet instance on the
+same server serves 23 amd64 units of every class, and both of its site verifiers hold a passed
+qualification on all 23 (read from its Core). So the 4 vCPU site verifiers can replay every class. The
+capacity host had only the python and rust images; go, cpp, zig and solana were copied there from the
+site's Docker with their ids (the copy `provision.sh` makes).
+
+**Measured on the capacity host** (scratch checkout in `/root/scratch-recipes`, own `UNITS_HOME`, at
+most five sandboxes at once; full record `scripts/deploy/amd64/CAPACITY-HOST-LAST.json`, per recipe
+`recipes/<name>/{canaries,candidates}/results-amd64.json`): each recipe re-pinned by `arch-recipes.ts`,
+calibrated with `scripts/calibrate-recipe.ts` (5 runs, with the seed of the site's recorded calibration)
+and judged with `scripts/check-canaries.ts`. Every recipe id equals the one the devnet site serves
+(zig-clap aside, below). Largest difference of a base value from the site's record, per class:
+
+| Class | Recipes | Largest difference from the site's base values |
+|---|---|---|
+| rust | fixture-b58, base58-rs, md5-rs, hmac-sha256-rs | none (Ir equal) |
+| cpp | llama2c, bitcoin-base58 | none |
+| zig | zig-charm, zig-clap, fixture-zigsize | bytes and Ir equal; fixture-zigsize work_ir 2.3e-8 |
+| solana | solana-config, fixture-cu-tally, spl-record | none (CU and bytes equal); spl-record has no site record |
+| go | bip39-go, btcd-bech32, ollama-tokenizer, geth-rlp | 5.4e-5 (bip39-go valid_ir) |
+| python | base58-py, minbpe, both heavy recipes, bip39-py, subword-nmt, pyrlp, lc-text-splitters, bech32-py | 1.1e-4 with the site's dependency layer digest; 3.5e-4 (pyrlp) and 5.6e-4 (lc-text-splitters) where the layer prepared that day had another digest |
+
+All are inside `det_tolerance` 0.001. The two hosts differ (Xeon Gold 6248 with AVX-512 and kernel 7.0
+against DO-Regular and kernel 6.8), and Python and Go counts are not identical across them; the four
+Python units already live qualified all four verifiers. Canaries: every one rejected for its expected
+reason. Candidates: every one judged as its index expects. bech32-py and spl-record had no amd64
+calibration: `recipes/<name>/calibration-amd64.json` now holds the one measured here (not a Core record).
+
+**zig-clap on a 32-core host.** `zig build examples` failed there with `error: SystemResources`: Zig
+sizes its thread pools from the host's 32 cores, six compiles ran at once, and the recipe allows 256
+pids. `scripts/deploy/amd64/zig-clap.replace.json` now also turns it into `zig build -j2 examples`
+(the recipe's 2 CPUs). Base values are unchanged (142368 bytes, parse_ir 31723279, help_ir 24552177), the
+amd64 recipe id is new (8f22fe223e86...). The devnet instance still serves the old id: its next deploy
+calibrates a second zig-clap unit and the old one must be retired by the admin. Any recipe whose build
+starts one worker per core can fail the same way on a capacity host; none of the other 24 did.
+
+**geth-rlp.** One evaluation took 1,279 s on the capacity host (median of 5, with up to four other
+sandboxes running) and 1,394 s on the site (Core's record), against the recipe's `wall_s` of 1800; its
+calibration alone took 55 minutes here and 53 on the site, and each of its four patches took 1,263 to
+1,269 s to judge. It calibrates, its base values agree (largest difference 2.7e-5) and its patches are
+judged as expected, but every candidate costs that once per replayer and every verifier once to qualify.
+Leave it out of the mainnet list, or put it last.
+
+**To serve them** (owner; the first list is the instance's own at the time, read it from
+`/etc/units-main/site.env` again before deploying):
+
+```sh
+UNITS_INSTANCE=mainnet \
+UNITS_RECIPES=fixture-b58,base58-py,minbpe,base58-py-heavy,minbpe-heavy,gorbagana-chain,base58-rs,hmac-sha256-rs,md5-rs,bech32-py,bip39-py,subword-nmt,pyrlp,lc-text-splitters,llama2c,bitcoin-base58,zig-charm,zig-clap,spl-record,solana-config,btcd-bech32,bip39-go,ollama-tokenizer \
+  scripts/deploy/deploy.sh 157.245.71.188 activate
+# when units-main-bootstrap has finished (journalctl -u units-main-bootstrap: "done"), and again after any later deploy:
+JUMP=none SSH_FROM=any VERIFIERS=2 ROLE=both INSTANCE=mainnet NAME=cap-nyc1 scripts/deploy/capacity-host/provision.sh 157.230.180.62 update
+```
+
+No image step and no env edit is needed on either host: the site reuses its six images, the capacity
+host has them with the same ids. The bootstrap calibrates the 17 new units on the site in list order;
+from the devnet instance's bootstrap walls above that is about 47 minutes plus bech32-py and spl-record,
+during which the site verifiers also qualify (one base run per unit each). Run the capacity host's
+`update` once right after the deploy as always (release match), and once more when the bootstrap is
+done: a dependency layer the site had not prepared yet at the first run is prepared by the host itself
+and can get another digest (seen here for base58-rs, pyrlp, lc-text-splitters, solana-config), and the
+second run replaces it with the site's. fixture-zigsize and fixture-cu-tally are ready too, but a
+fixture repository cannot be launched on and unit setup does not take a fixture unit as its class
+reference (`unit-setup.ts`), so they are left out.
+
+**Site verifiers or capacity host only.** The kit can keep a unit off small verifiers only through the
+recipe's `requires` (`min_cpus`, `min_memory_mb`), matched against each verifier's declared
+capabilities. It cannot do that today for these four verifiers: `provision.sh` gives the capacity
+host's verifiers the site's `caps.json` (4 cpus, 7,941 MiB; its digest is what they registered on
+chain), so all four declare the same machine. Nothing measured here needs the split except geth-rlp.
+
+**Not proven.** A mainnet qualification of any of these units (it happens after the deploy); a
+proposal (unit setup) of a class other than Python calibrated by verifiers on both hosts, which also
+needs the two hosts to prepare the same dependency layer digest; private canaries for the new units
+(the mainnet directory is empty).
 
 ## Size and cost
 

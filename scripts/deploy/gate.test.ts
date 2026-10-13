@@ -150,6 +150,11 @@ describe("audit A2: gate", () => {
     expect(classify("GET", "/market/tokens")).toMatchObject({ klass: "market", upstream: "indexer" });
     expect(classify("POST", "/market/tokens")).toEqual({ refuse: 405, why: "method" });
     expect(LIMITS.market.perMin).toBeGreaterThan(0);
+    // the Supply section's reads (packages/indexer/src/supply.ts): the same class and upstream, reads only
+    for (const path of ["/market/supply", "/market/supply/burns", "/market/supply/developer", "/market/supply/coins", "/market/supply/holders"]) {
+      expect(classify("GET", path)).toEqual({ klass: "market", upstream: "indexer", cors: false, stream: false, sameOrigin: false });
+      for (const m of ["POST", "PUT", "DELETE", "PATCH"]) expect(classify(m, path)).toEqual({ refuse: 405, why: "method" });
+    }
   });
 });
 
@@ -192,6 +197,33 @@ describe("social writes", () => {
     // the Claim page's three writes (GitHub fee claims): same origin, small bodies; nothing else under /api takes a POST
     for (const p of ["/api/fee-claims/proofs/gist", "/api/fee-claims/wallet", "/api/fee-claims/attest"]) expect(classify("POST", p)).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
     for (const p of ["/api/fee-claims/oauth/start", "/api/fee-claims/attestations", "/v1/fee-claims/attest", "/api/admin/pools/run"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    // fees waiting for the owners: a public read (the api and v1 classes) and a page of its own per repository; never a write
+    for (const path of ["/api/fee-claims/waiting", "/v1/fee-claims/waiting"]) expect(classify("GET", path)).toMatchObject({ klass: path.startsWith("/v1") ? "v1" : "api", cors: true, sameOrigin: false, stream: false });
+    expect(classify("POST", "/api/fee-claims/waiting")).toEqual({ refuse: 405, why: "method" });
+    expect(classify("GET", "/claim/octocat/Hello-World")).toEqual({ klass: "page", upstream: "web", cors: false, stream: false, sameOrigin: false });
+    expect(classify("POST", "/claim/octocat/Hello-World")).toEqual({ refuse: 405, why: "method" });
+    // "Request a repository": one same-origin write and its check in the repository check's own class; the runtime's plan is not public
+    expect(classify("POST", "/api/repo-requests")).toEqual({ klass: "repocheck", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    for (const p of ["/v1/repo-requests", "/api/repo-requests/check", "/api/repo-requests/drafts", "/v1/repo-requests/drafts", "/api/admin/repo-requests/config"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    expect(classify("GET", "/api/repo-requests/check")).toEqual({ klass: "repocheck", upstream: "web", cors: true, stream: false, sameOrigin: false });
+    expect(classify("GET", "/v1/repo-requests/check")).toMatchObject({ klass: "repocheck", upstream: "core" });
+    expect(classify("GET", "/api/repo-requests")).toMatchObject({ klass: "api", upstream: "web" });
+    for (const p of ["/v1/repo-requests/draft-plan", "/api/repo-requests/draft-plan", "/v1/admin/repo-requests/config"]) expect(classify("GET", p)).toMatchObject({ refuse: 404 });
+    // the owner mark of a bounty's poster: two same-origin writes through the web server; the public reads are plain reads
+    for (const p of ["/api/bounties/owner-proof", "/api/bounties/owner-proof/forget"]) expect(classify("POST", p)).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
+    for (const p of ["/v1/bounties/owner-proof", "/api/bounties/owners", "/api/admin/bounty-owners/config", "/v1/admin/bounty-owners/config"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    for (const p of ["/api/bounties/owners", "/api/bounties/owner-proof", "/v1/bounties/owners"]) expect(classify("GET", p)).toMatchObject({ upstream: p.startsWith("/v1/") ? "core" : "web" });
+    // launch from a tweet: the launch page's one write
+    expect(classify("POST", "/api/tweet-launches")).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
+    expect(classify("POST", "/api/tweet-launches/AAAAAAAAAAAAAAAAAAAAAA")).toEqual({ refuse: 405, why: "method" });
+    // "Started from a tweet": the launch page resolves a link's id and an agent's pages read its origin, as plain reads in the
+    // api and v1 classes (their rate limits); the bot's signed statement of a link never passes the gate
+    for (const path of ["/tweet-links/AAAAAAAAAAAAAAAAAAAAAA", "/agents/So11111111111111111111111111111111111111112/tweet-origin"]) {
+      expect(classify("GET", `/api${path}`)).toEqual({ klass: "api", upstream: "web", cors: true, stream: false, sameOrigin: false });
+      expect(classify("GET", `/v1${path}`)).toEqual({ klass: "v1", upstream: "core", cors: true, stream: false, sameOrigin: false });
+    }
+    for (const path of ["/api/tweet-links", "/v1/tweet-links", "/api/tweet-links/AAAAAAAAAAAAAAAAAAAAAA"]) expect(classify("POST", path)).toEqual({ refuse: 405, why: "method" });
+    for (const m of ["PUT", "DELETE", "PATCH"]) expect(classify(m, "/v1/tweet-links/AAAAAAAAAAAAAAAAAAAAAA")).toEqual({ refuse: 405, why: "method" });
     expect(classify("POST", "/v1/admin/social/hide")).toEqual({ refuse: 405, why: "method" });
   });
 
@@ -243,10 +275,16 @@ describe("social writes", () => {
 describe("hosted runtime bind", () => {
   const agent = "6C8N2z5L4dQ1yWn3bSPAsoGq2nXyWkJk6V3m4cLZb6dE";
   test("GET and POST /runtime/bind/:agent go to the runtime in their own class; POST is same origin", () => {
-    expect(classify("GET", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: false, cors: false });
-    expect(classify("POST", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    expect(classify("GET", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "bind", sameOrigin: false, cors: false });
+    expect(classify("POST", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "bind", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    // the bind service's health: a plain read, never a write
+    expect(classify("GET", "/runtime/bind/health")).toMatchObject({ klass: "api", upstream: "bind", sameOrigin: false, cors: false });
+    expect(classify("POST", "/runtime/bind/health")).toEqual({ refuse: 405, why: "method" });
     for (const p of ["/runtime/bind/0OIl", "/runtime/health", "/runtime/bind/", `/runtime/bind/${agent}/x`]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
     expect(classify("PUT", `/runtime/bind/${agent}`)).toEqual({ refuse: 405, why: "method" });
+    // the setup bar's read of a wallet's waiting agents: GET only, to the runtime, in the bind class
+    expect(classify("GET", `/runtime/unbound/${agent}`)).toMatchObject({ klass: "bind", upstream: "bind", sameOrigin: false, cors: false });
+    expect(classify("POST", `/runtime/unbound/${agent}`)).toEqual({ refuse: 405, why: "method" });
     expect(classify("GET", "/runtime/health")).toMatchObject({ klass: "page", upstream: "web" });
   });
 });
@@ -257,4 +295,17 @@ test("soul drafts and publishes are same-origin POSTs in their own class; nothin
   expect(classify("POST", "/souls/config")).toEqual({ refuse: 405, why: "method" });
   expect(classify("GET", "/souls/config")).toMatchObject({ klass: "page", upstream: "web" });
   expect(LIMITS.souls.perMin).toBeLessThanOrEqual(10);
+});
+
+test("the repository check before a launch has its own class, through Core or the dashboard", () => {
+  expect(classify("GET", "/v1/repo-check")).toEqual({ klass: "repocheck", upstream: "core", cors: true, stream: false, sameOrigin: false });
+  expect(classify("GET", "/api/repo-check")).toEqual({ klass: "repocheck", upstream: "web", cors: true, stream: false, sameOrigin: false });
+  expect(classify("POST", "/api/repo-check")).toMatchObject({ refuse: 405 });
+  // a reading may fetch a repository: far fewer a minute than plain reads, and the burst covers one form's polling
+  expect(LIMITS.repocheck.perMin).toBeLessThan(LIMITS.v1.perMin / 4);
+  const t = { now: 0 };
+  const l = new Limiter(() => t.now);
+  for (let i = 0; i < LIMITS.repocheck.burst; i++) expect(l.take("1.2.3.4", "repocheck").ok).toBe(true);
+  expect(l.take("1.2.3.4", "repocheck").ok).toBe(false);
+  expect(l.take("1.2.3.4", "v1").ok).toBe(true);
 });

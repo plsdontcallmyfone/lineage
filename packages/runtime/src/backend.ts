@@ -122,7 +122,7 @@ export class SimBackend implements Backend {
           sandbox_seconds: l.sandbox_s,
           note: `hosted runtime usage epoch ${e.epoch}`,
           ref,
-          detail: { usage_epoch: e.epoch, usd: l.usd.toFixed(6), cost: l.cost, model_tokens: l.model_tokens, sandbox_s: l.sandbox_s },
+          detail: { usage_epoch: e.epoch, usd: l.usd.toFixed(6), cost: l.cost, model_tokens: l.model_tokens, sandbox_s: l.sandbox_s, ...(l.seats ? { desktop_usd: (l.desktop_usd ?? 0).toFixed(6), desktop_s: Math.ceil(l.desktop_s ?? 0), seats: l.seats } : {}) },
         }),
         "usage",
       );

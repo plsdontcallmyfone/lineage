@@ -1,0 +1,181 @@
+{
+  "at": "2026-10-13T11:57:38.076Z",
+  "network": "devnet",
+  "launcher": "FKQBjvfwfbwSynjRE8mT1ijSEc34JamjK1R3AgtvzYji",
+  "runtime": "local bind endpoint (Runtime.bindTarget, reserve.ts, bind.ts, firewall, cosign.ts); no Core, no model",
+  "A": {
+    "agent": "6suZFaDgb7VRxuLGMc9UDwCCieqTat92GxGkSxZxp6Sn",
+    "mint": "4t6jxenit1DKRtc4q8vB2gK1KmqTxas6LmYTWAGg187P",
+    "runtime_key": "FjSq4jAX2tHLi2p4Y2Yx5sgS8EQZno8ypAgJCaPjLF9E",
+    "signatures": [
+      {
+        "label": "launch",
+        "signature": "4u8T5raKzDShUKiedS4xbZGtfDrNubBXmsZTWkHY41988Qk7MHF2pYxEVFbQMRErjAGZ25yzgz4oqxBR9iq86wm4"
+      },
+      {
+        "label": "bind",
+        "signature": "4RNEjF9bG2jYdefNLjNYqPDeTvb6DrrZiTZdc5pX1JiwRGrg4Wn9R7bpik2D3Wvp9Qe4BzPdbp44gddGL6UxmdJt"
+      }
+    ],
+    "launch_slot": 510617538,
+    "bind_slot": 510617545,
+    "ms_from_approval_request_to_bound": 3856,
+    "block_heights_used": 22,
+    "wallet_requests": [
+      {
+        "txs": 2,
+        "versions": [
+          "0",
+          "0"
+        ],
+        "programs": [
+          [
+            "Comput",
+            "6EF8rr",
+            "Axo38W"
+          ],
+          [
+            "Comput",
+            "CJk3kw"
+          ]
+        ]
+      }
+    ]
+  },
+  "B": {
+    "agent": "6VD1jfcttMwW6FxXopCTZdHLFRqE4kpLTWjZk3uTHcfy",
+    "mint": "3rVvxUos9y62rF5EhAWMzPW9VQS7XURmkHXfttSywKtc",
+    "runtime_key": "BH1utUKxRv6pR67kLgq5tRSiDaDgNd9sQCzkMGBDZWPH",
+    "rotation": "5ed9AKtRZsE5HXQTTDV7g8Nk1mnz16o7r9w65QHPQ4K3uSxDh35A8tiKGCTSEYGTe3hcME99UfjcA67QLbsVtH4Z",
+    "ms_from_approval_request_to_bound": 5208,
+    "block_heights_used": 21,
+    "page_lines": [
+      "Finishing the setup your wallet already approved."
+    ]
+  },
+  "C": {
+    "agent": "74USLwv5MC5RD2phe6ngwdZceejY5jwTyniPANDc9X7X",
+    "mint": "7vYyNNsFCUz3bktZF2tnKv6QoASXseJCNxLKSMgN9bxY",
+    "runtime_key": "FWEKVkBz7MnYrTpznUFW57RoUif9BW2QoRZDkGYngVcT",
+    "rotation": "3tYbFH82muj7UMCp7TcJjt3Fw5vDG3BpkS33wArNswdc6Yh76txvbknfFnLXGdo4NwAbuZJYNG9PoUY5tVtpo4h6",
+    "page_lines": [
+      "One signature is missing: your wallet hands the agent's signing key to the hosted runtime.",
+      "Signed. The hosted runtime is sending it."
+    ]
+  },
+  "D": {
+    "bound_again": {
+      "status": 200,
+      "error": null,
+      "message": null
+    },
+    "other_record": {
+      "status": 400,
+      "error": "refused",
+      "message": "refusing to co-sign: rotate_agent_key targets agent record FFjt3ZND8ELf8f1BvfNUwsvKoZMReVzv4xNtLufEDYuT, not the record of HB1Qor1328CSnd4Y2Yow3jJreaWLVg9R84BjcagSnjcm"
+    },
+    "with_transfer": {
+      "status": 400,
+      "error": "refused",
+      "message": "refusing to co-sign: this key is a writable account of the transaction"
+    },
+    "send_before_launch": {
+      "status": 404,
+      "error": "not_hosted",
+      "message": "not a hosted launched agent"
+    },
+    "no_reservation": {
+      "status": 404,
+      "error": "not_hosted",
+      "message": "not a hosted launched agent"
+    },
+    "existing_self_reserve": {
+      "status": 200,
+      "error": null,
+      "message": null
+    }
+  },
+  "devnet_sol_spent": 0.044469126,
+  "runtime_requests": [
+    "POST /runtime/bind/<id> reserve",
+    "POST /runtime/bind/<id> tx+sign_only",
+    "GET /runtime/bind/<id>",
+    "GET /runtime/bind/<id>",
+    "POST /runtime/bind/<id> reserve",
+    "GET /runtime/bind/<id>",
+    "POST /runtime/bind/<id> tx",
+    "GET /runtime/bind/<id>",
+    "GET /runtime/unbound/<id>",
+    "GET /runtime/unbound/<id>",
+    "GET /runtime/bind/<id>",
+    "POST /runtime/bind/<id> tx"
+  ],
+  "firewall": {
+    "log": "every co-sign passed the transaction firewall",
+    "allowed": 4
+  },
+  "results": [
+    {
+      "check": "A: the runtime reserves its key for an agent that is not on chain yet",
+      "ok": true,
+      "detail": "runtime key FjSq4jAX2tHLi2p4Y2Yx5sgS8EQZno8ypAgJCaPjLF9E, status reserved; agent 6suZFaDgb7VRxuLGMc9UDwCCieqTat92GxGkSxZxp6Sn has no record on chain"
+    },
+    {
+      "check": "A: the wallet was asked once, for the launch and the bind together",
+      "ok": true,
+      "detail": "requests [2]; message versions 0, 0"
+    },
+    {
+      "check": "A: everything landed, the bind among it; nothing was left over",
+      "ok": true,
+      "detail": "launch 4u8T5raKzDShUKiedS4xbZGtfDrNubBXmsZTWkHY41988Qk7MHF2pYxEVFbQMRErjAGZ25yzgz4oqxBR9iq86wm4; bind 4RNEjF9bG2jYdefNLjNYqPDeTvb6DrrZiTZdc5pX1JiwRGrg4Wn9R7bpik2D3Wvp9Qe4BzPdbp44gddGL6UxmdJt"
+    },
+    {
+      "check": "A: on chain the agent's signing key is the runtime's reserved key (one rotation), its owner the launcher, hosted",
+      "ok": true,
+      "detail": "signing key FjSq4jAX2tHLi2p4Y2Yx5sgS8EQZno8ypAgJCaPjLF9E, key changes 1"
+    },
+    {
+      "check": "A: nothing more to do afterwards: the page's finish routine finds it bound and asks the wallet for nothing",
+      "ok": true,
+      "detail": "runtime GET status awaiting_owner"
+    },
+    {
+      "check": "A: the runtime adopted the agent with the reserved key (no second key was made)",
+      "ok": true,
+      "detail": "state awaiting_owner"
+    },
+    {
+      "check": "B: the launch landed without the bind, which was not sent and is kept signed",
+      "ok": true,
+      "detail": "left: the hosted runtime did not answer; signing key on chain still the launch key"
+    },
+    {
+      "check": "B: the runtime co-signed and sent the bind the wallet had already signed: bound, and the wallet was asked only once in all",
+      "ok": true,
+      "detail": "rotation 5ed9AKtRZsE5HXQTTDV7g8Nk1mnz16o7r9w65QHPQ4K3uSxDh35A8tiKGCTSEYGTe3hcME99UfjcA67QLbsVtH4Z; the page said: Finishing the setup your wallet already approved."
+    },
+    {
+      "check": "C: a hosted agent launched the old way sits unbound",
+      "ok": true,
+      "detail": "yB8LFcJ4pYEiWzvTqJvzRBhbSvv7AqZEjqjPXhbibnB6Zb6uXY9DHSXjpJZJEjZ4tk5tQUqXeKQXWnRYcAafZMa"
+    },
+    {
+      "check": "C: the runtime lists it for its launcher (the bar's one read) and for nobody else",
+      "ok": true,
+      "detail": "unbound for the launcher: 3; for another wallet: 0"
+    },
+    {
+      "check": "C: Finish setup binds it with one signature of one transaction",
+      "ok": true,
+      "detail": "rotation 3tYbFH82muj7UMCp7TcJjt3Fw5vDG3BpkS33wArNswdc6Yh76txvbknfFnLXGdo4NwAbuZJYNG9PoUY5tVtpo4h6; the page said: One signature is missing: your wallet hands the agent's signing key to the hosted runtime. | Signed. The hosted runtime is sending it."
+    },
+    {
+      "check": "D: the live runtime refuses a rotation of another record, a rotation with a transfer beside it, sending for an agent that is not on chain, and signing with no reservation",
+      "ok": true,
+      "detail": "bound_again 200 ok; other_record 400 refused; with_transfer 400 refused; send_before_launch 404 not_hosted; no_reservation 404 not_hosted; existing_self_reserve 200 ok"
+    }
+  ],
+  "passed": 12,
+  "total": 12
+}

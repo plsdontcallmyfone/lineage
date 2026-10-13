@@ -1,0 +1,102 @@
+{
+ "at": "2026-10-13T01:06:56.995Z",
+ "ok": true,
+ "passed": 18,
+ "of": 18,
+ "x_api": "mock",
+ "posted": [
+  {
+   "in_reply_to": "1900000000000000002",
+   "text": "@ann Launch an agent on keis/base58. Connect a wallet and approve:\nhttp://127.0.0.1:9663/launch?repo=keis/base58&name=Tidy+Base58&ticker=TB58&tl=<id>"
+  },
+  {
+   "in_reply_to": "1900000000000000003",
+   "text": "Tidy Base58 is live on keis/base58. Watch it work:\nhttp://127.0.0.1:9663/tokens/GzteGbFeUZmp8cxSiuuKEw9TochDcK4Vp8oCmCpp3s9r"
+  }
+ ],
+ "checks": [
+  {
+   "name": "without credentials and without --mock the service does not run",
+   "ok": true,
+   "detail": "exit 2"
+  },
+  {
+   "name": "dry run prints the reply it would post and posts nothing",
+   "ok": true,
+   "detail": "exit 0"
+  },
+  {
+   "name": "dry run leaves no state file",
+   "ok": true
+  },
+  {
+   "name": "mention in, one reply out, in the thread, the owner's wording, the free reading of the real repository passed",
+   "ok": true,
+   "detail": "@ann Launch an agent on keis/base58. Connect a wallet and approve: | http://127.0.0.1:9663/launch?repo=keis/base58&name=Tidy+Base58&ticker=TB58&tl=tOSfA2GsHxuZVpuYw-XJbA"
+  },
+  {
+   "name": "the link carries the repository, the name, the ticker and a 22 character id, and nothing about the author or the tweet",
+   "ok": true,
+   "detail": "http://127.0.0.1:9663/launch?repo=keis/base58&name=Tidy+Base58&ticker=TB58&tl=tOSfA2GsHxuZVpuYw-XJbA"
+  },
+  {
+   "name": "launch page at 1280: repository, name and ticker are filled, the vibe is empty",
+   "ok": true,
+   "detail": "{\"l_repo\":\"https://github.com/keis/base58\",\"l_name\":\"Tidy Base58\",\"l_symbol\":\"TB58\",\"s_vibe\":\"\"}"
+  },
+  {
+   "name": "launch page at 1280: nothing is sent (no launch, no hand-in to Core, no wallet request)",
+   "ok": true,
+   "detail": "rpc getGenesisHash, rpc getAccountInfo"
+  },
+  {
+   "name": "launch page at 1280: the link's id is kept for the tab only",
+   "ok": true
+  },
+  {
+   "name": "Core has no launch for the link yet",
+   "ok": true
+  },
+  {
+   "name": "a pass before any launch posts nothing more",
+   "ok": true
+  },
+  {
+   "name": "the page's hand-in reaches Core through the web server",
+   "ok": true,
+   "detail": "HTTP 200"
+  },
+  {
+   "name": "the launch is seen and the follow-up is posted in the thread, under the bot's own reply",
+   "ok": true,
+   "detail": "Tidy Base58 is live on keis/base58. Watch it work: | http://127.0.0.1:9663/tokens/GzteGbFeUZmp8cxSiuuKEw9TochDcK4Vp8oCmCpp3s9r"
+  },
+  {
+   "name": "later passes post nothing more",
+   "ok": true
+  },
+  {
+   "name": "launch page at 390: repository, name and ticker are filled, the vibe is empty",
+   "ok": true,
+   "detail": "{\"l_repo\":\"https://github.com/keis/base58\",\"l_name\":\"Tidy Base58\",\"l_symbol\":\"TB58\",\"s_vibe\":\"\"}"
+  },
+  {
+   "name": "launch page at 390: nothing is sent (no launch, no hand-in to Core, no wallet request)",
+   "ok": true,
+   "detail": "rpc getGenesisHash, rpc getAccountInfo"
+  },
+  {
+   "name": "launch page at 390: the link's id is kept for the tab only",
+   "ok": true
+  },
+  {
+   "name": "the state file holds no token",
+   "ok": true
+  },
+  {
+   "name": "every request to the mock X API was authenticated",
+   "ok": true,
+   "detail": "9 requests"
+  }
+ ]
+}

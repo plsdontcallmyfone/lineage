@@ -100,6 +100,9 @@ writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { 
 chmodSync(join(OUT, "network.json"), 0o600);
 console.log(`network.json: chain mode ${L.network}, rpc ${MAIN ? "from the unit's environment" : redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
 console.log(`network.json: features agent_pools ${net.features?.agent_pools === true ? "on" : "off"}, github_fee_claims ${net.features?.github_fee_claims === true ? "on" : "off"}`);
+// Swarms (docs/plans/SWARMS.md): off unless features.swarms is true, which only a mainnet instance's state file can say
+// (network_overrides.features, with network_overrides.swarm for the settings); the devnet line above leaves it out, so off.
+console.log(`network.json: features swarms ${net.features?.swarms === true ? `on (largest swarm ${net.swarm?.max_members ?? "default"})` : "off"}`);
 
 const capsPath = join(OUT, "caps.json");
 if (!existsSync(capsPath) || argv.includes("--refresh-caps")) {
@@ -165,9 +168,14 @@ const runtimeCfg: Record<string, any> = {
   // shared with verification in the measured proportion, so verdicts keep pace).
   max_concurrent_ceiling: Number(process.env.UNITS_SITE_MAX_CONCURRENT ?? Math.max(SIZE.attempts, !MAIN && existsSync(instanceLayout("mainnet").state) ? 2 : 3)),
   attempt_gap_s: 30,
+  // network compute (docs/plans/MODELS-AND-SELF-FUNDING.md section D, owner 2026-10-13): OFF on the devnet site. An agent
+  // whose vault cannot pay waits for fees here, as before; the mainnet block below turns it on.
+  platform_funding: { enabled: false, min_interval_s: 900, attempt_max_usd: null, charge_vault: false },
   // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: L.ports.bind,
+  // the bind surface is the bind service's (units-bind, packages/runtime/src/bind-service.ts): up while this runtime drains or restarts
+  bind_service_port: L.ports.bindService,
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
   // (desktop_required: an attempt waits, short retry, until one is free). Desktop hosts first (the
   // hosts file that scripts/deploy/desktop-host/provision.sh fills; none until the owner creates one),
@@ -238,6 +246,14 @@ if (MAIN) {
     // switch: the instance's own market indexer in Jupiter's shape, with a band and a maximum age); the test deployment's
     // state file has none, so its throwaway coin keeps the configured TEST rate
     price: devnet.runtime_price && typeof devnet.runtime_price === "object" ? devnet.runtime_price : { source: "config" },
+    // network compute (owner 2026-10-13, "we also want it to use the current openrouter stuff as well so it keeps
+    // running"): an agent whose vault cannot pay keeps working on the network's OpenRouter balance, one attempt every
+    // min_interval_s (15 minutes), each capped at attempt_max_usd (null: the attempt cap above), with no per-agent
+    // limit; the 800 USD per UTC day cap above (every dollar counted) and the OpenRouter balance gate bound it.
+    // enabled false puts such agents back to waiting for their vault. charge_vault false: nothing of such an
+    // attempt is charged to the agent's vault, so its fees add up until it can pay for an attempt itself and the
+    // full pace returns (true: the vault pays what it holds toward that usage at each usage epoch).
+    platform_funding: { enabled: true, min_interval_s: 900, attempt_max_usd: null, charge_vault: false },
     // this server's two local desktop slots stay with the devnet site; the test instance's desktops are
     // E2B, at most one per attempt slot
     desktops_max: 0,
@@ -267,5 +283,5 @@ if (prevRuntime !== null && prevRuntime !== runtimeText) writeFileSync(`${runtim
 writeFileSync(runtimePath, runtimeText, { mode: 0o600 });
 chmodSync(runtimePath, 0o600);
 console.log(
-  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops: hosts from ${runtimeCfg.desktop_hosts_file}, ${runtimeCfg.desktops_max} here, ${runtimeCfg.e2b_max} E2B (${runtimeCfg.e2b.template}, ${runtimeCfg.desktop_usd_per_day} USD per UTC day), ${runtimeCfg.desktop_required ? "required" : "optional"}, recordings ${runtimeCfg.recordings ? "on" : "off"}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}${runtimeCfg.desktop_shared ? `; E2B budget shared as ${runtimeCfg.desktop_shared.name} with ${runtimeCfg.desktop_shared.peers.join(", ")}${runtimeCfg.desktop_shared.strict ? " (strict)" : ""}` : ""}; at most ${runtimeCfg.max_concurrent_ceiling} attempts at once; agents do not trade`,
+  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops: hosts from ${runtimeCfg.desktop_hosts_file}, ${runtimeCfg.desktops_max} here, ${runtimeCfg.e2b_max} E2B (${runtimeCfg.e2b.template}, ${runtimeCfg.desktop_usd_per_day} USD per UTC day), ${runtimeCfg.desktop_required ? "required" : "optional"}, recordings ${runtimeCfg.recordings ? "on" : "off"}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}${runtimeCfg.desktop_shared ? `; E2B budget shared as ${runtimeCfg.desktop_shared.name} with ${runtimeCfg.desktop_shared.peers.join(", ")}${runtimeCfg.desktop_shared.strict ? " (strict)" : ""}` : ""}; at most ${runtimeCfg.max_concurrent_ceiling} attempts at once; agents do not trade; network compute ${runtimeCfg.platform_funding.enabled ? `on (one attempt every ${runtimeCfg.platform_funding.min_interval_s} s for an agent whose vault cannot pay)` : "off"}`,
 );

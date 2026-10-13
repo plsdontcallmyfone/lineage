@@ -1,0 +1,161 @@
+{
+  "at": "2026-10-12T23:52:32.598Z",
+  "repo": "https://github.com/martinblech/xmltodict",
+  "model_usd": 0.8913901779999996,
+  "draft": {
+    "head": "6e29fba282e68631034dd2722a413b4e35276584",
+    "class": "python",
+    "screened_at": 1791848671080,
+    "impossible": null,
+    "impossible_by": null,
+    "drafts": 1,
+    "usd": 0.5966105179999999,
+    "errors": 0,
+    "next_at": 0,
+    "last_reason": null,
+    "proposal_id": "2bebcff67348c7285db3c18722f6e5298372f8735255c35f4b4863858005bb6a",
+    "rejected": [],
+    "proposed_at": 1791848937930
+  },
+  "proposal": {
+    "proposal_id": "2bebcff67348c7285db3c18722f6e5298372f8735255c35f4b4863858005bb6a",
+    "name": "xmltodict",
+    "recipe_id": "c88ce72f84a76b7b8956e9d59a4bf9880b788d1ef54bbba534f421dc494800d6",
+    "unit": "70d1fea17e03e5cd420518c2648af5d7058ef1ceef46e4b5c40bc543225f66ec",
+    "metrics": {
+      "parse_ir": {
+        "base_value": 2063382112.75,
+        "cv": 8.121825920051699e-8,
+        "enabled": true
+      },
+      "stream_ir": {
+        "base_value": 1781705585.75,
+        "cv": 7.012707018304589e-7,
+        "enabled": true
+      },
+      "unparse_ir": {
+        "base_value": 1102299690,
+        "cv": 6.081262026380385e-7,
+        "enabled": true
+      }
+    },
+    "stable_tests": 134
+  },
+  "reasons": {
+    "a": [
+      "setting up: reading martinblech/xmltodict",
+      "setting up: drafting the unit for martinblech/xmltodict (draft 1 of 2)",
+      "setting up: verifiers are calibrating the unit drafted for martinblech/xmltodict (0 of 2 measured)"
+    ],
+    "b": [
+      "setting up: reading martinblech/xmltodict",
+      "setting up: agent ExbWoo is drafting the unit for martinblech/xmltodict; one draft serves every agent of the repository",
+      "setting up: verifiers are calibrating the unit drafted for martinblech/xmltodict (0 of 2 measured)"
+    ],
+    "gpu": [
+      "setting up: reading karpathy/autoresearch",
+      "no unit possible for karpathy/autoresearch: it has no tests, and a unit needs the repository's own tests to check every change; its code also calls CUDA (a GPU) in prepare.py and train.py, and units are measured on CPUs"
+    ]
+  },
+  "autoresearch": {
+    "head": "228791fb499afffb54b46200aca536f79142f117",
+    "class": "python",
+    "screened_at": 1791848670070,
+    "impossible": "it has no tests, and a unit needs the repository's own tests to check every change; its code also calls CUDA (a GPU) in prepare.py and train.py, and units are measured on CPUs",
+    "impossible_by": "reading",
+    "drafts": 0,
+    "usd": 0,
+    "errors": 0,
+    "next_at": 0,
+    "last_reason": null,
+    "proposal_id": null,
+    "rejected": []
+  },
+  "results": [
+    {
+      "check": "two bonded verifiers qualified on the one existing Python unit",
+      "ok": true,
+      "detail": "base58-py 98ebf8bf5a26"
+    },
+    {
+      "check": "three hosted agents launched on repositories with no unit: Core holds them in setting_up",
+      "ok": true,
+      "detail": "martinblech/xmltodict setting_up, martinblech/xmltodict setting_up, karpathy/autoresearch setting_up"
+    },
+    {
+      "check": "karpathy/autoresearch: its page says in one sentence why it cannot have a unit",
+      "ok": true,
+      "detail": "no unit possible for karpathy/autoresearch: it has no tests, and a unit needs the repository's own tests to check every change; its code also calls CUDA (a GPU) in prepare.py and train.py, and units are measured on CPUs"
+    },
+    {
+      "check": "a model drafted a recipe that passed its trial calibration and the agent proposed it",
+      "ok": true,
+      "detail": "xmltodict c88ce72f84a7 by ExbWoo, metrics parse_ir, stream_ir, unparse_ir"
+    },
+    {
+      "check": "one agent drafted for both (one proposal for the repository, not one per agent)",
+      "ok": true,
+      "detail": "drafter ExbWoo; the other showed: setting up: agent ExbWoo is drafting the unit for martinblech/xmltodict; one draft serves every agent of the repository"
+    },
+    {
+      "check": "the two verifiers calibrated the proposal by commit and reveal and agreed: Core created the unit",
+      "ok": true,
+      "detail": "unit 70d1fea17e03, replays 6u3V5g revealed, HQtTXh revealed"
+    },
+    {
+      "check": "the unit is active with stable tests and every deterministic metric enabled",
+      "ok": true,
+      "detail": "134 stable tests; parse_ir=2063382112.75, stream_ir=1781705585.75, unparse_ir=1102299690"
+    },
+    {
+      "check": "both agents of the repository are active",
+      "ok": true,
+      "detail": "active, active"
+    },
+    {
+      "check": "exactly one proposal was ever made",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "check": "both verifiers qualified on the new unit with the recipe they read from Core",
+      "ok": true,
+      "detail": "70d1fea17e03"
+    },
+    {
+      "check": "an agent ran an authoring attempt on the new unit by itself",
+      "ok": true,
+      "detail": "GGjjQn attempt done: 0.1770 USD model spend, 36 sandbox s, cost 920755000 base units, candidate 75ca8e5ccd8d"
+    },
+    {
+      "check": "its candidate was replayed by the verifiers to a verdict",
+      "ok": true,
+      "detail": "75ca8e5ccd accepted"
+    },
+    {
+      "check": "the drafting agent's page said why at every step",
+      "ok": true,
+      "detail": "setting up: reading martinblech/xmltodict > setting up: drafting the unit for martinblech/xmltodict  > setting up: verifiers are calibrating the unit drafted for m"
+    },
+    {
+      "check": "the other agent's page said why it waited",
+      "ok": true,
+      "detail": "setting up: reading martinblech/xmltodict > setting up: agent ExbWoo is drafting the unit for martinblec > setting up: verifiers are calibrating the unit drafted for m"
+    },
+    {
+      "check": "the draft was metered to the drafting agent's vault like an attempt",
+      "ok": true,
+      "detail": "draft 0.5966 USD in 1 draft(s); vault 30000000000 -> 26288570000, debited 3711430000"
+    },
+    {
+      "check": "nothing was spent for karpathy/autoresearch and nothing was proposed for it",
+      "ok": true,
+      "detail": "setup state {\"impossible_by\":\"reading\",\"drafts\":0,\"usd\":0}"
+    },
+    {
+      "check": "no secrets in the runtime's output",
+      "ok": true,
+      "detail": "73 lines"
+    }
+  ]
+}

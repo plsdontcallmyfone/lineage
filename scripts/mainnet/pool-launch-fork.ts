@@ -246,6 +246,7 @@ try {
 record.outcome = outcome;
 record.checks = checks;
 record.rows = rows;
-writeFileSync(join(import.meta.dir, "POOL-LAUNCH-FORK-LAST.json"), JSON.stringify(record, null, 2) + "\n");
+// POOL_LAUNCH_FORK_OUT: another record file (the launch upgrade rehearsal runs this script after the upgrade and keeps this lane's record as it is)
+writeFileSync(process.env.POOL_LAUNCH_FORK_OUT || join(import.meta.dir, "POOL-LAUNCH-FORK-LAST.json"), JSON.stringify(record, null, 2) + "\n");
 log(`${outcome}: ${checks.filter((c) => c.ok).length}/${checks.length} checks`);
 process.exit(outcome === "PASS" ? 0 : 1);

@@ -1,0 +1,143 @@
+{
+  "merge_memcpy": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 0.6591703504626517,
+      "ci_low": 0.6591703504626517,
+      "ci_high": 0.6591703504626517,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.6591703504626517,
+          "ci_low": 0.6591703504626517,
+          "ci_high": 0.6591703504626517,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          416036657
+        ],
+        "cand": [
+          274239029
+        ],
+        "ratio": 0.6591703504626517
+      },
+      "forward_ir": {
+        "base": [
+          63228205
+        ],
+        "cand": [
+          63228205
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "94896c0ef2132de67b6ee1b416d2db8fee81cc71ee0def12e427be4758ffa33b",
+    "eval_seconds": 154.2,
+    "date": "2026-10-13T11:42:00.147Z",
+    "match": true
+  },
+  "rope_once": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 0.9901 vs required 0.9900",
+    "effect": {
+      "metric": "forward_ir",
+      "ratio": 0.990110124981878,
+      "ci_low": 0.990110124981878,
+      "ci_high": 0.990110124981878,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.990110124981878,
+          "ci_low": 0.990110124981878,
+          "ci_high": 0.990110124981878,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          448163011
+        ],
+        "cand": [
+          448163011
+        ],
+        "ratio": 1
+      },
+      "forward_ir": {
+        "base": [
+          67018036
+        ],
+        "cand": [
+          66355236
+        ],
+        "ratio": 0.990110124981878
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d72",
+    "recipe_id": "94896c0ef2132de67b6ee1b416d2db8fee81cc71ee0def12e427be4758ffa33b",
+    "eval_seconds": 176.6,
+    "date": "2026-10-13T11:44:56.765Z",
+    "match": true
+  },
+  "matmul_rows4": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "forward_ir",
+      "ratio": 0.9183179563614055,
+      "ci_low": 0.9183179563614055,
+      "ci_high": 0.9183179563614055,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9183179563614055,
+          "ci_low": 0.9183179563614055,
+          "ci_high": 0.9183179563614055,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          416036657
+        ],
+        "cand": [
+          416031299
+        ],
+        "ratio": 0.9999871213271478
+      },
+      "forward_ir": {
+        "base": [
+          63228205
+        ],
+        "cand": [
+          58063596
+        ],
+        "ratio": 0.9183179563614055
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "94896c0ef2132de67b6ee1b416d2db8fee81cc71ee0def12e427be4758ffa33b",
+    "eval_seconds": 199.9,
+    "date": "2026-10-13T11:48:16.637Z",
+    "match": true
+  }
+}

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { ensureCoreSchema } from "./core-sync.ts";
-import { SAMPLE_REACH_S, SAMPLE_S, USD_SCHEMA, usdLookup, usdSampleAt, type QuoteUsdReading } from "./usd.ts";
+import { supplyApi } from "./supply.ts";
+import { SAMPLE_REACH_S, SAMPLE_S, USD_SCHEMA, usdLookup, usdNear, usdSampleAt, type QuoteUsdReading } from "./usd.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Agent tokens trade on pump.fun
 // (owner decisions 2026-10-10); a token from the earlier Meteora venue is listed with venue "meteora"
@@ -14,13 +15,33 @@ import { SAMPLE_REACH_S, SAMPLE_S, USD_SCHEMA, usdLookup, usdSampleAt, type Quot
 // time when there is one ("usd_basis": "at_time") and the current reading otherwise ("current"). With
 // no reading every "_usd" field is null and "usd" says why: never a quote-coin number in its place.
 
+// US dollars, one basis for every market figure (owner 2026-10-13 "need usd denom"; usd.ts holds the readings):
+//
+//   then   a trade, a candle of the past, the reference of a change: the UNITS figure times the UNITS/USD
+//          reading stored for that time (usdNear: nearest before within 15 minutes, else first after).
+//   now    the price, the market cap, the close of the candle that is still open: the pool's current
+//          UNITS price times the CURRENT reading.
+//
+//   price_usd, market_cap_usd   now
+//   change_24h_usd              price_usd now over change_ref_usd then, minus 1. "Then" is 24 hours ago
+//                               (the pool price after the last trade before it), or the launch for a coin
+//                               younger than a day (its start price). change_window says which.
+//   volume_24h_usd              the sum of its trades, each then
+//   trades                      each then
+//   candles                     trade candles then; an interval with no trade carries the UNITS close and
+//                               closes at that interval's own reading (so a move of UNITS shows on a coin
+//                               that did not trade); the open interval closes at price_usd now, the same
+//                               number as the headline, so the chart's change equals change_24h_usd.
+//
+// A figure whose reading is missing is null, with no other price in its place (the pages say what is missing).
+
 const TF: Record<string, number> = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 };
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, OPTIONS", "access-control-allow-headers": "content-type" };
 
 interface CoreRow { agent: string; class: string | null; lineage_id: string | null; repo: string | null; model: string | null; provider: string | null;
   generations: number; session_id: string | null; session_state: string | null; session_at: number | null; name: string | null; tagline: string | null;
   avatar: string | null; session_file: string | null; last_gen: string | null; last_lineage: string | null; last_metric: string | null; last_ratio: number | null;
-  last_fixed: number | null; last_at: number | null }
+  last_fixed: number | null; last_at: number | null; covered?: number | null }
 
 export interface StatusSource {
   (): Record<string, unknown>;
@@ -81,10 +102,13 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     const c = coreOf(t.agent);
     const awake = t.awake == null ? null : t.awake === 1;
     const working = c?.session_state === "live";
+    // network compute: asleep on chain, and the network pays for its attempts (Core's compute_covered); `awake` stays the chain's
+    const covered = c?.covered === 1;
     return {
       fees_to_compute: ui(t.to_compute, lineDecimals()),
       awake,
-      state: working ? "working" : t.graduated ? "graduated" : awake === null ? null : awake ? "awake" : "asleep",
+      covered,
+      state: working ? "working" : t.graduated ? "graduated" : awake === null ? null : awake ? "awake" : covered ? "covered" : "asleep",
       class: c?.class ?? null,
       model: c?.model ?? null,
       provider: c?.provider ?? null,
@@ -112,16 +136,16 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
   }
 
-  function summary(t: TokRow, cur: number | null = rateOf(usdNow()), at: (t: number | null) => number | null = usdLookup(db, now() - 86400 - 3600, now())) {
+  function summary(t: TokRow, cur: number | null = rateOf(usdNow()), at: (t: number | null) => number | null = usdNear(db, now() - 86400 - 3600, now())) {
     const qd = lineDecimals();
     const t0 = now() - 86400;
     const vol = db.query("SELECT COALESCE(SUM(quote), 0) AS q, COALESCE(SUM(base), 0) AS b, COUNT(*) AS n FROM trades WHERE mint = ? AND time >= ?")
       .get(t.mint, t0) as { q: number; b: number; n: number };
-    // 24h volume in USD: each trade at the price of its own time where a reading was stored, else at the current one
+    // 24h volume in USD: each trade at the reading of its own time; one trade without a reading and the sum has no dollar value
     let volUsd: number | null = 0;
     if (vol.n) {
       for (const r of db.query("SELECT time, quote FROM trades WHERE mint = ? AND time >= ?").all(t.mint, t0) as { time: number; quote: number }[]) {
-        const rate = at(r.time) ?? cur;
+        const rate = at(r.time);
         if (rate == null) { volUsd = null; break; }
         volUsd! += r.quote * rate;
       }
@@ -133,7 +157,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       .get(t.mint, t0) as { p: number } | null;
     const refPrice = ref?.p ?? t.start_price;
     // the same change in dollars needs the quote coin's dollar price 24 hours ago: only when a reading was stored within the hour before
-    const rate24 = usdAt24(t0);
+    // a coin launched inside the window has no price 24 hours ago: its reference is its start price, in dollars at the reading stored for its launch
+    const young = !ref && t.created_at >= t0;
+    const refAt = young ? t.created_at : t0;
+    const rate24 = young ? usdNear(db, refAt, refAt)(refAt) : usdAt24(t0);
     const supply = ui(t.supply, t.decimals);
     const price = t.spot_price;
     const threshold = t.migration_threshold ? BigInt(t.migration_threshold) : null;
@@ -160,6 +187,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       market_cap_usd: inUsd(price != null && supply != null ? price * supply : null, cur),
       volume_24h_usd: volUsd,
       change_24h_usd: price != null && refPrice && cur != null && rate24 != null ? (price * cur) / (refPrice * rate24) - 1 : null,
+      // the two ends of that change: the dollar price then (null without a reading for that time), when "then" is, and whether it is 24 hours ago or the launch
+      change_ref_usd: refPrice && rate24 != null ? refPrice * rate24 : null,
+      change_ref_at: refAt,
+      change_window: young ? "since_launch" : "24h",
       quote_reserve_usd: inUsd(ui(t.quote_reserve, qd), cur),
       migration_threshold_usd: inUsd(ui(t.migration_threshold, qd), cur),
       fees_to_compute_usd: inUsd(ui(t.to_compute, qd), cur),
@@ -183,7 +214,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
   /** every token's summary row under one reading and one sample lookup */
   function summaries(): ReturnType<typeof summary>[] {
     const cur = rateOf(usdNow());
-    const at = usdLookup(db, now() - 86400 - 3600, now());
+    const at = usdNear(db, now() - 86400 - 3600, now());
     return (db.query("SELECT * FROM tokens").all() as TokRow[]).map((t) => summary(t, cur, at));
   }
 
@@ -260,6 +291,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     const v = (db.query("SELECT v FROM meta WHERE k = 'pump_alerts'").get() as { v: string } | null)?.v;
     return v ? (JSON.parse(v) as { checked_at: number; baseline: unknown; alerts: { kind: string; subject: string; detail: string }[] }) : null;
   };
+  // supply, burns, the developer wallet, agent coins and holders (supply.ts); dollars by the rule above
+  const supply = supplyApi(db, { now, usd: usdNow, quote: QUOTE });
   const getTok = (mint: string) => (MINT.test(mint) ? (db.query("SELECT * FROM tokens WHERE mint = ?").get(mint) as TokRow | null) : null);
 
   return async function handle(req: Request): Promise<Response> {
@@ -350,6 +383,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
           hidden: hidden.has(t.mint), fees_claimed_raw: t.fees_claimed, to_compute_raw: t.to_compute, to_protocol_raw: t.to_protocol, debited_raw: t.debited, state_at: t.state_at })),
       });
     }
+    if (parts[1] === "supply") {
+      const r = supply(parts.slice(2), q);
+      return r ? json(r) : json({ error: "not found" }, 404);
+    }
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
 
     if (parts.length === 2) {
@@ -367,7 +404,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         fees: (r) => r.fees_to_compute ?? -1,
         verified: (r) => r.generations ?? -1,
         // awake first (working counts as awake), then market cap
-        awake: (r) => (r.state === "working" ? 2e18 : r.awake ? 1e18 : 0) + Math.min(9.9e17, r.market_cap ?? 0),
+        awake: (r) => (r.state === "working" ? 2e18 : r.awake || r.covered ? 1e18 : 0) + Math.min(9.9e17, r.market_cap ?? 0),
         // the agent directory: working now, then the newest verified improvement, then market cap
         building: (r) => (r.state === "working" ? 4e18 : 0) + (r.building?.last?.at ?? 0) * 1e3 + Math.min(9.9e2, (r.market_cap ?? 0) / 1e4),
       };
@@ -381,7 +418,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       const rows = all.filter((r) =>
         (!cls || facet(r.class) === cls) &&
         (!model || facet(r.model) === model) &&
-        (!state || (state === "graduated" ? r.phase === "graduated" : state === "awake" ? r.awake === true : state === "asleep" ? r.awake === false : r.state === state)) &&
+        (!state || (state === "graduated" ? r.phase === "graduated" : state === "awake" ? r.awake === true : state === "asleep" ? r.awake === false && !r.covered : r.state === state)) &&
         (!text || r.mint.toLowerCase() === text || r.agent.toLowerCase() === text || (r.symbol ?? "").toLowerCase().includes(text) || (r.name ?? "").toLowerCase().includes(text)));
       rows.sort((a, b) => k(b) - k(a) || (a.mint < b.mint ? -1 : 1));
       const count = (f: (r: (typeof all)[number]) => string) => all.reduce<Record<string, number>>((m, r) => ((m[f(r)] = (m[f(r)] ?? 0) + 1), m), {});
@@ -402,32 +439,37 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         if (!sec) return json({ error: "tf must be 1m, 5m, 1h or 1d" }, 400);
         const to = int("to", now());
         const from = int("from", to - sec * 500);
+        // fill=0: trade candles only. Otherwise every interval from the first candle to `to` is there, at most `limit` of them (the newest).
+        const fill = q.get("fill") !== "0";
+        const limit = Math.max(1, int("limit", 1000, 5000));
         const rows = db.query(`SELECT time, slot, idx, price, COALESCE(spot_after, price) AS p, base, quote FROM trades WHERE mint = ? AND time >= ?
           AND time <= ? ORDER BY slot, idx`).all(t.mint, from, to) as { time: number; p: number; base: number; quote: number }[];
         type C = { t: number; open: number; high: number; low: number; close: number; volume: number; volume_base: number; trades: number;
           open_usd: number | null; high_usd: number | null; low_usd: number | null; close_usd: number | null; volume_usd: number | null };
-        const out: C[] = [];
-        // US dollars: each trade at the reading stored nearest before its own time, else at the current reading
+        const trade: C[] = [];
         const reading = usdNow();
         const cur = rateOf(reading);
-        const at = usdLookup(db, from, to);
-        let atTime = 0, atCurrent = 0;
+        const at = usdNear(db, from, to);
         const mx = (a: number | null, b: number | null) => (a == null || b == null ? null : Math.max(a, b));
         const mn = (a: number | null, b: number | null) => (a == null || b == null ? null : Math.min(a, b));
+        // Where the first candle opens: the pool price after the last trade before the window; with no such
+        // trade the pool still sat at the curve's start price (the first buy then shows as a move, not a dot).
+        const prior = db.query(`SELECT COALESCE(spot_after, price) AS p FROM trades WHERE mint = ? AND time < ? ORDER BY slot DESC, idx DESC LIMIT 1`)
+          .get(t.mint, from) as { p: number } | null;
+        const before = prior?.p ?? (t.start_price != null && t.start_price > 0 ? t.start_price : null);
+        // trade candles: each trade at the reading of its own time (a trade without one leaves its candle without dollars)
         for (const r of rows) {
           const b = Math.floor(r.time / sec) * sec;
-          const stored = at(r.time);
-          const rate = stored ?? cur;
-          if (stored != null) atTime++; else atCurrent++;
+          const rate = at(r.time);
           const pu = inUsd(r.p, rate);
-          let c = out[out.length - 1];
+          let c = trade[trade.length - 1];
           if (!c || c.t !== b) {
-            const prev = out[out.length - 1];
-            const open = prev ? prev.close : r.p;
-            const openUsd = prev ? prev.close_usd : pu;
+            const prev = trade[trade.length - 1];
+            const open = prev ? prev.close : before ?? r.p;
+            const openUsd = inUsd(open, rate); // replaced below by the close of the candle before it, when that one has dollars
             c = { t: b, open, high: Math.max(open, r.p), low: Math.min(open, r.p), close: r.p, volume: 0, volume_base: 0, trades: 0,
-              open_usd: openUsd, high_usd: mx(openUsd, pu), low_usd: mn(openUsd, pu), close_usd: pu, volume_usd: 0 };
-            out.push(c);
+              open_usd: openUsd, high_usd: pu, low_usd: pu, close_usd: pu, volume_usd: 0 };
+            trade.push(c);
           }
           c.high = Math.max(c.high, r.p);
           c.low = Math.min(c.low, r.p);
@@ -437,11 +479,53 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
           c.trades++;
           c.high_usd = mx(c.high_usd, pu);
           c.low_usd = mn(c.low_usd, pu);
-          c.close_usd = pu;
+          c.close_usd = c.close_usd == null ? null : pu;
           c.volume_usd = c.volume_usd == null || rate == null ? null : c.volume_usd + r.quote * rate;
         }
-        return json({ mint: t.mint, tf, from, to, price: `pool price after each trade, ${QUOTE} per token; the _usd fields are the same in US dollars`, usd: reading,
-          usd_basis: cur == null && atCurrent ? null : atCurrent === 0 ? "at_time" : atTime === 0 ? "current" : "mixed", start_price_usd: inUsd(t.start_price, cur), candles: out });
+        // the grid: every interval from the first candle on; one with no trade carries the UNITS close and is priced at its own reading
+        const out: C[] = [];
+        const live = Math.floor(now() / sec) * sec; // the interval still open
+        // a window that opens after a trade starts on its first interval, carrying that trade's price; one before any trade starts at the first trade
+        const any = trade.length > 0 || (fill && prior != null);
+        const lastT = trade.length ? trade[trade.length - 1]!.t : 0;
+        const end = fill && any ? Math.max(lastT, Math.floor(Math.min(to, now()) / sec) * sec) : lastT;
+        const start = prior && fill ? Math.ceil(from / sec) * sec : trade.length ? trade[0]!.t : 0;
+        const first = fill ? Math.max(start, end - (limit - 1) * sec) : start;
+        let prev: C | null = prior && fill ? { t: -1, open: prior.p, high: prior.p, low: prior.p, close: prior.p, volume: 0, volume_base: 0, trades: 0,
+          open_usd: null, high_usd: null, low_usd: null, close_usd: null, volume_usd: null } : null;
+        let k = 0;
+        while (k < trade.length && trade[k]!.t < first) prev = trade[k++]!;
+        const step = (c: C) => {
+          // a candle opens at the close before it, in dollars too; its high and low hold its open
+          if (prev?.close_usd != null) c.open_usd = prev.close_usd;
+          if (c.t === live && cur != null) c.close_usd = (t.spot_price ?? c.close) * cur; // the open interval closes at the headline price, now
+          const ends = [c.open_usd, c.close_usd];
+          c.high_usd = c.close_usd == null ? null : Math.max(...[c.high_usd, ...ends].filter((x): x is number => x != null));
+          c.low_usd = c.close_usd == null ? null : Math.min(...[c.low_usd, ...ends].filter((x): x is number => x != null));
+          out.push(c);
+          prev = c;
+        };
+        if (!fill) for (; k < trade.length; k++) step(trade[k]!);
+        else if (any) {
+          for (let b = first; b <= end; b += sec) {
+            if (k < trade.length && trade[k]!.t === b) { step(trade[k++]!); continue; }
+            if (!prev) continue;
+            const p: number = (prev as C).close;
+            // the reading of this interval: at its end, or the latest one when it is still open
+            const rate = b === live ? cur ?? at(now()) : at(Math.min(b + sec - 1, to));
+            const pu = inUsd(p, rate);
+            step({ t: b, open: p, high: p, low: p, close: p, volume: 0, volume_base: 0, trades: 0, open_usd: pu, high_usd: pu, low_usd: pu, close_usd: pu, volume_usd: 0 });
+          }
+        }
+        const priced = out.filter((c) => c.close_usd != null && c.open_usd != null).length;
+        // the change the pages show beside the chart (summary): its reference in dollars, so the chart's percentage is the same number
+        const sm = summary(t, cur);
+        return json({ mint: t.mint, tf, from, to, filled: fill, price: `pool price after each trade, ${QUOTE} per token; the _usd fields are the same in US dollars: a trade at the ${QUOTE} dollar price of its own time, an interval with no trade at that interval's, the open interval at the current one`, usd: reading,
+          // at_time: every candle has dollars; partial: some intervals have no reading on record; null: none has
+          usd_basis: !out.length || priced === out.length ? "at_time" : priced ? "partial" : null, unpriced: out.length - priced,
+          // the curve's start price in dollars as the candles are: at the reading stored for the launch
+          start_price_usd: inUsd(t.start_price, usdNear(db, t.created_at, t.created_at)(t.created_at)),
+          change: { ref_usd: sm.change_ref_usd, ref_at: sm.change_ref_at, window: sm.change_window, now_usd: sm.price_usd, pct: sm.change_24h_usd }, candles: out });
       }
       case "trades": {
         const limit = Math.max(1, int("limit", 50, 500));
@@ -461,13 +545,14 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         const reading = usdNow();
         const cur = rateOf(reading);
         const times = rows.map((r) => r.time).filter((x): x is number => x != null);
-        const at = usdLookup(db, times.length ? Math.min(...times) : 0, times.length ? Math.max(...times) : 0);
+        const at = usdNear(db, times.length ? Math.min(...times) : 0, times.length ? Math.max(...times) : 0);
         return json({
           mint: t.mint,
           usd: reading,
           trades: rows.map((r) => {
+            // a trade's dollars are at the reading of its own time; without one it has none
             const stored = at(r.time);
-            const rate = stored ?? cur;
+            const rate = stored;
             return { signature: r.sig, index: r.idx, slot: r.slot, time: r.time, venue: r.venue, side: r.side, base_amount: r.base,
               quote_amount: r.quote, base_raw: r.base_raw, quote_raw: r.quote_raw, price: r.price, price_after: r.spot_after, trader: r.trader,
               creator_fee_raw: r.creator_fee_raw, quote_amount_usd: inUsd(r.quote, rate), price_usd: inUsd(r.price, rate), price_after_usd: inUsd(r.spot_after, rate),

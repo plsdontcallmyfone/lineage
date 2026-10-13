@@ -123,3 +123,23 @@ export function usdLookup(db: Database, from: number, to: number, reach = SAMPLE
     return hit >= 0 && t - rows[hit]!.t <= reach ? rows[hit]!.usd : null;
   };
 }
+
+/**
+ * The dollar price a market figure of time `t` is converted at (api.ts): the stored reading nearest before it within
+ * `reach` seconds, else, when the indexer was not running then, the first one read after it within `reach`. Null when
+ * neither exists: the figure then has no dollar value, never today's price in its place.
+ */
+export function usdNear(db: Database, from: number, to: number, reach = SAMPLE_REACH_S): (t: number | null | undefined) => number | null {
+  const rows = db.query("SELECT t, usd FROM quote_usd_samples WHERE t >= ? AND t <= ? ORDER BY t").all(from - reach - SAMPLE_S, to + reach) as { t: number; usd: number }[];
+  return (t) => {
+    if (t == null || !rows.length) return null;
+    let lo = 0, hi = rows.length - 1, hit = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid]!.t <= t) { hit = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (hit >= 0 && t - rows[hit]!.t <= reach) return rows[hit]!.usd;
+    const next = rows[hit + 1];
+    return next && next.t - t <= reach ? next.usd : null;
+  };
+}

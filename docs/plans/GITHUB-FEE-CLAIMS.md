@@ -1,5 +1,7 @@
 # GitHub fee routing and the Claim page
 
+**2026-10-12, owner decision: the recipient is the repository the agent works on, claimed by anyone with admin on it, at one fixed share. Section 11 is current; where sections 1 to 9 say "GitHub account", slider or username, section 11 replaces them.**
+
 Status: LIVE ON DEVNET since 2026-10-12 (owner: "put up the two pages"): chain bit, Core and profile flags on
 for devnet, /claim linked from the Eco page, proof by public gist (no OAuth app yet; the callback is
 `https://<site>/v1/fee-claims/oauth/callback`, which follows from UNITS_SITE_URL). Off on mainnet.
@@ -217,3 +219,220 @@ flag off: identical splits to today and `set_fee_route` refused.
 - **Not built.** Indexer rows for route changes and claims (they carry no mint; Core reads routes
   and escrows from chain; the indexer records the routed slice of every crank as `fees_routed`);
   an org-admin proof (Q4).
+
+## 11. Repository owners claim (owner decision 2026-10-12)
+
+"The idea is that repo owners that actually own the repo (not the agent) are the ones to claim."
+This section replaces the parts of sections 1, 3 (D2, D3, D4, D6), 5, 6, 8 and 9 it contradicts.
+The program is unchanged and was not upgraded: it stores and signs over a `u64` and never knew what
+the number meant.
+
+### 11.1 The three answers
+
+1. **Routing.** The launcher opts in with one tick. Ticked, the recipient is the repository the
+   agent works on. Nothing is typed.
+2. **Share.** One number for every agent: 20% of the agent's share. It lives on chain in
+   `ClaimConfig`: the admin sets `min_bps = max_bps = 2000`, so the program itself refuses any other
+   share, and `set_claim_config` changes it for later routes. The wizard reads the figure from
+   `ClaimConfig.min_bps` and carries none of its own.
+3. **Who claims.** Anyone GitHub says has admin on the repository, for a personal and an
+   organisation repository alike.
+
+### 11.2 What the escrow is keyed by
+
+The REPOSITORY's numeric GitHub id (`GET /repos/{owner}/{repo}` field `id`): permanent across a
+rename and a transfer. Seeds, accounts, instructions and the attested message are the ones of
+section 4; only the meaning of `github_id` changed.
+
+Account ids and repository ids are both small integers and overlap. They can never be confused,
+for three reasons that hold together:
+
+- **One kind, everywhere.** Core has no code path that turns an account into an escrow key. A
+  session carries the account only as the claimant's identity, plus the list of repository ids that
+  account was shown to administer; `attest` signs only for an id in that list. The account lookup
+  (`GET /v1/github/users/:login`) is removed; the wizard gets its id from
+  `GET /v1/github/repos/:owner/:repo`. `GET /v1/fee-claims/providers` says `recipient: "repository"`.
+- **Bound to the repository on chain.** Core attests for an id only after it has seen an agent
+  whose route names that id AND whose own `AgentLaunch.repo_url` on chain is a name GitHub resolved
+  to that id (`fee_claim_bound`, recorded at first sight and kept, so a later redirect does not
+  strand what accrued). A number of any other origin (an account id from the first devnet build, a
+  route set by hand to an arbitrary number) is never bound, shows `claimable_by_admins: false`, is
+  not named on a profile and pays nobody, even when some unrelated repository happens to carry the
+  same number. Unit-tested with exactly that clash.
+- **Mainnet starts clean.** The feature was never on there, so every mainnet escrow will be a
+  repository's. Devnet holds test escrows keyed by account ids from the first build: they stay on
+  chain, unbound and unclaimable (TEST tokens).
+
+Names: Core keeps every owner/name GitHub ever resolved to an id (`fee_claim_repo_names`), so an
+agent registered under a repository's earlier name still binds after a rename.
+
+### 11.3 Proof of admin
+
+At the OAuth callback, and only there, Core holds the visitor's token and asks GitHub:
+`GET /user` (who), then `GET /repositories/{id}` for each routed repository (the same resource as
+`GET /repos/{owner}/{repo}`), and counts a repository only when the answer says
+`permissions.admin === true`. A missing or false field is a no. Above 60 routed repositories Core
+reads the user's own list (`GET /user/repos`, up to 1,000) and intersects it, and a repository named
+at the sign-in (`oauth/start?repo=owner/name`, the page's lookup) is always asked about by name. The
+token is dropped when the callback returns: it is not in the session (an HMAC token holding account
+id, login, method, wallet, repository ids, expiry), not in the database, and no later request uses
+it (asserted in the tests against the mock's record of token calls). A session lasts 15 minutes, so
+admin is as fresh as that.
+
+**Scope: none.** The app requests no scope (`scope` is not sent). GitHub documents the empty scope
+as read-only access to public information including repository info, and scopes never add to what
+the user can already do; `permissions` on a public repository describes the signed-in user, not the
+token's reach. Agents work on public repositories only, so no wider scope is needed, and `repo` or
+`public_repo` (write access to code) would be far more than this page should ask for.
+`UNITS_GITHUB_OAUTH_SCOPE` exists so the scope can be changed without a code change.
+
+Organisations: a new GitHub organisation restricts third-party OAuth apps by default. Until one of
+its owners approves the units app (GitHub offers the request on the sign-in screen), GitHub may not
+report the member's admin role to the app, and the repository then does not appear. Core fails
+closed in that case; the page says so in one sentence. No scope lifts that restriction; approval
+does.
+
+NOT PROVEN against github.com: this lane has no GitHub account it may use, so the two statements
+above (an empty-scope token sees `permissions.admin` truthfully on a public personal repository, and
+on a public organisation repository once the app is approved) rest on GitHub's documentation and
+the mock. The owner's first sign-in on devnet settles both (section 11.8, step 5).
+
+**The gist proof stays, narrowed.** A gist proves an account, not a role. It therefore opens only
+routed repositories that account owns itself (`owner.type == "User"` and `owner.id` equal to the
+gist owner's id, read from GitHub's public API): the personal owner of a repository always has
+admin on it. It never opens an organisation's repository. It is the path that works with no OAuth
+app at all, which is devnet's state today.
+
+### 11.4 Several admins
+
+Any one admin can claim the whole escrow to the wallet they bind; the page says so under every
+repository ("Any one admin of owner/name can claim the whole balance to the wallet they bind.").
+There is no split between admins and no vote: the people who run a repository settle that between
+themselves, as they do for its other shared assets.
+
+- Two admins ask at the same time, nothing claimed yet: both get an attestation for the whole
+  balance at the same `claim_seq`; the first transaction to land is paid and pins its wallet, the
+  other no longer verifies (`BadAttestation`).
+- A second admin binds another wallet later: the attestation is flagged `rebind`, and their
+  transaction records a pending move that takes effect `rebind_delay_s` later (D7). Until then the
+  pinned wallet can keep claiming, which also cancels the pending move. After the delay the second
+  admin claims again and is paid; their wallet becomes the pinned one. The page shows both states.
+- Core records which account asked for each attestation (`fee_claim_attestations.login`).
+- Someone who loses admin can still claim for at most the 15 minutes their session lasts.
+
+### 11.5 Redirect and removal
+
+- **Removal: impossible, and that stays.** `set_fee_route` requires a non-zero id and bps within
+  the bounds; there is no instruction that clears a route. "Cannot be removed once set" is enforced
+  by the program, and the wizard says it beside the tick.
+- **Redirect: not offered, not impossible.** The site has no control for it. The program still
+  lets the agent's registry owner call `set_fee_route` again by hand, which records a pending
+  change that applies after `change_delay_s`. Forbidding that needs a program change, which this
+  lane did not make. What bounds it without one: (a) an id that is not the agent's own repository
+  is never bound, so a redirect cannot pay the launcher or a friend, it can only stop the
+  repository's future share; (b) what accrued stays claimable (D5, and the binding is kept);
+  (c) `change_delay_s` is admin-editable: set long, a redirect is a public notice of that length.
+  Recommended launch value: 30 days (owner decides).
+- With `min_bps = max_bps`, a redirect cannot change the share either.
+
+### 11.6 Core and pages (changes to sections 5 and 6)
+
+| Route | Change |
+|---|---|
+| `GET /v1/github/repos/:owner/:repo` | new: id, full name, owner (id, login, type, avatar) of a public repository; follows GitHub's redirect from a former name |
+| `GET /v1/github/users/:login` | removed |
+| `GET /v1/agents/:id/fee-route` | `repository` (null unless bound) instead of `login` |
+| `GET /v1/fee-claims/recipients/:github_id`, `?repo=owner/name` | the id is a repository's; adds `repository` and `claimable_by_admins` |
+| `GET /v1/fee-claims/oauth/start` | optional `repo=owner/name` |
+| `GET /v1/fee-claims/session`, `POST /wallet`, `POST /proofs/gist` | answer `repositories` |
+| `POST /v1/fee-claims/attest` | `{ session, repo_id }`; 403 `not_admin`, 403 `not_a_repository_escrow` |
+
+New Core tables: `fee_claim_repos`, `fee_claim_repo_names`, `fee_claim_bound` (kept by a purge).
+
+- **Wizard** (`apps/web/wallet/fee-route-step.ts`, rules in `fee-route-plan.ts`): one unticked box,
+  "Route 20% of this agent's fees to the owners of owner/repo", the figure from chain. It cannot be
+  ticked until Core has resolved the repository in the field, and changing the field clears it. The
+  launch builds `set_fee_route` for the id looked up for exactly the repository the launch names.
+- **Profile chip**: "20% of fees go to the owners of owner/repo", linking to `/claim?repo=`.
+- **/claim**: Sign in with GitHub; bind a wallet; one panel per repository the account administers
+  that has fees routed to it (claimable, claimed, routed in total, per agent, in US dollars with the
+  coin amount beside each); claim. "Check any repository" shows any repository's balance and offers
+  the sign-in for it.
+
+### 11.7 Proven, and not
+
+- `packages/core/test/fee-claims.test.ts` 10 tests (9 red on the previous module, 10 green): keying
+  by repository id; the share from chain config; admin by sign-in on a personal and an organisation
+  repository; a member without admin refused; an id that is not a repository's never attested (the
+  account-id clash); two admins and the rebind; the large-set path and the named repository; the
+  narrowed gist; token never kept; no scope sent.
+- `apps/web/test/fee-route-plan.test.ts` 5 tests: nothing unticked; the route is for the checked
+  repository only; a lookup for another repository refused; the figure follows the chain.
+- `scripts/claims/repo-page-proof.ts` 34/34 in headless Chromium at 1280 and 390: `/claim` signed
+  out, signed in as an organisation admin with two repositories, the dollar and coin amounts, the
+  one-admin sentence, a non-admin member, the lookup, the account-id clash, and the wizard's tick.
+  The chain Core reads there is staged in the script; the dollar price is the live reading.
+- NOT proven: the sign-in against github.com (11.3); a claim transaction under the repository model
+  on devnet (the program and the attested bytes are unchanged, and the bytes are unit-tested; the
+  earlier devnet claims of section 10 used the same instruction). `scripts/pools/devnet-proof.ts`
+  section 7 was written for account-keyed routes and now refuses to start; it needs a rewrite for
+  one escrow per repository before it can run again.
+
+### 11.8 To open claims on mainnet (nothing below was done)
+
+1. GitHub OAuth app owned by the units organisation: Homepage URL `https://app.units.gg`,
+   Authorization callback URL `https://app.units.gg/v1/fee-claims/oauth/callback`, no scope
+   configured or requested, device flow off. On the server, mode 600, in Core's env file:
+   `UNITS_GITHUB_OAUTH_CLIENT_ID`, `UNITS_GITHUB_OAUTH_CLIENT_SECRET`; `UNITS_SITE_URL` already
+   yields the callback.
+2. A dedicated attestor key generated on the server, named by `UNITS_FEE_CLAIMS_ATTESTOR_KEY`.
+3. Admin transactions, by the launch admin: `set_claim_config { attestor, min_bps 2000,
+   max_bps 2000, change_delay_s, rebind_delay_s, max_attestation_ttl_s 600, paused false }`, then
+   `set_features` with bit 1 (value 2, or 3 with pools).
+4. Flags: `features.github_fee_claims` true in `config/network.json` (Core) and in the mainnet
+   block of `config/profile.json` (pages); the gate (`scripts/deploy/gate.ts`) must pass
+   `GET /api/fee-claims/*`, `GET /api/github/repos/*`, the three POSTs and
+   `GET /v1/fee-claims/oauth/callback`.
+5. Before step 4 on mainnet, once on devnet with the real app: sign in as the admin of a personal
+   repository and of an organisation repository that have a route, and see both listed. If the
+   organisation's is missing after its owner approved the app, set `UNITS_GITHUB_OAUTH_SCOPE=read:org`
+   and repeat.
+
+Devnet needs its admin to send `set_claim_config` with `min_bps = max_bps = 2000` (it holds 1000 and
+3000 today, so the tick there reads 10% until then), and its Core and pages redeployed.
+
+## 12. Fees waiting for the owners (owner 2026-10-13)
+
+"Unclaimed fees waiting for you." A public view, no sign-in, of what sits in each repository's escrow.
+
+- **Core**: `GET /v1/fee-claims/waiting`, and `?repo=owner/name` for one repository (an empty list
+  when nothing is routed to it; by every name GitHub ever gave the repository). Per repository:
+  `waiting` (the escrow vault's balance on chain) and `claimed`, each in base units with `_usd`;
+  `routed_total`; the `agents` whose route names it now with their share and `set_at`;
+  `routed_since` (the earliest of those routes, a chain fact); `waiting_since`. Largest first.
+  Only escrows bound to their repository (11.2) appear, so an account-keyed escrow of the first
+  build is never listed; no wallet, claimant or attestation is in the answer. Held for 30 seconds.
+- **Dollars**: the amount times the quote coin's current price, the rule for a figure of "now" at
+  the top of `packages/indexer/src/api.ts`, from Core's copy of the indexer's reading
+  (`revenue.ts`). With no reading every `_usd` is null with `usd_reason`, and the pages say so.
+- **`waiting_since` is Core's observation, not a chain fact.** The escrow account holds no time.
+  Core notes when it first saw a balance at the escrow's current claim number (table
+  `fee_claim_waiting`), so the time starts again after a claim, and it is late by however long
+  nobody had asked Core (the pages ask whenever someone opens them).
+- **Pages** (`apps/web/src/fees-waiting.ts`): the list "Repositories with fees waiting" under the
+  claim steps on `/claim`; a section on the repository's project page ("$X is waiting for the
+  owners of owner/repo. Anyone with admin on the repository can claim it.", a Claim button to
+  `/claim?repo=owner/repo`); and `/claim/<owner>/<name>`, the address to share, whose title and
+  description the web server writes into the document it serves (`apps/web/claim-preview.ts`,
+  `og:` and `twitter:` tags, the amount when something waits, read from Core and kept a minute).
+  Empty states: no repository with fees waiting; a route that has earned nothing; nothing routed
+  to this repository. Where the feature is off the list and the section are absent.
+- A link to `/claim?repo=` from inside the app lost its query (the router carried only the path),
+  so the profile chip never opened its repository; fixed for `/claim`.
+- **Proven**: Core tests 3 (unclaimed with two agents, partly claimed, empty, the dollar rule, the
+  account-id escrow left out, nothing private, no reading, the flag); page and preview tests 7;
+  `bun scripts/claims/waiting-proof.ts` 44/44 in headless Chromium at 1280 and 390 on a staged
+  chain, then on a chain with no route. **Not proven**: a real escrow (none holds anything on
+  mainnet today: no agent has set a route), the preview as X or another site renders it, and the
+  tags on a statically hosted copy of the app (they are written by `apps/web/server.ts`).
+

@@ -30,7 +30,7 @@ const sum = (xs: string[]) => xs.reduce((a, x) => a + BigInt(x), 0n).toString();
 const tokens = (base: string) => (BigInt(base) === 0n ? "0" : int(Number(BigInt(base) / 1_000_000n)));
 
 const CSS = `
-.pl-page{display:grid;gap:20px}
+.pl-page{display:grid;gap:20px;max-width:calc(1440px - 2 * var(--pad-x));margin-left:auto;margin-right:auto}
 .pl-top{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .pl-rules{display:flex;flex-wrap:wrap;gap:6px 18px;padding:11px 16px;border-top:1px solid var(--border);background:var(--bg2);font-size:12.5px;color:var(--ts)}
 .pl-rules b{font-weight:500;color:var(--tp);font-variant-numeric:tabular-nums}
@@ -121,7 +121,7 @@ export async function poolsPage(): Promise<Page> {
   const head = html`<div class="ph-row"><div class="ph-title"><div class="eyebrow">Pools</div><h1>Agent pools</h1>
     <div class="ph-sub"><span>Agents working on one repository share a slice of their fees: payouts by verified work, buybacks of each other's tokens, burns at milestones.</span></div></div></div>`;
   if (!res || !Array.isArray(res.pools)) {
-    return { title: "Pools", body: html`<style>${raw(CSS)}</style><div class="pl-page">${head}${empty("Pools are not open yet", "Agent pools open with the product launch.")}<div class="pl-cols"><div class="pl-list">${how(null)}</div></div></div>` };
+    return { title: "Pools", body: html`<style>${raw(CSS)}</style><div class="pl-page">${head}${empty("Pools are not open yet", "Agents on one repository share fees, buy each other's tokens and burn at milestones.")}<div class="pl-cols"><div class="pl-list">${how(null)}</div></div></div>` };
   }
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   // hidden launches are left out here as everywhere: a pool shows when none of its members is hidden

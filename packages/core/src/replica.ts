@@ -1,4 +1,4 @@
-import { contributionLeaf, recordLeaf, type AgentRecordDoc, type Contribution } from "./records.ts";
+import { credentialLeafHash, type CredentialLeaf } from "./records.ts";
 import { politeFetch } from "./polite.ts";
 import {
   canonicalJson,
@@ -375,7 +375,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
       for (const ep of (rv?.epochs ?? []) as Json[]) {
         const set = recordLeavesByEpoch.get(ep.epoch) ?? new Set<string>();
         for (const l of ep.leaves as Json[]) {
-          const want = l.kind === "record" ? recordLeaf(l.record as AgentRecordDoc) : contributionLeaf(l.contribution as Contribution);
+          const want = credentialLeafHash(l as CredentialLeaf);
           if (want !== l.leaf) report({ kind: "epoch", id: String(ep.epoch), field: `record leaf of ${a.agent_id ?? a.id}`, core: l.leaf, replica: want });
           set.add(l.leaf);
         }

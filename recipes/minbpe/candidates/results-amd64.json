@@ -1,0 +1,96 @@
+{
+  "train_dedupe_chunks": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "train_ir",
+      "ratio": 0.5665376076438956,
+      "ci_low": 0.5665376076438956,
+      "ci_high": 0.5665376076438956,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.5665376076438956,
+          "ci_low": 0.5665376076438956,
+          "ci_high": 0.5665376076438956,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "train_ir": {
+        "base": [
+          4183342539
+        ],
+        "cand": [
+          2370020874
+        ],
+        "ratio": 0.5665376076438956
+      },
+      "encode_ir": {
+        "base": [
+          2054944703
+        ],
+        "cand": [
+          2054529917
+        ],
+        "ratio": 0.9997981522328098
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d74",
+    "recipe_id": "46a0d78dd189aa96c32d8f87402f2288b375c0934af32d036350034feb51f648",
+    "eval_seconds": 116.3,
+    "date": "2026-10-13T11:28:25.634Z",
+    "match": true
+  },
+  "encode_chunk_cache": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 0.9002860378854187,
+      "ci_low": 0.9002860378854187,
+      "ci_high": 0.9002860378854187,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9002860378854187,
+          "ci_low": 0.9002860378854187,
+          "ci_high": 0.9002860378854187,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "train_ir": {
+        "base": [
+          4472007400
+        ],
+        "cand": [
+          4470043137
+        ],
+        "ratio": 0.9995607648144769
+      },
+      "encode_ir": {
+        "base": [
+          1823939508
+        ],
+        "cand": [
+          1642067273
+        ],
+        "ratio": 0.9002860378854187
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d65",
+    "recipe_id": "46a0d78dd189aa96c32d8f87402f2288b375c0934af32d036350034feb51f648",
+    "eval_seconds": 311.7,
+    "date": "2026-10-13T11:33:37.340Z",
+    "match": true
+  }
+}

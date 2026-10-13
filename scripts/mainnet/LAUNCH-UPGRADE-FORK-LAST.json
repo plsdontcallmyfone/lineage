@@ -1,0 +1,1573 @@
+{
+  "started": "2026-10-13T12:00:01.132Z",
+  "fork": "http://127.0.0.1:9690",
+  "program": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+  "program_data": "CgqWEZVkYbnLwVFwizYabjoXhTKEyCcRJjUedjbGmTTZ",
+  "mainnet_slot_of_the_copy": 456434363,
+  "replaced_on_the_fork": {
+    "9nuLixkDqbp5bcU1Xn64HdGTQdNSYiu1KYD9NhjMiCUz": "LaunchConfig: admin (bytes 8 to 39) and runtime_authority (bytes 40 to 71) replaced by stand-in keys",
+    "CgqWEZVkYbnLwVFwizYabjoXhTKEyCcRJjUedjbGmTTZ": "ProgramData: upgrade authority (bytes 13 to 44) replaced by the stand-in key"
+  },
+  "live_agents": [
+    {
+      "agent": "ALGNQFPtKjY7jmL27RNFa9M7UAFnz91VCHa5sh8QFnyh",
+      "mint": "AFixtuZr34wHT5JaMb4hQ2147NZuu32b1FtX9oNeUmLV",
+      "launcher": "AbMD9q8RaGdcALfVCcNb4ridX5F5pjHzfDKQBbK652T4",
+      "repo_url": "https://github.com/morluto/rea"
+    },
+    {
+      "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+      "mint": "EArgzU8BNN24s1NcVJX2XT2bgUBDysSiPYF4828r93Sp",
+      "launcher": "GYjqD2ScGJSm9nzncv8pTK75rfpjBRFfLXQeKzm5Mc9e",
+      "repo_url": "https://github.com/karpathy/minbpe"
+    },
+    {
+      "agent": "CpziNQ4NgF4SExt45cLVcBnratWzew6v4mVugA5HhSW1",
+      "mint": "ASDJiKyjZC7RrbGib7oy8q16pWtkuxEPEVrK987BaFbE",
+      "launcher": "8KK58Dyhz9eaZ49s6yPP1XdxrJfcq6MmeDDgHfKcdXfY",
+      "repo_url": "https://github.com/gorbagana-dev/gorbagana-chain"
+    },
+    {
+      "agent": "HB2xZfFfPH9JwSPaJHBzq4QcQn4h8cfNQ6SxaxkeJP6u",
+      "mint": "Bs8cLf4h1EPEgyVm7N5UKKS5CmyznN2wivy9YmJV1wPc",
+      "launcher": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "repo_url": "https://github.com/karpathy/autoresearch"
+    },
+    {
+      "agent": "9gihFuPRTJnrr88EqLBsBcJDhwznno19CQukYPMkCdTe",
+      "mint": "CL4tdH4TNGkyLLinkU4vQEozF8svaM7fZjB6ECTvi2yL",
+      "launcher": "HVg3MjASwtdfi46wsKQke8Nm4XFaJJLGG5UTb6Hz8V34",
+      "repo_url": "https://github.com/units-agents/units-learnings"
+    }
+  ],
+  "builds": {
+    "live": {
+      "file": "onchain/target/mainnet/units_launch.so",
+      "bytes": 685224,
+      "sha256": "593dff1c876f83b4e59003cdeff4159c4a6a46cdefa9dc71a853dc175f045008"
+    },
+    "upgrade": {
+      "file": "onchain/target/pools-mainnet/units_launch.so",
+      "bytes": 958368,
+      "sha256": "817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8"
+    }
+  },
+  "launch_compute_before": {
+    "err": null,
+    "units": 230673,
+    "register_pump_launch_units": 83772
+  },
+  "before": {
+    "program_data_bytes": 685269,
+    "program_data_lamports": "3481816760",
+    "last_deployed_slot": 456139926,
+    "launch_accounts": [
+      {
+        "address": "3t4eCv6s1BRY2L1G8nbgEAFWsVKojTzSiyG6bX95dVy1",
+        "type": "AgentLaunch",
+        "bytes": 554
+      },
+      {
+        "address": "4ZhwsqqMvoF8ggFx3soTcq9JBQ6e9v5frD6QjV6n14AM",
+        "type": "AgentLaunch",
+        "bytes": 554
+      },
+      {
+        "address": "4gHsagCsZ8yhcJophjfQbFU9qqbQvYAGjZfK8LyMxRM2",
+        "type": "AgentLaunch",
+        "bytes": 554
+      },
+      {
+        "address": "4zx7rjsiuEDcY4zr8e6p4NE41J8NcouGT4TiiFCnwRix",
+        "type": "AgentLaunch",
+        "bytes": 554
+      },
+      {
+        "address": "71oM6zztjjtvwoYroFTz94fzAJGmxnNytvvKubxGXXvv",
+        "type": "DebitReceipt",
+        "bytes": 72
+      },
+      {
+        "address": "7xeCTzihYPtDY5rCJqY49A3uKhTXWGeMe5S1qVkhxE1x",
+        "type": "BountyConfig",
+        "bytes": 76
+      },
+      {
+        "address": "9KrQn7sY1Ju5bcxMnFhmnf1TxpS9vMxGHevVLkpisY8R",
+        "type": "AgentLaunch",
+        "bytes": 554
+      },
+      {
+        "address": "9nuLixkDqbp5bcU1Xn64HdGTQdNSYiu1KYD9NhjMiCUz",
+        "type": "LaunchConfig",
+        "bytes": 319
+      },
+      {
+        "address": "CvA44UwgumHe6wYntzmKgugMcete44Zku8pWZwU6vKSy",
+        "type": "UsageEpoch",
+        "bytes": 65
+      },
+      {
+        "address": "Dm26iG9pFnwqEbio6tCNM2Lq2xEsbkxsRM2mVW11GXnK",
+        "type": "UsageEpoch",
+        "bytes": 65
+      },
+      {
+        "address": "EtetoaMthyKangxkkjDqwdSvkaghUBirNGCNoVxr2Zx3",
+        "type": "DebitReceipt",
+        "bytes": 72
+      },
+      {
+        "address": "FFLiRAXjbv6HsKdQtnsPcXSH24iFbR8eGT1GjXAqU25q",
+        "type": "DebitReceipt",
+        "bytes": 72
+      },
+      {
+        "address": "Feh3oLfVya8rhJXhVaVcnkvvpNoFW7TRLRNro5uq4zpF",
+        "type": "DebitReceipt",
+        "bytes": 72
+      },
+      {
+        "address": "FxhUffvnvea44no4N2VruV93PsJq2iAKL77Q9SsbhP9a",
+        "type": "UsageEpoch",
+        "bytes": 65
+      },
+      {
+        "address": "GXf4CWA133rg8GBKZorWKLpoukhe4dK5iapf46sHsnge",
+        "type": "UsageEpoch",
+        "bytes": 65
+      },
+      {
+        "address": "HE84Lh6HU1mGYo6FkHUQuSd5HCQctGaK8R55xPNjf9EH",
+        "type": "DebitReceipt",
+        "bytes": 72
+      },
+      {
+        "address": "HLtx3LfWwFs8u9chvVXTwbAHmDTXWMrLQEdL1SdHnEs4",
+        "type": "UsageEpoch",
+        "bytes": 65
+      },
+      {
+        "address": "HMqcfQPjA41ExwTmqNj38ZhSvDyuywupU65xVuaeCUpE",
+        "type": "UsageEpoch",
+        "bytes": 65
+      },
+      {
+        "address": "HSYap1z2To98882a8fcn6S8xTZdpKZgFzKKfrVSzBFkK",
+        "type": "DebitReceipt",
+        "bytes": 72
+      }
+    ]
+  },
+  "upgrade": {
+    "extra_bytes": 273144,
+    "steps": [
+      {
+        "step": "write-buffer, interrupted",
+        "command": "solana program write-buffer -u $RPC -k $DEV --buffer $BUF --buffer-authority $DEV onchain/target/pools-mainnet/units_launch.so   (killed part way)",
+        "seconds": 2.9,
+        "ok": true,
+        "fork_balance_delta_lamports": "6671710360",
+        "output": [
+          "killed after the buffer account appeared"
+        ]
+      },
+      {
+        "step": "write-buffer, resumed",
+        "command": "solana program write-buffer -u $RPC -k $DEV --buffer $BUF --buffer-authority $DEV onchain/target/pools-mainnet/units_launch.so   (the same command again)",
+        "seconds": 10.5,
+        "ok": true,
+        "fork_balance_delta_lamports": "4480000",
+        "output": [
+          "Buffer: 9SUdyQLLPJXrjUnnRz8a7wjh416vhurgbyKpKPEtibh"
+        ]
+      },
+      {
+        "step": "extend",
+        "command": "solana program extend -u $RPC -k $DEV 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq 273144",
+        "seconds": 0.7,
+        "ok": true,
+        "fork_balance_delta_lamports": "3189633600",
+        "output": [
+          "Extended Program Id 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq by 273144 bytes"
+        ]
+      },
+      {
+        "step": "upgrade",
+        "command": "solana program upgrade -u $RPC -k $DEV --upgrade-authority $DEV $BUF_ADDRESS 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+        "seconds": 0.7,
+        "ok": true,
+        "fork_balance_delta_lamports": "-6671440360",
+        "output": [
+          "Program Id: 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+          "",
+          "Signature: 4GqYrWbvm5L3uCX5WAG8KSFnBYSumt5QQoUnFgh5jmhLhcHVpb8ysYtvN62L29GTSn8rGqvHDUfX5X47RYzzUut6"
+        ]
+      },
+      {
+        "step": "close an abandoned buffer",
+        "command": "solana program close -u $RPC -k $DEV <buffer> --recipient <dev wallet> --authority $DEV",
+        "ok": true,
+        "output": [
+          "Buffer Address                               | Authority                                    | Balance",
+          "AzyRCeM8tQqo9CExq2qzdNhdhYUCQxAtNDoxNKhogpSr | 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r | 6.67144536 SOL"
+        ]
+      }
+    ],
+    "measured_on_the_fork": {
+      "write_fee_lamports_both_runs": "4745000",
+      "write_signatures_both_runs": "949",
+      "extend_fee_lamports": "5000",
+      "upgrade_fee_lamports": "5000",
+      "program_data_slot_before": 456139926,
+      "program_data_slot_after_extend": 456434425,
+      "program_data_slot_after_upgrade": 456434428
+    },
+    "at_mainnet_rent": {
+      "note": "rent figures are mainnet's own getMinimumBalanceForRentExemption (the fork's rate is higher); fees are the base fee, no priority fee",
+      "program_data_now_lamports": "3481816760",
+      "program_data_after_lamports": "4869388280",
+      "locked_for_good_sol": "1.387571520",
+      "buffer_temporary_sol": "4.869388280",
+      "write_fees_uninterrupted_sol": "0.004745000",
+      "write_fees_measured_with_one_interruption_sol": "0.004745000",
+      "extend_fee_sol": "0.000005000",
+      "upgrade_fee_sol": "0.000005000",
+      "peak_needed_sol": "6.261714800",
+      "spent_in_the_end_sol": "1.392326520"
+    }
+  },
+  "launch_compute_after": {
+    "err": null,
+    "units": 230776,
+    "register_pump_launch_units": 83875
+  },
+  "keeper_committed_bits_off": [
+    "[crank-fees] mainnet: 5 launched agent(s), quote GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump, 0.001 USD per coin, payer BBTnkZNaYL1H4chzb6PRg1Gc9N8eNCTDkvFGmyfa1pHM",
+    "[crank-fees] ALGNQF (AFixtu): 0 base units of creator fees wait (0.0000 USD before the fee split)",
+    "[crank-fees]   priority fee 1 micro-lamports per CU (floor, 47 samples)",
+    "[crank-fees]   sent 66RVMvwA8CdoyzAgb8yuPcAFfJTpPeGyNaNghnMimP1JG8kyitsbW5pKt91bveDuwH9hKYSUstqcrG5HLvG9DeUx (attempt 1)",
+    "[crank-fees] ALGNQF (AFixtu): cranked 66RVMvwA8CdoyzAgb8yuPcAFfJTpPeGyNaNghnMimP1JG8kyitsbW5pKt91bveDuwH9hKYSUstqcrG5HLvG9DeUx",
+    "[crank-fees] HHxDgM (EArgzU): 0 base units of creator fees wait (0.0000 USD before the fee split)",
+    "[crank-fees]   priority fee 1 micro-lamports per CU (floor, 48 samples)",
+    "[crank-fees]   sent 3okKX1of6mnGv9AxfEZMaKFjnYtwYpTBgFFqsoiQ98qjzKP988qBRXMqwFuXxtxkvUScay8tsC9XjLCaCaCL55cZ (attempt 1)",
+    "[crank-fees] HHxDgM (EArgzU): cranked 3okKX1of6mnGv9AxfEZMaKFjnYtwYpTBgFFqsoiQ98qjzKP988qBRXMqwFuXxtxkvUScay8tsC9XjLCaCaCL55cZ",
+    "[crank-fees] CpziNQ (ASDJiK): 0 base units of creator fees wait (0.0000 USD before the fee split)",
+    "[crank-fees]   priority fee 1 micro-lamports per CU (floor, 49 samples)",
+    "[crank-fees]   sent 53zebPV73MgW4v5duZ57JyfZWdPTerP8WVhZRiQNKQ8gdJ7sJS5xJME5edUvk2LYZF2smuvQPRsokyqU3cEB8wuQ (attempt 1)",
+    "[crank-fees] CpziNQ (ASDJiK): cranked 53zebPV73MgW4v5duZ57JyfZWdPTerP8WVhZRiQNKQ8gdJ7sJS5xJME5edUvk2LYZF2smuvQPRsokyqU3cEB8wuQ",
+    "[crank-fees] HB2xZf (Bs8cLf): 0 base units of creator fees wait (0.0000 USD before the fee split)",
+    "[crank-fees]   priority fee 1 micro-lamports per CU (floor, 50 samples)",
+    "[crank-fees]   sent 5QLiv81UAsPXSR7ktfQuvua6dDaoyRZ96C54XYNqDSpautKRJh8xJV2P5pfZF9zFMcs8vazLmjC1JhRnhWb8wdeo (attempt 1)",
+    "[crank-fees] HB2xZf (Bs8cLf): cranked 5QLiv81UAsPXSR7ktfQuvua6dDaoyRZ96C54XYNqDSpautKRJh8xJV2P5pfZF9zFMcs8vazLmjC1JhRnhWb8wdeo",
+    "[crank-fees] 9gihFu (CL4tdH): 0 base units of creator fees wait (0.0000 USD before the fee split)",
+    "[crank-fees]   priority fee 1 micro-lamports per CU (floor, 51 samples)",
+    "[crank-fees]   sent 5Ga56xYVpqxvwr5U8Qr9Coqb1i2gfwnG1mm6QqYgV5tHWrE1rYRssmUbjr8uVxKiv5UpdEMNXcqgSRuTWiMHhNaX (attempt 1)",
+    "[crank-fees] 9gihFu (CL4tdH): cranked 5Ga56xYVpqxvwr5U8Qr9Coqb1i2gfwnG1mm6QqYgV5tHWrE1rYRssmUbjr8uVxKiv5UpdEMNXcqgSRuTWiMHhNaX",
+    "[crank-fees] done: 5 crank(s) sent"
+  ],
+  "wizard_launch": {
+    "script": "scripts/mainnet/pool-launch-fork.ts --only <mode>",
+    "attempts": [
+      {
+        "mode": "units",
+        "attempt": 1,
+        "outcome": "PASS",
+        "passed": 11,
+        "total": 11,
+        "failed": []
+      },
+      {
+        "mode": "sol",
+        "attempt": 1,
+        "outcome": "PASS",
+        "passed": 10,
+        "total": 10,
+        "failed": []
+      }
+    ],
+    "units": {
+      "mode": "units",
+      "agent": "BnvLsAucFEfryEZBLZRpLaeFLmvjPFiPHhVpBb21HnuL",
+      "mint": "HuPyD2xYB9q5jCREho8cgkeFtJjKNfTiCaHYXgEkwS2G",
+      "deposit": "200000000",
+      "initial_buy": {
+        "amount_out": "10000000000000",
+        "quote": "64071227851",
+        "max_in": "64711940130"
+      },
+      "txs": [
+        {
+          "groups": [
+            "launch"
+          ],
+          "size": 1166,
+          "limit": 421000,
+          "cu": 242388,
+          "fee": 15001,
+          "created": [
+            {
+              "address": "HuPyD2xYB9q5jCREho8cgkeFtJjKNfTiCaHYXgEkwS2G",
+              "bytes": 539,
+              "forkRent": "4642320",
+              "mainnetRent": "3388360"
+            },
+            {
+              "address": "FKxuRES23FATPjaQgCaRvZTbfc9cCuXXYbuGWSkZp1nV",
+              "bytes": 166,
+              "forkRent": "2046240",
+              "mainnetRent": "1493520"
+            },
+            {
+              "address": "2WHuCzKDDCei5pePmewc9Y59NDqhpL9KircfKCUxoAWH",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "CgFzLA7RNVcjeX9jCber1kjTmCWv56zhYE8BrS2WhJo6",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "HLW9mCkb8HAnWT3zzFYRqnLswsTyzEkUedx2NpsCXdrH",
+              "bytes": 554,
+              "forkRent": "4746720",
+              "mainnetRent": "3464560"
+            },
+            {
+              "address": "CVPxF23oAF7hjWiekVGqGePdUqC1quyjjPnRkevtdW6C",
+              "bytes": 165,
+              "forkRent": "2039280",
+              "mainnetRent": "1488440"
+            },
+            {
+              "address": "EuUiKxy7kf6fym7pc2kf1BMBeypdMnbvZvRDeYmRPfXM",
+              "bytes": 401,
+              "forkRent": "3681840",
+              "mainnetRent": "2687320"
+            }
+          ]
+        },
+        {
+          "groups": [
+            "soul",
+            "initial-buy",
+            "credits",
+            "units-account",
+            "tip"
+          ],
+          "size": 1071,
+          "limit": 256000,
+          "cu": 116542,
+          "fee": 10001,
+          "created": [
+            {
+              "address": "BbUXuJjgcJ3JmaQnmuzQWtuWp4u2PC1SK7kVE9wUkqzh",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "2fz7sKDmcTV5UT5Mvvf8XTpVXLn1LVU8wyhe8rteVFBY",
+              "bytes": 137,
+              "forkRent": "1844400",
+              "mainnetRent": "1346200"
+            }
+          ]
+        }
+      ],
+      "total_lamports": "55252229",
+      "needed_lamports": "55252229",
+      "spent_lamports": "55252229",
+      "purchase": null,
+      "units": {
+        "total": "64271227851",
+        "needed": "64911940130",
+        "spent": "64271227851"
+      },
+      "rents": [
+        {
+          "what": "the coin's mint",
+          "size": 539,
+          "lamports": "4642320"
+        },
+        {
+          "what": "pump.fun's curve",
+          "size": 166,
+          "lamports": "2046240"
+        },
+        {
+          "what": "the curve's coin account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "the curve's $UNITS account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "the launch record",
+          "size": 554,
+          "lamports": "4746720"
+        },
+        {
+          "what": "the agent's compute vault",
+          "size": 165,
+          "lamports": "2039280"
+        },
+        {
+          "what": "the agent's registry record",
+          "size": 401,
+          "lamports": "3681840"
+        },
+        {
+          "what": "the agent's coin account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "your pump.fun volume account",
+          "size": 137,
+          "lamports": "1844400"
+        }
+      ]
+    },
+    "sol": {
+      "mode": "sol",
+      "agent": "4uUJFM77yKNJEyd8Et6RTPiWiGvkM1NQLKEqiJ8vVPpf",
+      "mint": "DyyRMyUALpDTYx48nmHoYfmyv9rYkeUKLRvizRg81Tv3",
+      "deposit": "200000000",
+      "initial_buy": {
+        "amount_out": "10000000000000",
+        "quote": "64071227851",
+        "max_in": "64711940130"
+      },
+      "txs": [
+        {
+          "groups": [
+            "launch"
+          ],
+          "size": 1166,
+          "limit": 421000,
+          "cu": 228888,
+          "fee": 15001,
+          "created": [
+            {
+              "address": "DyyRMyUALpDTYx48nmHoYfmyv9rYkeUKLRvizRg81Tv3",
+              "bytes": 539,
+              "forkRent": "4642320",
+              "mainnetRent": "3388360"
+            },
+            {
+              "address": "GzegskfJB8ynL4wPHZLxLZDpBLpJ2Xb6cNTT4xAZoo7q",
+              "bytes": 166,
+              "forkRent": "2046240",
+              "mainnetRent": "1493520"
+            },
+            {
+              "address": "HmUJjdcj9qDivowzVZR9hwRL45RWrDmgVTGMAf7VAXnD",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "74mbPVbWdXK3w1TLbn8TjAZv5WBQfa4h6BuoN2EGKyo5",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "49wgAiJhVzVJes67uR1rAM13dVNxkhjPq2Yqd9QxNcX1",
+              "bytes": 554,
+              "forkRent": "4746720",
+              "mainnetRent": "3464560"
+            },
+            {
+              "address": "9QF5ng6bq285pVCNc5nhb3X2DwGk1MEzptM6UpNV22Bp",
+              "bytes": 165,
+              "forkRent": "2039280",
+              "mainnetRent": "1488440"
+            },
+            {
+              "address": "39TMCuGuhZGmgjgsPuhwnZ99zdpbY5dicVJkcqKpMXMx",
+              "bytes": 401,
+              "forkRent": "3681840",
+              "mainnetRent": "2687320"
+            }
+          ]
+        },
+        {
+          "groups": [
+            "soul",
+            "sol-to-units"
+          ],
+          "size": 1035,
+          "limit": 189000,
+          "cu": 104948,
+          "fee": 10001,
+          "created": [
+            {
+              "address": "DBjFawmjKwYa1G6zpgZ18E67jKuPs2Knz2B2yxPwdUZ1",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "61x6c26wx7MmmE1nmRt87da1FU4QBCqtWns1bbwLDFbU",
+              "bytes": 137,
+              "forkRent": "1844400",
+              "mainnetRent": "1346200"
+            }
+          ]
+        },
+        {
+          "groups": [
+            "initial-buy",
+            "credits",
+            "units-account",
+            "tip"
+          ],
+          "size": 892,
+          "limit": 228000,
+          "cu": 96357,
+          "fee": 5001,
+          "created": [
+            {
+              "address": "5r5XiDizASYvCzPuNcFHUcFZgkoVJYMwwcvoVvKheiGz",
+              "bytes": 170,
+              "forkRent": "2074080",
+              "mainnetRent": "1513840"
+            },
+            {
+              "address": "54emZt3b8V3XUirTVjvXr5xU1s29HvCixfF6dWLeG4e4",
+              "bytes": 137,
+              "forkRent": "1844400",
+              "mainnetRent": "1346200"
+            }
+          ]
+        }
+      ],
+      "total_lamports": "277397945",
+      "needed_lamports": "281619448",
+      "spent_lamports": "277397945",
+      "purchase": {
+        "whole": "218222235",
+        "credits": "671784",
+        "headroom": "4221503"
+      },
+      "units": null,
+      "rents": [
+        {
+          "what": "the coin's mint",
+          "size": 539,
+          "lamports": "4642320"
+        },
+        {
+          "what": "pump.fun's curve",
+          "size": 166,
+          "lamports": "2046240"
+        },
+        {
+          "what": "the curve's coin account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "the curve's $UNITS account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "the launch record",
+          "size": 554,
+          "lamports": "4746720"
+        },
+        {
+          "what": "the agent's compute vault",
+          "size": 165,
+          "lamports": "2039280"
+        },
+        {
+          "what": "the agent's registry record",
+          "size": 401,
+          "lamports": "3681840"
+        },
+        {
+          "what": "your $UNITS account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "your PumpSwap volume account",
+          "size": 137,
+          "lamports": "1844400"
+        },
+        {
+          "what": "the agent's coin account",
+          "size": 170,
+          "lamports": "2074080"
+        },
+        {
+          "what": "your pump.fun volume account",
+          "size": 137,
+          "lamports": "1844400"
+        }
+      ]
+    },
+    "checks": [
+      {
+        "name": "0: the frozen launch lookup table cloned from mainnet holds exactly the addresses of launchTableAddresses with the pool",
+        "ok": true,
+        "detail": "24 addresses"
+      },
+      {
+        "name": "0: the real $UNITS on the fork: its curve is complete and migrated, its canonical pool is base $UNITS / quote wrapped SOL with the vaults of state.line_pool",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "units-i7fy: a stand-alone exact-output buy on the real pool delivered exactly the amount asked and took exactly quotePoolBuyExactOut's SOL (plus fee and the rent of the accounts it made)",
+        "ok": true,
+        "detail": "77264347758 base units for 259254598 lamports (pool leg 256433825, LP 512868, protocol 128217, creator 2179688); spent 263178079; 98261 CU; 824 bytes; created 170, 137 bytes"
+      },
+      {
+        "name": "units-i7fy: create_v2 took the REAL migrated $UNITS as the quote (its pool and vaults named): the agent coin exists, quoted in $UNITS, depth 1, creator the agent's PDA, registered in the same transaction",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "units-i7fy: the starting curve create_v2 wrote equals pumpQuotedCurve on the pool's reserves",
+        "ok": true,
+        "detail": "seed 6726687921415 vs 6726687921415"
+      },
+      {
+        "name": "units-i7fy: the compute vault holds the credits deposit",
+        "ok": true,
+        "detail": "200000000 base units"
+      },
+      {
+        "name": "units-i7fy: the 1% initial buy is in the agent key's account, exactly",
+        "ok": true,
+        "detail": "10000000000000 base units for 64071227851 $UNITS base units (bound 64711940130)"
+      },
+      {
+        "name": "units-i7fy: the plan fits (2 transactions, each within 1,232 bytes)",
+        "ok": true,
+        "detail": "launch 1166 bytes; soul + initial-buy + credits + units-account + tip 1071 bytes"
+      },
+      {
+        "name": "units-i7fy: every transaction used at most 62.5% of its compute limit (the 1.6 times headroom rule)",
+        "ok": true,
+        "detail": "242388 of 421000; 116542 of 256000"
+      },
+      {
+        "name": "units-i7fy: the launcher's SOL spend equals the cost lines' total computed before sending, to the lamport",
+        "ok": true,
+        "detail": "spent 55252229, total 55252229 (creation 25248042, credits 0, buy null, units account 30000000, tip 4187); rents the coin's mint 539, pump.fun's curve 166, the curve's coin account 170, the curve's $UNITS account 170, the launch record 554, the agent's compute vault 165, the agent's registry record 401, the agent's coin account 170, your pump.fun volume account 137"
+      },
+      {
+        "name": "units-i7fy: the launcher's $UNITS fell by exactly the deposit plus the initial buy's quote",
+        "ok": true,
+        "detail": "64271227851 base units"
+      },
+      {
+        "name": "0: the frozen launch lookup table cloned from mainnet holds exactly the addresses of launchTableAddresses with the pool",
+        "ok": true,
+        "detail": "24 addresses"
+      },
+      {
+        "name": "0: the real $UNITS on the fork: its curve is complete and migrated, its canonical pool is base $UNITS / quote wrapped SOL with the vaults of state.line_pool",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "sol-ibvi: create_v2 took the REAL migrated $UNITS as the quote (its pool and vaults named): the agent coin exists, quoted in $UNITS, depth 1, creator the agent's PDA, registered in the same transaction",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "sol-ibvi: the starting curve create_v2 wrote equals pumpQuotedCurve on the pool's reserves",
+        "ok": true,
+        "detail": "seed 6726687921415 vs 6726687921415"
+      },
+      {
+        "name": "sol-ibvi: the compute vault holds the credits deposit",
+        "ok": true,
+        "detail": "200000000 base units"
+      },
+      {
+        "name": "sol-ibvi: the 1% initial buy is in the agent key's account, exactly",
+        "ok": true,
+        "detail": "10000000000000 base units for 64071227851 $UNITS base units (bound 64711940130)"
+      },
+      {
+        "name": "sol-ibvi: the plan fits (3 transactions, each within 1,232 bytes)",
+        "ok": true,
+        "detail": "launch 1166 bytes; soul + sol-to-units 1035 bytes; initial-buy + credits + units-account + tip 892 bytes"
+      },
+      {
+        "name": "sol-ibvi: every transaction used at most 62.5% of its compute limit (the 1.6 times headroom rule)",
+        "ok": true,
+        "detail": "228888 of 421000; 104948 of 189000; 96357 of 228000"
+      },
+      {
+        "name": "sol-ibvi: the launcher's SOL spend equals the cost lines' total computed before sending, to the lamport",
+        "ok": true,
+        "detail": "spent 277397945, total 277397945 (creation 29171523, credits 671784, buy 217550451, units account 30000000, tip 4187); rents the coin's mint 539, pump.fun's curve 166, the curve's coin account 170, the curve's $UNITS account 170, the launch record 554, the agent's compute vault 165, the agent's registry record 401, your $UNITS account 170, your PumpSwap volume account 137, the agent's coin account 170, your pump.fun volume account 137"
+      },
+      {
+        "name": "sol-ibvi: the purchase delivered exactly what the launch spent: the launcher's $UNITS account holds the unused slippage bound of the initial buy and no more; no wrapped SOL account is left",
+        "ok": true,
+        "detail": "640712279 base units left"
+      }
+    ]
+  },
+  "dev_wallet_budget": {
+    "note": "base fees only: add the priority fees chosen on the day (about 950 write transactions)",
+    "mainnet_balance_now_sol": "18.361740469",
+    "upgrade_peak_sol": "6.261714800",
+    "upgrade_and_admin_spent_sol": "1.394368520",
+    "after_upgrade_and_admin_sol": "16.967371949",
+    "bounty_deploy": {
+      "peak_sol": "4.870165520",
+      "locked_sol": "2.435519640",
+      "init_sol": "0.003510200",
+      "source": "docs/MAINNET-RUNBOOK.md, the bounty escrow lane's figures"
+    },
+    "upgrade_first_then_bounty": {
+      "lowest_balance_sol": "12.097206429",
+      "ok": true
+    },
+    "bounty_first_then_upgrade": {
+      "lowest_balance_sol": "9.660995829",
+      "ok": true
+    },
+    "both_buffers_at_once": {
+      "lowest_balance_sol": "7.229860149",
+      "ok": true
+    },
+    "left_after_both_sol": "14.528342109",
+    "with_11_1_sol": {
+      "upgrade_first": "4.835465960",
+      "bounty_first": "2.399255360",
+      "both_at_once": "-0.031880320",
+      "left_after_both": "7.266601640"
+    }
+  },
+  "admin": {
+    "transcript": [
+      {
+        "command": "launch-features.ts configs --key $DEV --send   (the committed params file: owner_confirmed false, no keys)",
+        "output": [
+          "[launch-features] fork units_launch 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq: the pools and claims build (sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes of program space), upgrade authority 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r",
+          "[launch-features] LaunchConfig: admin 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r, features 0 (none), paused false",
+          "[launch-features] ClaimConfig: none",
+          "[launch-features] PoolConfig: none",
+          "[launch-features] configs: set_claim_config {\"attestor\":null,\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":2592000,\"rebindDelayS\":86400,\"maxAttestationTtlS\":600,\"paused\":false}",
+          "[launch-features] configs: set_pool_config {\"keeper\":null,\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}",
+          "[launch-features] REFUSED ~/units/scripts/mainnet/launch-features-params.json: owner_confirmed is false",
+          "[launch-features] REFUSED claim.attestor is not set (the public key of the attestor key generated on the server)",
+          "[launch-features] REFUSED pool.keeper is not set (the public key of the pool keeper key generated on the server)"
+        ]
+      },
+      {
+        "command": "launch-features.ts configs --key $DEV --send",
+        "output": [
+          "[launch-features] fork units_launch 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq: the pools and claims build (sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes of program space), upgrade authority 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r",
+          "[launch-features] LaunchConfig: admin 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r, features 0 (none), paused false",
+          "[launch-features] ClaimConfig: none",
+          "[launch-features] PoolConfig: none",
+          "[launch-features] configs: set_claim_config {\"attestor\":\"9BmPgW5g7S721Y335awsyUEyds4Zfqio9k6Uquyza8CA\",\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":2592000,\"rebindDelayS\":86400,\"maxAttestationTtlS\":600,\"paused\":false}",
+          "[launch-features] configs: set_pool_config {\"keeper\":\"9W98RipGJv1JXF1rL3zpWauNNRJ9Y7q1bAZwZ7Py6Ai6\",\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}",
+          "[launch-features] sent: 4xNzBEEA2RUd9GPC6sBuuzcZTurqeWmqWQ91SUkc9DNBtUv8riMMxMitCoMcKD2gCkJXSd6aJRwRyhNmSew16spN (fee 5000 lamports, the admin's balance fell by 2789000 lamports)",
+          "[launch-features] fork units_launch 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq: the pools and claims build (sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes of program space), upgrade authority 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r",
+          "[launch-features] LaunchConfig: admin 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r, features 0 (none), paused false",
+          "[launch-features] ClaimConfig: {\"attestor\":\"9BmPgW5g7S721Y335awsyUEyds4Zfqio9k6Uquyza8CA\",\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":\"2592000\",\"rebindDelayS\":\"86400\",\"maxAttestationTtlS\":\"600\",\"paused\":false}",
+          "[launch-features] PoolConfig: {\"keeper\":\"9W98RipGJv1JXF1rL3zpWauNNRJ9Y7q1bAZwZ7Py6Ai6\",\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}"
+        ]
+      },
+      {
+        "command": "launch-features.ts features --key $DEV --send",
+        "output": [
+          "[launch-features] fork units_launch 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq: the pools and claims build (sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes of program space), upgrade authority 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r",
+          "[launch-features] LaunchConfig: admin 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r, features 0 (none), paused false",
+          "[launch-features] ClaimConfig: {\"attestor\":\"9BmPgW5g7S721Y335awsyUEyds4Zfqio9k6Uquyza8CA\",\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":\"2592000\",\"rebindDelayS\":\"86400\",\"maxAttestationTtlS\":\"600\",\"paused\":false}",
+          "[launch-features] PoolConfig: {\"keeper\":\"9W98RipGJv1JXF1rL3zpWauNNRJ9Y7q1bAZwZ7Py6Ai6\",\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}",
+          "[launch-features] features: 0 (none) to 3 (pools,github)",
+          "[launch-features] sent: 2XGYb17jWPH59bWS3HhzdmE6Q449S8B71CKETiXrc67Dfduw7VSvo8hLw11QvtxT3MF7pbPhgwV56cSJj1cgZsfK (fee 5000 lamports, the admin's balance fell by 5000 lamports)",
+          "[launch-features] fork units_launch 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq: the pools and claims build (sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes of program space), upgrade authority 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r",
+          "[launch-features] LaunchConfig: admin 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r, features 3 (pools,github), paused false",
+          "[launch-features] ClaimConfig: {\"attestor\":\"9BmPgW5g7S721Y335awsyUEyds4Zfqio9k6Uquyza8CA\",\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":\"2592000\",\"rebindDelayS\":\"86400\",\"maxAttestationTtlS\":\"600\",\"paused\":false}",
+          "[launch-features] PoolConfig: {\"keeper\":\"9W98RipGJv1JXF1rL3zpWauNNRJ9Y7q1bAZwZ7Py6Ai6\",\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}"
+        ]
+      },
+      {
+        "command": "launch-features.ts status",
+        "output": [
+          "[launch-features] fork units_launch 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq: the pools and claims build (sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes of program space), upgrade authority 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r",
+          "[launch-features] LaunchConfig: admin 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r, features 3 (pools,github), paused false",
+          "[launch-features] ClaimConfig: {\"attestor\":\"9BmPgW5g7S721Y335awsyUEyds4Zfqio9k6Uquyza8CA\",\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":\"2592000\",\"rebindDelayS\":\"86400\",\"maxAttestationTtlS\":\"600\",\"paused\":false}",
+          "[launch-features] PoolConfig: {\"keeper\":\"9W98RipGJv1JXF1rL3zpWauNNRJ9Y7q1bAZwZ7Py6Ai6\",\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}"
+        ]
+      }
+    ],
+    "configs": {
+      "signature": "4xNzBEEA2RUd9GPC6sBuuzcZTurqeWmqWQ91SUkc9DNBtUv8riMMxMitCoMcKD2gCkJXSd6aJRwRyhNmSew16spN",
+      "fee_lamports": 5000,
+      "compute_units": 39899,
+      "created": [
+        {
+          "address": "9i7fwrFxKVG1344wtMVhvJ8yDARqJ3KvE8nkev39w5hA",
+          "bytes": 70,
+          "forkRent": "1378080",
+          "mainnetRent": "1005840"
+        },
+        {
+          "address": "BsPrUoUz2k2cUtXLZcm4ggbXM38pK5QDBoWrXxDKdQU2",
+          "bytes": 74,
+          "forkRent": "1405920",
+          "mainnetRent": "1026160"
+        }
+      ],
+      "payer_mainnet_lamports": "2037000"
+    },
+    "features": {
+      "signature": "2XGYb17jWPH59bWS3HhzdmE6Q449S8B71CKETiXrc67Dfduw7VSvo8hLw11QvtxT3MF7pbPhgwV56cSJj1cgZsfK",
+      "fee_lamports": 5000,
+      "compute_units": 8096,
+      "payer_mainnet_lamports": "5000"
+    },
+    "admin_fork_balance_delta_lamports": "2794000",
+    "admin_cost_at_mainnet_rent_sol": "0.002042000"
+  },
+  "features_run": {
+    "repository": "karpathy/minbpe",
+    "repository_id": 758581331,
+    "repository_id_source": "api.github.com",
+    "repo_id_on_chain": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05"
+  },
+  "launch_with_route_and_pool": {
+    "agent": "6ev7wqwpdwAzhs6xMnM7GuCfhLytYKGYzCuwq3ZQTWAA",
+    "mint": "8J6VoUA7qU5Rb8JVSVCWQjFciEAQSmvhM1P4r5XBPSut",
+    "txs": [
+      {
+        "groups": [
+          "launch"
+        ],
+        "bytes": 1164,
+        "limit": 421000,
+        "cu": 239311,
+        "created_bytes": [
+          537,
+          166,
+          170,
+          170,
+          554,
+          165,
+          401
+        ]
+      },
+      {
+        "groups": [
+          "soul",
+          "fee-route",
+          "pool"
+        ],
+        "bytes": 914,
+        "limit": 329000,
+        "cu": 123877,
+        "created_bytes": [
+          97,
+          195
+        ]
+      },
+      {
+        "groups": [
+          "sol-to-units",
+          "initial-buy"
+        ],
+        "bytes": 1139,
+        "limit": 351000,
+        "cu": 172898,
+        "created_bytes": [
+          170,
+          137,
+          170,
+          137
+        ]
+      },
+      {
+        "groups": [
+          "credits",
+          "units-account"
+        ],
+        "bytes": 496,
+        "limit": 37000,
+        "cu": 17068,
+        "created_bytes": []
+      }
+    ],
+    "spent_lamports": "281248272"
+  },
+  "keeper_committed_on_a_routed_agent": [
+    "[crank-fees] mainnet: 1 launched agent(s), quote GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump, 0.001 USD per coin, payer BBTnkZNaYL1H4chzb6PRg1Gc9N8eNCTDkvFGmyfa1pHM",
+    "[crank-fees] 4uUJFM (DyyRMy): 0 base units of creator fees wait (0.0000 USD before the fee split)",
+    "[crank-fees] 4uUJFM (DyyRMy): skipped, simulation failed: {\"InstructionError\":[3,{\"Custom\":6030}]} Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq consumed 24739 of 698386 compute units | Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq failed: custom",
+    "[crank-fees] done: 0 crank(s) sent"
+  ],
+  "keeper_working_copy_is_route_aware": true,
+  "keeper_working_copy_on_a_routed_agent": [
+    "[crank-fees] mainnet: 1 launched agent(s), quote GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump, 0.001 USD per coin, payer BBTnkZNaYL1H4chzb6PRg1Gc9N8eNCTDkvFGmyfa1pHM",
+    "[crank-fees] 4uUJFM (DyyRMy): 0 base units of creator fees wait (0.0000 USD before the fee split); 7 route accounts follow the crank's",
+    "[crank-fees]   priority fee 1 micro-lamports per CU (floor, 80 samples)",
+    "[crank-fees]   sent 4XBNrZesWnQNpXZtAQa3p5p1SDbgCf8BBHtrEHGi8ywmNHoYMBuP5HdVRWnUN3KUQv6kcarccb1BdBT5RVxCXkw7 (attempt 1)",
+    "[crank-fees] 4uUJFM (DyyRMy): cranked 4XBNrZesWnQNpXZtAQa3p5p1SDbgCf8BBHtrEHGi8ywmNHoYMBuP5HdVRWnUN3KUQv6kcarccb1BdBT5RVxCXkw7",
+    "[crank-fees] done: 1 crank(s) sent"
+  ],
+  "outcome": "PASS",
+  "finished": "2026-10-13T12:01:23.522Z",
+  "sections": {
+    "0 fork": {
+      "passed": 6,
+      "total": 6
+    },
+    "1 upgrade": {
+      "passed": 12,
+      "total": 12
+    },
+    "2 accounts": {
+      "passed": 9,
+      "total": 9
+    },
+    "3 flows": {
+      "passed": 11,
+      "total": 11
+    },
+    "4 admin": {
+      "passed": 7,
+      "total": 7
+    },
+    "5 features": {
+      "passed": 20,
+      "total": 20
+    },
+    "6 older client": {
+      "passed": 2,
+      "total": 2
+    },
+    "7 switch off": {
+      "passed": 3,
+      "total": 3
+    }
+  },
+  "passed": 70,
+  "total": 70,
+  "instructions": {
+    "refresh_awake of live agent ALGNQF": {
+      "bytes": 321,
+      "cu": 14436,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "refresh_awake of live agent HHxDgM": {
+      "bytes": 321,
+      "cu": 14328,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "refresh_awake of live agent CpziNQ": {
+      "bytes": 321,
+      "cu": 14307,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "refresh_awake of live agent HB2xZf": {
+      "bytes": 321,
+      "cu": 14361,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "refresh_awake of live agent 9gihFu": {
+      "bytes": 321,
+      "cu": 14459,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "Hz9oYC buys 983738 $UNITS on the pool": {
+      "bytes": 812,
+      "cu": 92112,
+      "payer_mainnet_lamports": "2835120925",
+      "created_bytes": [
+        170,
+        137
+      ]
+    },
+    "trader buys live coin AFixtu": {
+      "bytes": 560,
+      "cu": 89873,
+      "payer_mainnet_lamports": "3417760",
+      "created_bytes": [
+        170,
+        137
+      ]
+    },
+    "trader buys live coin EArgzU": {
+      "bytes": 560,
+      "cu": 89958,
+      "payer_mainnet_lamports": "2071560",
+      "created_bytes": [
+        170
+      ]
+    },
+    "Hz9oYC buys 5413293 $UNITS on the pool": {
+      "bytes": 812,
+      "cu": 76544,
+      "payer_mainnet_lamports": "16918422677",
+      "created_bytes": []
+    },
+    "trader buys live coin ASDJiK": {
+      "bytes": 560,
+      "cu": 98956,
+      "payer_mainnet_lamports": "2071560",
+      "created_bytes": [
+        170
+      ]
+    },
+    "trader buys live coin Bs8cLf": {
+      "bytes": 560,
+      "cu": 91546,
+      "payer_mainnet_lamports": "2071560",
+      "created_bytes": [
+        170
+      ]
+    },
+    "trader buys live coin CL4tdH": {
+      "bytes": 560,
+      "cu": 88447,
+      "payer_mainnet_lamports": "2071560",
+      "created_bytes": [
+        170
+      ]
+    },
+    "bind: rotate_agent_key (owner + the runtime's key) and the launch holding to the runtime key": {
+      "bytes": 670,
+      "cu": 36010,
+      "payer_mainnet_lamports": "1528840",
+      "created_bytes": [
+        170
+      ]
+    },
+    "trader buys live coin AFixtu (bits on)": {
+      "bytes": 560,
+      "cu": 72256,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "set_fee_route (first for the repository: creates FeeRoute, ClaimEscrow and its vault)": {
+      "bytes": 472,
+      "cu": 66953,
+      "payer_mainnet_lamports": "3865800",
+      "created_bytes": [
+        97,
+        114,
+        165
+      ]
+    },
+    "join_pool (first member: creates Pool, its vault and PoolMember)": {
+      "bytes": 495,
+      "cu": 77781,
+      "payer_mainnet_lamports": "7238920",
+      "created_bytes": [
+        675,
+        195,
+        170
+      ]
+    },
+    "join_pool (second member: creates PoolMember)": {
+      "bytes": 528,
+      "cu": 53586,
+      "payer_mainnet_lamports": "1645840",
+      "created_bytes": [
+        195
+      ]
+    },
+    "trader buys fork coin a": {
+      "bytes": 560,
+      "cu": 80519,
+      "payer_mainnet_lamports": "1518840",
+      "created_bytes": [
+        170
+      ]
+    },
+    "trader buys fork coin b": {
+      "bytes": 560,
+      "cu": 86519,
+      "payer_mainnet_lamports": "1518840",
+      "created_bytes": [
+        170
+      ]
+    },
+    "trader buys fork coin c": {
+      "bytes": 560,
+      "cu": 80507,
+      "payer_mainnet_lamports": "1518840",
+      "created_bytes": [
+        170
+      ]
+    },
+    "crank_pump_fees with route accounts (b: pool)": {
+      "bytes": 838,
+      "cu": 188941,
+      "payer_mainnet_lamports": "3032680",
+      "created_bytes": [
+        170,
+        170
+      ]
+    },
+    "crank_pump_fees with route accounts (c: GitHub route and pool)": {
+      "bytes": 937,
+      "cu": 182325,
+      "payer_mainnet_lamports": "3032680",
+      "created_bytes": [
+        170,
+        170
+      ]
+    },
+    "pool_settle": {
+      "bytes": 476,
+      "cu": 38551,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "pool_pay": {
+      "bytes": 457,
+      "cu": 38574,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "the pool's token accounts (one per member coin)": {
+      "bytes": 498,
+      "cu": 54807,
+      "payer_mainnet_lamports": "4546520",
+      "created_bytes": [
+        170,
+        170,
+        170
+      ]
+    },
+    "the holder agent's token account for its cross-holding": {
+      "bytes": 350,
+      "cu": 17369,
+      "payer_mainnet_lamports": "1518840",
+      "created_bytes": [
+        170
+      ]
+    },
+    "pool_cross_buy (A holds B; creates CrossHolding)": {
+      "bytes": 759,
+      "cu": 136130,
+      "payer_mainnet_lamports": "1142920",
+      "created_bytes": [
+        96,
+        137
+      ]
+    },
+    "pool_buy (buyback, held by the pool)": {
+      "bytes": 660,
+      "cu": 110631,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "pool_buy (milestone burn)": {
+      "bytes": 660,
+      "cu": 111217,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    "claimer's $UNITS account": {
+      "bytes": 287,
+      "cu": 18766,
+      "payer_mainnet_lamports": "1518840",
+      "created_bytes": [
+        170
+      ]
+    },
+    "claim_github_fees (Ed25519 attestation + claim)": {
+      "bytes": 677,
+      "cu": 31843,
+      "payer_mainnet_lamports": "10000",
+      "created_bytes": []
+    },
+    "set_fee_route again (a redirect: pending)": {
+      "bytes": 472,
+      "cu": 58303,
+      "payer_mainnet_lamports": "2722800",
+      "created_bytes": [
+        114,
+        165
+      ]
+    },
+    "trader buys fork coin a (bits off)": {
+      "bytes": 560,
+      "cu": 67756,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    }
+  },
+  "checks": [
+    {
+      "name": "0 fork: the launch program on the fork is the code deployed on mainnet, which is the build from before pools and claims",
+      "ok": true,
+      "detail": "685224 bytes, sha256 593dff1c876f83b4e59003cdeff4159c4a6a46cdefa9dc71a853dc175f045008; ProgramData 685269 bytes holding 3.481816760 SOL"
+    },
+    {
+      "name": "0 fork: its upgrade authority on the fork is the stand-in for the dev wallet",
+      "ok": true,
+      "detail": "7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r in place of 6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3"
+    },
+    {
+      "name": "0 fork: every account the launch program owns on mainnet is on the fork with its bytes and balance (LaunchConfig apart from the two replaced keys)",
+      "ok": true,
+      "detail": "19 accounts: 1 LaunchConfig, 5 AgentLaunch, 6 DebitReceipt, 1 BountyConfig, 6 UsageEpoch"
+    },
+    {
+      "name": "0 fork: LaunchConfig on the fork differs from mainnet's now in bytes 8 to 71 only (admin, runtime authority) or in what the runtime posted since the copy",
+      "ok": true,
+      "detail": "bytes 72 to 278 equal (the fee split, thresholds, the 16 reserved bytes, pause, bumps); the usage counters after them move with every epoch the runtime posts"
+    },
+    {
+      "name": "0 fork: the 16 bytes that become `features` + reserved are zero in the live LaunchConfig, and the 32 that become `routes` + reserved are zero in every live AgentLaunch",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "0 fork: before the upgrade the program refuses set_features (the instruction does not exist)",
+      "ok": true,
+      "detail": "{\"InstructionError\":[1,{\"Custom\":101}]} Program ComputeBudget111111111111111111111111111111 invoke [1] Program ComputeBudget111111111111111111111111111111 succe"
+    },
+    {
+      "name": "1 upgrade: an interrupted write leaves a buffer account owned by the loader, its authority the dev wallet's stand-in, partly written",
+      "ok": true,
+      "detail": "958405 bytes holding 6.671445360 SOL; about 51 of 959 thousand-byte pieces already equal the build"
+    },
+    {
+      "name": "1 upgrade: `solana program show --buffers` lists the interrupted buffer",
+      "ok": true,
+      "detail": "Buffer Address                               | Authority                                    | Balance | 9SUdyQLLPJXrjUnnRz8a7wjh416vhurgbyKpKPEtibh  | 7vABpo1VDrxtMQoELbWFFUwBAwbfZCcmY3sRDBwpoP9r | 6."
+    },
+    {
+      "name": "1 upgrade: the same command run again completes the same buffer: its bytes equal the build",
+      "ok": true,
+      "detail": "buffer 9SUdyQLLPJXrjUnnRz8a7wjh416vhurgbyKpKPEtibh, sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8"
+    },
+    {
+      "name": "1 upgrade: the write cost the buffer's balance plus one base fee per signature; the interruption added nothing (the second run wrote only what was missing)",
+      "ok": true,
+      "detail": "fees 0.004745000 SOL for 949 signatures over both runs (the first run: the account's creation, 2 signatures, and 51 writes; the second: 896 writes); the buffer holds 4.869388280 SOL at mainnet rent"
+    },
+    {
+      "name": "1 upgrade: `solana program dump <buffer>` gives back the build (the check to make before the upgrade)",
+      "ok": true,
+      "detail": "817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8"
+    },
+    {
+      "name": "1 upgrade: without the extension the upgrade is refused and the program stays as it was",
+      "ok": true,
+      "detail": "  Program BPFLoaderUpgradeab1e11111111111111111111111 failed: account data too small for instruction"
+    },
+    {
+      "name": "1 upgrade: the extension by exactly 273144 bytes makes the ProgramData 958413 bytes; the code is unchanged",
+      "ok": true,
+      "detail": "685269 to 958413 bytes; on the fork the payer added 3.189628600 SOL (the fork's rent rate), fee 5000 lamports; at mainnet rent the addition is 1.387571520 SOL"
+    },
+    {
+      "name": "1 upgrade: between the extension and the upgrade the old code still runs (refresh_awake of a live agent simulates)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1 upgrade: after the upgrade the deployed code is the pools and claims build, byte for byte",
+      "ok": true,
+      "detail": "sha256 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes"
+    },
+    {
+      "name": "1 upgrade: the upgrade authority is unchanged and the buffer is gone, its lamports back with the payer",
+      "ok": true,
+      "detail": "the payer got 6.671440360 SOL back on the fork (the buffer's rent less one 5,000 lamport fee)"
+    },
+    {
+      "name": "1 upgrade: an abandoned buffer is closed with `solana program close <buffer>` and its whole balance returns; only the fees of the writes made are spent",
+      "ok": true,
+      "detail": "the buffer held 6.671445360 SOL on the fork; the detour cost 0.000020000 SOL in fees"
+    },
+    {
+      "name": "1 upgrade: the ProgramData's slot moved at the extension and again at the upgrade (the program is not callable in the slot of each)",
+      "ok": true,
+      "detail": "456139926, 456434425, 456434428"
+    },
+    {
+      "name": "2 accounts: every account of the launch program is byte for byte what it was before the upgrade, with the same balance",
+      "ok": true,
+      "detail": "19 accounts"
+    },
+    {
+      "name": "2 accounts: the current client decoders read every one of them",
+      "ok": true,
+      "detail": "5 AgentLaunch, 6 DebitReceipt, 1 BountyConfig, 1 LaunchConfig, 6 UsageEpoch"
+    },
+    {
+      "name": "2 accounts: LaunchConfig read through the upgraded program's own account type: features 0, the fee split and thresholds as before",
+      "ok": true,
+      "detail": "agent share 7000 bps, sleep 14400000000, wake 28800000000, usage epochs posted 6"
+    },
+    {
+      "name": "2 accounts: live agent ALGNQF: the upgraded program loads and rewrites its AgentLaunch (refresh_awake), every field kept, routes 0",
+      "ok": true,
+      "detail": "fees claimed 2491634658, debited 0, awake true"
+    },
+    {
+      "name": "2 accounts: live agent HHxDgM: the upgraded program loads and rewrites its AgentLaunch (refresh_awake), every field kept, routes 0",
+      "ok": true,
+      "detail": "fees claimed 269287712951, debited 372516187436, awake false"
+    },
+    {
+      "name": "2 accounts: live agent CpziNQ: the upgraded program loads and rewrites its AgentLaunch (refresh_awake), every field kept, routes 0",
+      "ok": true,
+      "detail": "fees claimed 930052254973, debited 0, awake true"
+    },
+    {
+      "name": "2 accounts: live agent HB2xZf: the upgraded program loads and rewrites its AgentLaunch (refresh_awake), every field kept, routes 0",
+      "ok": true,
+      "detail": "fees claimed 160559089033, debited 0, awake true"
+    },
+    {
+      "name": "2 accounts: live agent 9gihFu: the upgraded program loads and rewrites its AgentLaunch (refresh_awake), every field kept, routes 0",
+      "ok": true,
+      "detail": "fees claimed 8957632959, debited 0, awake true"
+    },
+    {
+      "name": "2 accounts: the same launch transaction (create_v2 + register_pump_launch, same keys) simulated before and after the upgrade: it passes on both, and the compute units are compared",
+      "ok": true,
+      "detail": "before 230673 CU (the launch program's instruction 83772), after 230776 CU (83875): +103 CU; the page's limit for it is 421000"
+    },
+    {
+      "name": "3 flows: live agent ALGNQF: the committed keeper script (scripts/mainnet/crank-fees.ts at HEAD, eight accounts) cranked its fees; 70% reached its compute vault, the rest the treasury, to the unit",
+      "ok": true,
+      "detail": "fees 485797024: compute 340057916, protocol 145739108"
+    },
+    {
+      "name": "3 flows: live agent HHxDgM: the committed keeper script (scripts/mainnet/crank-fees.ts at HEAD, eight accounts) cranked its fees; 70% reached its compute vault, the rest the treasury, to the unit",
+      "ok": true,
+      "detail": "fees 1845759572: compute 1292031700, protocol 553727872"
+    },
+    {
+      "name": "3 flows: live agent CpziNQ: the committed keeper script (scripts/mainnet/crank-fees.ts at HEAD, eight accounts) cranked its fees; 70% reached its compute vault, the rest the treasury, to the unit",
+      "ok": true,
+      "detail": "fees 2673231276: compute 1871261893, protocol 801969383"
+    },
+    {
+      "name": "3 flows: live agent HB2xZf: the committed keeper script (scripts/mainnet/crank-fees.ts at HEAD, eight accounts) cranked its fees; 70% reached its compute vault, the rest the treasury, to the unit",
+      "ok": true,
+      "detail": "fees 3563362674: compute 2494353871, protocol 1069008803"
+    },
+    {
+      "name": "3 flows: live agent 9gihFu: the committed keeper script (scripts/mainnet/crank-fees.ts at HEAD, eight accounts) cranked its fees; 70% reached its compute vault, the rest the treasury, to the unit",
+      "ok": true,
+      "detail": "fees 510537320: compute 357376124, protocol 153161196"
+    },
+    {
+      "name": "3 flows: the hosted runtime's path on a live agent: post_usage continues the live epoch sequence and debit_compute moves the amount from the vault to the compute sink",
+      "ok": true,
+      "detail": "usage epoch 6 after the live 5; signed by the stand-in for the runtime authority"
+    },
+    {
+      "name": "3 flows: a new launch through the Launch page's own builders and planner on the upgraded program, with SOL only (the purchase on the PumpSwap pool): the agent is registered, its coin quoted in $UNITS, its credits in its vault",
+      "ok": true,
+      "detail": "0.277397945 SOL in 3 transactions: launch 228888 of 421000 CU; soul + sol-to-units 104948 of 189000 CU; initial-buy + credits + units-account + tip 96357 of 228000 CU"
+    },
+    {
+      "name": "3 flows: a new launch through the Launch page's own builders and planner on the upgraded program, paying from the wallet's own $UNITS: the agent is registered, its coin quoted in $UNITS, its credits in its vault",
+      "ok": true,
+      "detail": "0.055252229 SOL in 2 transactions: launch 242388 of 421000 CU; soul + initial-buy + credits + units-account + tip 116542 of 256000 CU"
+    },
+    {
+      "name": "3 flows: the pool purchase lane's own proof of both launches passes whole (sizes, the starting curve, the spend equal to the cost lines to the lamport, compute against the page's limits)",
+      "ok": true,
+      "detail": "units: PASS 11/11; sol: PASS 10/10"
+    },
+    {
+      "name": "3 flows: bind: the new agent's registry signing key is the runtime's key and its launch holding sits in that key's account",
+      "ok": true,
+      "detail": "10000000000000 base units"
+    },
+    {
+      "name": "3 flows: the new agents work on the repository of a live agent (the pool they can form is that repository's)",
+      "ok": true,
+      "detail": "https://github.com/karpathy/minbpe"
+    },
+    {
+      "name": "4 admin: launch-features.ts refuses to send the committed params file (owner_confirmed false, attestor and keeper not set)",
+      "ok": true,
+      "detail": "[launch-features] REFUSED ~/units/scripts/mainnet/launch-features-params.json: owner_confirmed is false | [launch-features] REFUSED claim.attestor is not set (the public key of the attestor key generated on the server) | [launch-features] REFUSED pool.keeper is not set (the public key of the pool ke"
+    },
+    {
+      "name": "4 admin: the admin instructions are refused for a key that is not the admin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4 admin: features cannot be switched on before the config accounts exist (the tool refuses)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4 admin: configs: ClaimConfig holds one fixed share of 20% (min = max = 2000 bps), a 30 day change delay, a 24 hour rebind delay, 600 s attestations and the attestor key",
+      "ok": true,
+      "detail": "{\"attestor\":\"9BmPgW5g7S721Y335awsyUEyds4Zfqio9k6Uquyza8CA\",\"minBps\":2000,\"maxBps\":2000,\"changeDelayS\":\"2592000\",\"rebindDelayS\":\"86400\",\"maxAttestationTtlS\":\"600\",\"paused\":false}"
+    },
+    {
+      "name": "4 admin: configs: PoolConfig holds devnet's values (20% of the agent share routed; 40% payout, 40% buyback, 20% burn; up to 8 agents; joining by the owner) and the keeper key",
+      "ok": true,
+      "detail": "{\"keeper\":\"9W98RipGJv1JXF1rL3zpWauNNRJ9Y7q1bAZwZ7Py6Ai6\",\"autoJoin\":false,\"paused\":false,\"maxMembers\":8,\"poolFeeBps\":2000,\"payoutBps\":4000,\"buybackBps\":4000,\"burnBps\":2000,\"authorBuybackBps\":2000,\"buybackPerGenBps\":2500,\"burnPerMilestoneBps\":5000,\"crossHoldQuote\":\"500000\",\"maxBuyQuote\":\"1000000000\"}"
+    },
+    {
+      "name": "4 admin: configs alone change nothing: features still 0, and a route or a membership is refused (FeatureOff)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4 admin: features: LaunchConfig.features is 3 (pools and GitHub fees), every other field as it was",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: with both bits on, a live agent that has no route and no membership is cranked by the committed keeper exactly as before",
+      "ok": true,
+      "detail": "[crank-fees] ALGNQF (AFixtu): cranked JRc8RZiFN9Uy2Zvx6Re9UvFkf1EbjdYWuMjttmNrUh9JjdiLqVqGhpGz6uZZVSXXSv9KrZTxLu47LX9yuT6GG5b | [crank-fees] done: 1 crank(s) sent"
+    },
+    {
+      "name": "5 features: refused: a route by a wallet that is not the agent's owner; a share other than the fixed 20%; a membership by a wallet that is not the owner (auto-join off)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: an agent launched before the features opened opted in afterwards: A has a route and a membership (routes 3), B a membership (routes 1), the pool has two members",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: a launch through the page's groups and planner WITH the route tick and the pool box: it fits, lands, and the new agent has its route (the repository's id, 20%) and is the pool's third member",
+      "ok": true,
+      "detail": "launch: 1164 bytes, 239311 of 421000 CU; soul + fee-route + pool: 914 bytes, 123877 of 329000 CU; sol-to-units + initial-buy: 1139 bytes, 172898 of 351000 CU; credits + units-account: 496 bytes, 17068 of 37000 CU"
+    },
+    {
+      "name": "5 features: the transaction that carries the two new groups (fee-route, pool) used at most 62.5% of its compute limit (the page's 1.6 times headroom rule)",
+      "ok": true,
+      "detail": "soul + fee-route + pool: 123877 of 329000; the others: launch 239311 of 421000 (56.8%); sol-to-units + initial-buy 172898 of 351000 (49.3%); credits + units-account 17068 of 37000 (46.1%)"
+    },
+    {
+      "name": "6 older client: the eight-account crank of an agent with a route or a membership is refused (MissingRouteAccounts): nothing is lost, the fees wait",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "6 older client: the committed keeper script skips such an agent (its simulation fails, it sends nothing): until the keeper on the server is route-aware, a routed agent's fees are not cranked",
+      "ok": true,
+      "detail": "[crank-fees] 4uUJFM (DyyRMy): skipped, simulation failed: {\"InstructionError\":[3,{\"Custom\":6030}]} Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq consumed 24739 of 698386 compute units | Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq failed: custom"
+    },
+    {
+      "name": "5 features: routed crank of a (sent by the working copy of the keeper script): compute, protocol, GitHub and pool amounts exact; the protocol share is what it is today",
+      "ok": true,
+      "detail": "fees 592209159: compute 248727847, protocol 177662748, GitHub 82909282, pool 82909282"
+    },
+    {
+      "name": "5 features: routed crank of b: compute, protocol, GitHub and pool amounts exact; the protocol share is what it is today",
+      "ok": true,
+      "detail": "fees 592209159: compute 331637129, protocol 177662748, GitHub 0, pool 82909282"
+    },
+    {
+      "name": "5 features: routed crank of c: compute, protocol, GitHub and pool amounts exact; the protocol share is what it is today",
+      "ok": true,
+      "detail": "fees 591311038: compute 248350636, protocol 177393312, GitHub 82783545, pool 82783545"
+    },
+    {
+      "name": "5 features: refused: a settlement by the admin (only the keeper settles)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: a settlement for the registry's posted epoch 55 (a live epoch of the copy): each member's payout, buyback and burn equal the offchain recomputation",
+      "ok": true,
+      "detail": "a 98240842/4912042/8186737, b 0/9824084/8186737, c 0/9824084/8186737"
+    },
+    {
+      "name": "5 features: refused: a second settlement for the same epoch",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: the author's payout reached its compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: a cross-holding bought by the pool authority is in the holder agent's own token account, none with the pool",
+      "ok": true,
+      "detail": "72263114 base units of B for at most 500000 base units of $UNITS"
+    },
+    {
+      "name": "5 features: refused: a pool purchase by a key that is not the keeper",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: a buyback: spent within the member's due amount and the per-buy cap, the tokens in the pool's own account",
+      "ok": true,
+      "detail": "9549010 base units of $UNITS (cap 1000000000, due 9824084)"
+    },
+    {
+      "name": "5 features: a milestone burn: the coin's supply fell by exactly the tokens bought",
+      "ok": true,
+      "detail": "1183196894 base units burned"
+    },
+    {
+      "name": "5 features: refused: a claim attested by the claimant's own key; an attestation that lives longer than 600 s",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: the claim paid the repository's whole escrow (the 20% slices of A and C) to the attested wallet and pinned it",
+      "ok": true,
+      "detail": "165692827 base units of $UNITS"
+    },
+    {
+      "name": "5 features: refused: the same attestation again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5 features: a redirect is only pending: the route still names the repository, the change takes effect 30 days later and apply_fee_route is refused until then",
+      "ok": true,
+      "detail": "effective in 2592000 s"
+    },
+    {
+      "name": "7 switch off: set_features(0) is the switch back: the routed agent is cranked by the committed keeper with eight accounts, today's two amounts to the unit, nothing routed; its route and membership stay recorded",
+      "ok": true,
+      "detail": "fees 410340546; [crank-fees] done: 1 crank(s) sent"
+    },
+    {
+      "name": "7 switch off: with the bits off a new route or membership is refused again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7 switch off: at the end every launch program account decodes, old and new kinds side by side",
+      "ok": true,
+      "detail": "2 ClaimEscrow, 8 AgentLaunch, 1 CrossHolding, 7 DebitReceipt, 1 BountyConfig, 2 FeeRoute, 1 ClaimConfig, 1 LaunchConfig, 1 PoolConfig, 7 UsageEpoch, 3 PoolMember, 1 Pool"
+    }
+  ],
+  "transactions": 41
+}

@@ -1,0 +1,13 @@
+diff --git a/src/v16.rs b/src/v16.rs
+--- a/src/v16.rs
++++ b/src/v16.rs
+@@ -18951,9 +18951,6 @@ impl<'a, T> MarketGroupV16ViewMut<'a, T> {
+         if decode_market_mode(self.header.mode)? != MarketModeV16::Live {
+             return Err(V16Error::LockActive);
+         }
+-        if !active_bitmap_is_empty(account.header.active_bitmap.map(V16PodU64::get)) {
+-            return Err(V16Error::Stale);
+-        }
+         // A `canceled` close ledger (left behind by cure_and_cancel_close) is inert:
+         // validate_close_progress_ledger_with_market guarantees it carries no
+         // irreversible progress and residual_remaining == gross_loss_at_close_start,

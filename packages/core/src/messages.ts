@@ -206,6 +206,9 @@ export class Messages {
   // ---------------------------------------------------------------------------------------------
   // Sending
 
+  /** Set by conversations.ts: refuses a conversation message the limits do not allow (throws). */
+  talkGate: ((agent: string, env: Envelope, board: string) => void) | null = null;
+
   send(agent: string, body: unknown) {
     return this.c.tx(() => this.sendInner(agent, body, false));
   }
@@ -244,6 +247,8 @@ export class Messages {
         const c = this.candByRef(ref.id);
         if (c && !TERMINAL.has(c.status)) throw conflict("candidate_open", "a board message may reference a candidate only once it is final (it would name its author)");
       }
+      // a conversation message (an address line, packages/protocol talk.ts) passes the conversation limits
+      if (!shadow) this.talkGate?.(agent, env, board);
     } else {
       to = env.to;
       if (to === agent) throw bad("bad_recipient", "a message to oneself");

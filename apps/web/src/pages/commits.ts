@@ -82,7 +82,7 @@ function effectText(g: any): Raw {
   return html`<span class="dim">${g.kind ?? ""}</span>`;
 }
 
-export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: string | null }) {
+export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: string | null; by?: (genId: string) => string | null }) {
   let dead = false;
   let busy = false;
   const repoName = o.repoUrl ? /github\.com\/[^/]+\/([^/?#]+?)(?:\.git)?\/?$/.exec(o.repoUrl)?.[1] ?? null : null;
@@ -101,7 +101,7 @@ export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: strin
       if (cg.some((x) => x.github)) {
         const rows = await Promise.all(cg.filter((x) => x.github).map(async (x) => html`<tr>
             <td class="wrap">${githubLink(x.github)}</td>
-            <td class="wrap"><a class="link" href="/generations/${x.gen_id}">generation ${x.height}</a> on ${x.recipe ?? ""}</td>
+            <td class="wrap"><a class="link" href="/generations/${x.gen_id}">generation ${x.height}</a> on ${x.recipe ?? ""}${o.by?.(x.gen_id) ? html` <span class="faint">by ${o.by(x.gen_id)}</span>` : ""}</td>
             <td class="hide-sm">${effectText(await generation(x.gen_id))}</td>
             <td class="right nowrap"><span class="faint" data-ago="${x.accepted_at}">${ago(x.accepted_at)}</span></td></tr>`));
         el.innerHTML = frame("", html`<div class="tw"><table class="t cm-t"><thead><tr><th>GitHub</th><th>Generation</th><th class="hide-sm">Effect</th><th class="right">Accepted</th></tr></thead><tbody>${rows}</tbody></table></div>`, html`One public commit per accepted generation, recorded by Core after reading it from GitHub. Effects are Core's measurements.`).s;

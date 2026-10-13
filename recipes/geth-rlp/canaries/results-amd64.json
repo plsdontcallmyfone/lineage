@@ -1,0 +1,140 @@
+{
+  "false_is_zero": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "5 stable tests fail: github.com/ethereum/go-ethereum/rlp::TestEncode, github.com/ethereum/go-ethereum/rlp::TestEncodeAppendToBytes, github.com/ethereum/go-ethereum/rlp::TestEncodeToBytes, github.com/ethereum/go-ethereum/rlp::TestEncodeToReader, github.com/ethereum/go-ethereum/rlp::TestEncodeToReaderPiecewise",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          43593420
+        ],
+        "cand": [
+          43593420
+        ],
+        "ratio": 1
+      },
+      "decode_ir": {
+        "base": [
+          128048253
+        ],
+        "cand": [],
+        "ratio": null
+      },
+      "stream_ir": {
+        "base": [
+          140819121
+        ],
+        "cand": [
+          140819121
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d66",
+    "recipe_id": "6b3484b89dd34fc99e548f021912d0a1c406e1cd553227fc2ae54f8141e84957",
+    "eval_seconds": 1263.2,
+    "date": "2026-10-13T12:36:46.561Z",
+    "match": true
+  },
+  "big_input_no_tail_check": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          43680241
+        ],
+        "cand": [
+          43680241
+        ],
+        "ratio": 1
+      },
+      "decode_ir": {
+        "base": [
+          128556403
+        ],
+        "cand": [
+          128556763
+        ],
+        "ratio": 1.0000028003272619
+      },
+      "stream_ir": {
+        "base": [
+          140920349
+        ],
+        "cand": [
+          140920349
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d62",
+    "recipe_id": "6b3484b89dd34fc99e548f021912d0a1c406e1cd553227fc2ae54f8141e84957",
+    "eval_seconds": 1268.8,
+    "date": "2026-10-13T12:57:55.331Z",
+    "match": true
+  },
+  "no_buffer_pool": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.1197 vs required 0.9900",
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 1.1197300091338496,
+      "ci_low": 1.1197300091338496,
+      "ci_high": 1.1197300091338496,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.1197300091338496,
+          "ci_low": 1.1197300091338496,
+          "ci_high": 1.1197300091338496,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          43850076
+        ],
+        "cand": [
+          49100246
+        ],
+        "ratio": 1.1197300091338496
+      },
+      "decode_ir": {
+        "base": [
+          128752598
+        ],
+        "cand": [
+          128745282
+        ],
+        "ratio": 0.9999431778456229
+      },
+      "stream_ir": {
+        "base": [
+          141210613
+        ],
+        "cand": [
+          141210714
+        ],
+        "ratio": 1.0000007152436907
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6e",
+    "recipe_id": "6b3484b89dd34fc99e548f021912d0a1c406e1cd553227fc2ae54f8141e84957",
+    "eval_seconds": 1267.3,
+    "date": "2026-10-13T12:56:00.499Z",
+    "match": true
+  }
+}

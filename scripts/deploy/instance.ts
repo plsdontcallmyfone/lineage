@@ -34,7 +34,8 @@ export interface InstanceLayout {
    * the instance's profile overlay names it as state_file, so every service reads the same file).
    */
   stateFile: string;
-  ports: { core: number; web: number; gate: number; identity: number; bind: number; indexer: number };
+  /** bindService: the bind service (units-bind); bind: the hosted runtime's own port (desktops, genesis proof) */
+  ports: { core: number; web: number; gate: number; identity: number; bindService: number; bind: number; indexer: number };
   /** added to every port of the first instance's block */
   portOffset: number;
   users: { main: string; core: string; web: string; gate: string; indexer: string };
@@ -69,11 +70,12 @@ export function instanceLayout(name: string | undefined | null): InstanceLayout 
     home: `/home/${prefix}`,
     keysDir: network,
     stateFile: t ? `/etc/${prefix}/state.json` : "scripts/devnet/devnet.json",
-    ports: { core: 9660 + off, web: 9661 + off, gate: 9662 + off, identity: 9665 + off, bind: 9667 + off, indexer: 9668 + off },
+    ports: { core: 9660 + off, web: 9661 + off, gate: 9662 + off, identity: 9665 + off, bindService: 9666 + off, bind: 9667 + off, indexer: 9668 + off },
     portOffset: off,
     users: { main: prefix, core: `${prefix}-core`, web: `${prefix}-web`, gate: `${prefix}-gate`, indexer: `${prefix}-indexer` },
     units: {
-      public: [`${prefix}-core`, `${prefix}-indexer`, `${prefix}-web`, `${prefix}-gate`],
+      // the bind service before the gate that forwards to it (docs/plans/SEAMLESS-BIND.md section 9)
+      public: [`${prefix}-core`, `${prefix}-indexer`, `${prefix}-web`, `${prefix}-bind`, `${prefix}-gate`],
       workers: [`${prefix}-bootstrap`, `${prefix}-reference`, `${prefix}-verifier@v1`, `${prefix}-verifier@v2`],
       runtime: `${prefix}-runtime`,
     },
@@ -83,7 +85,7 @@ export function instanceLayout(name: string | undefined | null): InstanceLayout 
 }
 
 /** The unit files an instance gets (backups and the monitor stay with the first instance; the identity service is opt-in, below). */
-export const INSTANCE_UNIT_FILES = ["units-core.service", "units-web.service", "units-gate.service", "units-indexer.service", "units-runtime.service",
+export const INSTANCE_UNIT_FILES = ["units-core.service", "units-web.service", "units-gate.service", "units-indexer.service", "units-runtime.service", "units-bind.service",
   "units-bootstrap.service", "units-reference.service", "units-verifier@.service"];
 /** The GitHub identity service's unit files: rendered for an instance only with the identity flag (WITH_IDENTITY=1). */
 export const IDENTITY_UNIT_FILES = ["units-identity.service", "units-identity-cycle.service", "units-identity-cycle.timer"];
@@ -138,7 +140,7 @@ export function renderUnit(file: string, text: string, L: InstanceLayout): { fil
     // an instance's identity service is told its own, or it would read the devnet Core's payment terms and souls
     if (identity && line.startsWith("ExecStart=")) line = `Environment=UNITS_CORE=http://127.0.0.1:${L.ports.core} UNITS_INDEXER=http://127.0.0.1:${L.ports.indexer} UNITS_GENESIS_SIGNER=http://127.0.0.1:${L.ports.bind}\n${line}`;
     out.push(line);
-    if (line === `EnvironmentFile=-${L.etc}/site.env` && !["web", "indexer", "gate"].includes(role)) out.push(`EnvironmentFile=-${L.etc}/${role === "verifier" || role === "reference" || role === "bootstrap" ? "worker" : identity ? "identity" : role}.env`);
+    if (line === `EnvironmentFile=-${L.etc}/site.env` && !["web", "indexer", "gate"].includes(role)) out.push(`EnvironmentFile=-${L.etc}/${role === "verifier" || role === "reference" || role === "bootstrap" ? "worker" : identity ? "identity" : role === "bind" ? "runtime" : role}.env`);
   }
   const t = out.join("\n");
   const live = t.split("\n").filter((l) => !l.startsWith("#")).join("\n");

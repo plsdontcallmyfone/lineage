@@ -1,0 +1,133 @@
+# aeyakovenko/percolator: a zero-copy perpetual-futures risk engine library (v16, spec.md v16.9.1),
+# default branch master. Apache-2.0 (LICENSE). One crate, no workspace; one dependency (bytemuck)
+# and one dev-dependency (proptest); Cargo.lock is committed. The repository has no CONTRIBUTING
+# file and its README states no policy against AI-generated changes (checked 2026-10-13; its own
+# branches are named codex/... and claude/...). The README does say: "Educational research project.
+# Not production ready. Not audited. Do not use with real funds."
+#
+# What a patch may touch: src/v16.rs (the engine, 867 KB) and src/wide_math.rs (the 256 and 512 bit
+# integers under it). Everything else is protected: the tests, the Kani proof harnesses
+# (tests/proofs_v16*.rs, src/v16_proofs.rs, src/v16_kani_api.rs, kani-list.json), src/lib.rs (the
+# public surface and the protocol constants), the manifest and lockfile, .cargo (the test stack
+# size), the proof runner scripts and spec.md. The 50 unit tests upstream keeps inside
+# src/wide_math.rs are a protected block.
+#
+# This is risk-engine code: behaviour must not change. Three things hold a patch to that:
+#   - upstream's own tests, all of them: 246 tests in 7 binaries (the spec tests, the reference
+#     model conformance tests and the property tests need upstream's `fuzz` feature, which is how
+#     upstream says to run them: `cargo test --features fuzz`);
+#   - the equivalence harness (overlay/examples/lineage_equiv.rs): 64 market groups with 400 wrapper
+#     transactions each, where every engine answer and every byte of state after every transaction
+#     is digested, and 120,000 calls of the checked arithmetic helpers with their full results
+#     (the same digest on arm64 and amd64 at this commit);
+#   - the release profile is upstream's (fat LTO, one codegen unit, overflow-checks on): the recipe
+#     passes no profile flags, and Cargo.toml is protected.
+# What a replay does NOT run: the Kani proofs (423 harnesses; cargo-kani is not in the image and
+# upstream's own runner scripts take hours). A patch accepted here still has to pass them before
+# upstream would take it; a patch cannot edit a proof, but it can change code a proof covers.
+#
+# Property tests: 18 proptest blocks, 64 to 20,000 cases each. proptest seeds its generator from
+# the operating system unless PROPTEST_RNG_SEED is set (proptest 1.8.0, test_runner/config.rs; the
+# repository sets no seed and its two *.proptest-regressions files only replay four saved cases).
+# The test command sets PROPTEST_RNG_SEED, so every run draws the same cases and a failure is a
+# property of the tree, not of the draw (checked: two seeded runs of one test binary under
+# cachegrind differ by 456 instructions of 141.9 million, two unseeded runs by 6,327). Case counts
+# stay upstream's (ProptestConfig::with_cases).
+#
+# Metrics: instruction counts of two seeded workloads (overlay/examples/lineage_bench.rs).
+#   engine_ir  24 market groups of 1 to 4 assets and six accounts, 320 wrapper transactions each
+#              (oracle steps with a keeper's crank sweep, deposits, withdrawals, trades, batches,
+#              refreshes, liquidations, rebalances, conversions, fee syncs), then resolution and
+#              the closing of every account, through the public API only. A refused transaction
+#              is rolled back by the harness, as the engine's contract says its caller does; about
+#              a third of the trades land, the rest are refused by margin and lock rules (that is
+#              the engine's work too).
+#   wide_ir    60,000 calls of the checked multiply-divide helpers the engine reaches wide_math
+#              through (src/wide_math.rs is a private module; upstream exposes these helpers under
+#              `fuzz` for its own conformance tests), most with products past 128 bits.
+# Visible headroom, from a cachegrind profile at this commit (amd64): engine_ir is 17% decoding
+# legs (PortfolioLegV16Account::try_to_runtime), 15% compact_source_domains, 12% source credit shape
+# validation, and the engine validates the whole market group and both accounts around most
+# public calls; wide_ir is 85% div_rem_u256, a bit-at-a-time long division.
+#
+# Toolchain: no rust-toolchain file; edition 2021, lockfile version 4. The image's Rust 1.89.0
+# builds the crate and its 37 locked packages as they are (bytemuck 1.25.0, proptest 1.8.0).
+#
+# Determinism: native code under cachegrind, one thread, inputs only from $LINEAGE_SEED (FNV-1a ->
+# splitmix64, examples/lineage_support/rng.rs). No SIMD and no runtime CPU detection in the crate.
+# The harness copies its rollback images with its own loop, not memcpy, because the C library picks
+# its memcpy by CPU model and the account images are 9.4 KB. The engine's own struct copies still
+# go through memcpy: 3.1% of engine_ir on amd64 (1.5% on arm64), none of wide_ir. Verifiers
+# whose CPUs make glibc pick another memcpy could differ on engine_ir by a fraction of that.
+# What is not the engine's work (`lineage_bench <mode> <seed> --inputs-only`), at this commit:
+# engine_ir 8.8% on arm64 and 8.8% on amd64, wide_ir 7.9% and 7.1%. The copies back after a
+# refused transaction are not in that run (which transactions are refused is the engine's
+# answer): 6.2% of engine_ir on arm64 and 6.0% on amd64, from the profile.
+# Calibrated on arm64 (Docker on Apple silicon); calibration-amd64.json is the same measurement
+# on the mainnet capacity host.
+name: percolator
+class: rust
+requires: { arch: arm64 }
+repo: https://github.com/aeyakovenko/percolator
+commit: "4db11a8cb0053815e23a35d3a7d3edc265d8d866"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  - cargo fetch --locked
+prepare_outputs: []
+build:
+  commands:
+    - cargo build --release --locked --offline --features fuzz --lib --examples --tests
+  artifacts: ["target/release/libpercolator.rlib"]
+  reproducible: true
+test:
+  # --no-fail-fast: without it cargo stops at the first failing test binary, and every later
+  # binary's tests would be reported as failures too. PROPTEST_RNG_SEED: see the header.
+  command: PROPTEST_RNG_SEED=1610612741 cargo test --release --locked --offline --features fuzz --no-fail-fast --lib --tests 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: engine_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench engine "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: wide_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench wide "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/v16.rs", "src/wide_math.rs"]
+  protected_paths:
+    - "tests/**"
+    - "examples/**"
+    - "benches/**"
+    - "src/lib.rs"
+    - "src/v16_kani_api.rs"
+    - "src/v16_proofs.rs"
+    - "Cargo.toml"
+    - "Cargo.lock"
+    - ".cargo/**"
+    - "build.rs"
+    - "scripts/**"
+    - "spec.md"
+    - "kani-list.json"
+    - ".github/**"
+    - "**/*.yml"
+  protected_blocks:
+    # upstream keeps 50 unit tests inside src/wide_math.rs; a patch may edit the library but never this module
+    - { glob: "src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
+  max_files: 2
+  max_lines: 400
+limits: { cpus: 2, memory_mb: 4096, pids: 512, wall_s: 1800, disk_mb: 4096 }

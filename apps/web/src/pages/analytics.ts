@@ -7,6 +7,9 @@ import { badge, empty, reasonText } from "../ui.ts";
 import { agentLabel, chip, hours, injectInsightsStyle, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
 import type { Page } from "./types.ts";
+import { mountSupply } from "./analytics-supply.ts";
+import "./analytics-supply-burns.ts";
+import "./analytics-supply-coins.ts";
 import { CHART_CSS, fmtVal, mountCard, shortDay, slotColor, sparkline, tone, type CardDef, type ChartSpec, type TimeSpec, type Unit } from "./analytics-charts.ts";
 
 // Analytics (/analytics, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md section 6): one dashboard.
@@ -199,7 +202,7 @@ async function loadMarket(d: O): Promise<Market | null> {
   const candles = new Map<string, any[]>();
   const bases = new Set<UsdBasis>();
   await Promise.all(pick.map(async (t) => {
-    const a = await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}`).catch(() => null);
+    const a = await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}&fill=0`).catch(() => null);
     candles.set(t.mint, (a?.candles ?? []) as any[]);
     if (a?.candles?.length) bases.add(a.usd_basis ?? null);
   }));
@@ -719,6 +722,9 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
   let last = "";
   let stopped = false;
   const $ = (sel: string) => page.querySelector<HTMLElement>(sel);
+  // the Supply section reads the market indexer on its own, whatever Core answers and whatever the window
+  const stopSupply = mountSupply($("#an-supply")!);
+  if (location.hash === "#supply") $("#supply")?.scrollIntoView();
 
   const paint = (d: O, o: O | null, ops: O | null, idx: O | null, m: Market | null, r: O | null) => {
     for (const c of cards) c();
@@ -784,6 +790,7 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
     clearInterval(timer);
     if (ev) clearTimeout(ev);
     window.removeEventListener("units:event", onEvent);
+    stopSupply();
     for (const c of cards) c();
     cards = [];
     if (active?.stop === stop) active = null;
@@ -800,10 +807,12 @@ export async function analyticsPage(): Promise<Page> {
   const body = html`<div class="ins-page an-page" data-window="${win}">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Analytics</div><h1>How the network is doing</h1>
       <div class="ph-sub"><span>Aggregates of public records: published attempts, accepted generations, final replays, live sessions, the runtime's reports, on-chain fee events and the market indexer${hidden ? ", hidden launches included" : ""}. <span id="an-updated">Loading.</span></span></div></div>
-      <div class="seg" role="group" aria-label="Time window">${WINDOWS.map(([k, l]) => chip("window", k === "7d" ? "" : k, l, win === "7d" ? "" : win))}</div></div>
+      <div class="sup-top"><a class="sup-jump" href="#supply">Supply and burns</a>
+      <div class="seg" role="group" aria-label="Time window">${WINDOWS.map(([k, l]) => chip("window", k === "7d" ? "" : k, l, win === "7d" ? "" : win))}</div></div></div>
     <div class="an-kpis" id="an-kpis" aria-label="Headline figures">${[0, 1, 2, 3, 4, 5, 6, 7].map(() => html`<section class="an-tile an-skel-t"><span>.</span></section>`)}</div>
     <div class="an-charts" id="an-charts">${CARDS.slice(0, 2).map(cardShell)}<div id="an-split-slot"></div>${CARDS.slice(2, 9).map(cardShell)}<div id="an-live-slot"></div>${CARDS.slice(9).map(cardShell)}</div>
     <div id="an-missing"></div>
+    <div id="an-supply"></div>
     <div id="an-network-slot"></div>
     <div class="an-folds" id="an-tables"></div>
   </div>`;

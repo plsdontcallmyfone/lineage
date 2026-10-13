@@ -1,0 +1,10 @@
+{
+  "short_division": {
+    "kind": "perf",
+    "target": "wide_ir",
+    "expect": "accepted",
+    "note": "div_rem_u256 divides by a divisor of one 64-bit limb (POS_SCALE, the bound scale, an ADL basis, a price) with schoolbook short division, four native 128-by-64 steps, instead of the bit-at-a-time loop of up to 192 rounds of compare, subtract and shift. Quotient and remainder are the same numbers; wider divisors take the old path.",
+    "lines": 21,
+    "guard": "ok"
+  }
+}

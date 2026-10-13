@@ -1,0 +1,12 @@
+diff --git a/bloom/src/bloom.rs b/bloom/src/bloom.rs
+--- a/bloom/src/bloom.rs
++++ b/bloom/src/bloom.rs
+@@ -145,7 +145,7 @@ impl<T: BloomHashIndex> Bloom<T> {
+         }
+     }
+     pub fn contains(&self, key: &T) -> bool {
+-        if self.keys.is_empty() || self.bits.is_empty() {
++        if self.bits.is_empty() {
+             return false;
+         }
+         for k in &self.keys {

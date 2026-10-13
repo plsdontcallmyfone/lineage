@@ -52,12 +52,14 @@ AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 # together. Service users and paths: migrate_layout below.
 unit_set() {
   UP="$1"
-  CORE_UNITS=("$UP-core" "$UP-web" "$UP-gate" "$UP-indexer" "$UP-identity")
+  CORE_UNITS=("$UP-core" "$UP-web" "$UP-gate" "$UP-indexer" "$UP-identity" "$UP-bind")
   IDENTITY_TIMER="$UP-identity-cycle.timer"
   # Core snapshots for off-machine backups, and the monitor (docs/DEPLOY-SITE.md "Backups", "Monitoring")
   HARDEN_TIMERS=("$UP-backup.timer" "$UP-monitor.timer")
   WORKER_UNITS=("$UP-reference" "$UP-verifier@v1" "$UP-verifier@v2")
-  PUBLIC_UNITS=("$UP-core" "$UP-indexer" "$UP-identity" "$UP-web" "$UP-gate")
+  # the bind service (docs/plans/SEAMLESS-BIND.md section 9) is a public unit: restarted and health-checked here,
+  # before the gate that forwards to it, and never drained with the runtime
+  PUBLIC_UNITS=("$UP-core" "$UP-indexer" "$UP-identity" "$UP-web" "$UP-bind" "$UP-gate")
 }
 # the prefix a release's unit files use
 release_prefix() { if [ -f "$1/scripts/deploy/systemd/units-core.service" ]; then echo units; else echo lineage; fi; }
@@ -319,6 +321,9 @@ users_setup() {
       printf 'MONITOR_RUNTIME=%s\n' "${WITH_RUNTIME:-0}"
       printf 'MONITOR_CORE_SIGNING=%s\n' "$([ -f /etc/units-core/core-authority.json ] && echo 1 || echo 0)"
       printf 'MONITOR_DRY_RUN=%s\n' "$DRY_RUN"
+      # the bind services' health (docs/plans/SEAMLESS-BIND.md section 9): this instance's when it has a hosted runtime
+      # key, and the mainnet instance's when its unit is installed
+      printf 'MONITOR_BIND=%s\n' "$( { [ -f /home/units/.config/lineage/devnet/runtime-authority.json ] && echo devnet=http://127.0.0.1:9666; [ -f /etc/systemd/system/units-main-bind.service ] && echo mainnet=http://127.0.0.1:9766; } | paste -sd, - )"
       # the mainnet instance (remote-instance.sh, Core on 9760) has no monitor of its own: its Core's waiting list,
       # health, epochs and two hot keys join this one. Public keys only here; the keyed RPC reaches the unit through
       # EnvironmentFile=-/etc/units-main/rpc.env (root only, read by systemd), named below by its variable.
@@ -386,6 +391,7 @@ health_url() {
     identity) echo http://127.0.0.1:9665/identity/health ;;
     web) echo http://127.0.0.1:9661/live/status ;;
     gate) echo http://127.0.0.1:9662/gate/health ;;
+    bind) echo http://127.0.0.1:9666/runtime/bind/health ;;
   esac
 }
 now_ms() { date +%s%3N; }
@@ -411,6 +417,8 @@ restart_checked() {
   while [ "$(date +%s)" -lt "$until" ]; do
     code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
     if [ "${u#*-}" = indexer ] && [ -n "$code" ] && [ "$code" != 000 ]; then break; fi
+    # the bind service up but not ready (503: its chain read failed) is the monitor's matter, never a rolled-back deploy
+    if [ "${u#*-}" = bind ] && [ "$code" = 503 ]; then code=200; break; fi
     [ "$code" = 200 ] && break
     sleep 0.25
   done
