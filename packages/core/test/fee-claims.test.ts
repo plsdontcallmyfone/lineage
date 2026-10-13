@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createPublicKey, verify as edVerify } from "node:crypto";
+import { createHmac, createPublicKey, verify as edVerify } from "node:crypto";
 import { accountDisc, addressBytes, claimMessage, claimPdas, LAUNCH_PROGRAM_ID, Rpc, Writer, type Address } from "@units/chain";
 import { feeClaimDigest, feeClaimGistText, feeClaimsOf, feeClaimStatement } from "../src/fee-claims.ts";
 import { base58Decode, generateAgentKey, signMessage, type AgentKey } from "../src/protocol.ts";
 import { startMockGithub, type MockGithub } from "../../../scripts/claims/mock-github.ts";
 import { bare } from "./helpers.ts";
 
-// GitHub fee claims, Core side (docs/plans/GITHUB-FEE-CLAIMS.md 5): the mock OAuth provider, the
-// gist proof, the wallet statement, the attestation Core signs (checked here with plain ed25519
-// against the exact bytes the program rebuilds), and the feature flag.
+// GitHub fee claims, Core side (docs/plans/GITHUB-FEE-CLAIMS.md 5 and 11): fees are keyed by the
+// REPOSITORY's numeric id and claimed by anyone GitHub says has admin on it. The mock OAuth provider
+// with repository permissions, the gist proof for a personally owned repository, the wallet
+// statement, the attestation Core signs (checked here with plain ed25519 against the exact bytes the
+// program rebuilds), the refusal of a non-admin and of an id that is not a repository's, and the flag.
 
 type E = ReturnType<typeof bare>;
 let env: E | null = null;
@@ -24,6 +26,13 @@ afterEach(() => {
 const LINE = generateAgentKey().id;
 const OCTO = { id: 583231, login: "octocat", name: "The Octocat" };
 const MONA = { id: 2, login: "Mona" };
+const HUBOT = { id: 3, login: "hubot" };
+const ACME = { id: 9919, login: "acme", type: "Organization" as const };
+// a personal repository, an organisation's (Mona and hubot are admins, octocat only pushes), and a
+// repository whose numeric id happens to equal octocat's ACCOUNT id
+const HELLO = { id: 1296269, full_name: "octocat/Hello-World", admins: ["octocat"], former: ["octocat/old-hello"] };
+const ENGINE = { id: 5000001, full_name: "acme/engine", admins: ["Mona", "hubot"], members: ["octocat"] };
+const CLASH = { id: OCTO.id, full_name: "Mona/unrelated", admins: ["Mona"] };
 
 /** A chain that holds exactly the accounts given (address -> { owner, data }). */
 function fakeChain(accounts: Map<Address, { owner: string; data: Uint8Array }>) {
@@ -51,24 +60,35 @@ function tokenAccount(amount: bigint) {
   return { owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", data: d };
 }
 
-function setup(o: { balance?: bigint; seq?: bigint; pinned?: Address; paused?: boolean; flag?: boolean; attestorOnChain?: Address } = {}) {
+function setup(o: { balance?: bigint; seq?: bigint; pinned?: Address; paused?: boolean; flag?: boolean; attestorOnChain?: Address; directCheckMax?: number } = {}) {
   if (o.flag !== false) process.env.UNITS_FEATURE_GITHUB_FEE_CLAIMS = "1";
   env = bare();
-  gh = startMockGithub({ port: 0, users: [OCTO, MONA], clientId: "cid", clientSecret: "csecret" });
+  gh = startMockGithub({ port: 0, users: [OCTO, MONA, HUBOT, ACME], repos: [HELLO, ENGINE, CLASH], clientId: "cid", clientSecret: "csecret" });
   const attestor = generateAgentKey();
-  const agent = generateAgentKey().id;
   const accounts = new Map<Address, { owner: string; data: Uint8Array }>();
-  accounts.set(claimPdas.config(), acct("ClaimConfig", new Writer().address(o.attestorOnChain ?? attestor.id).u16(1000).u16(3000).i64(600).i64(120).i64(600).bool(!!o.paused).u8(255)));
-  accounts.set(claimPdas.feeRoute(agent), acct("FeeRoute", new Writer().address(agent).u64(OCTO.id).u16(2000).i64(1_900_000_000).u64(0).u16(0).i64(0).u64(777).u64(777).u32(0).u8(254)));
-  accounts.set(claimPdas.escrow(OCTO.id), acct("ClaimEscrow", new Writer().u64(OCTO.id).address(o.pinned ?? ZERO).address(ZERO).i64(0).u64(777).u64(0).u64(o.seq ?? 0n).u8(255).u8(254)));
-  accounts.set(claimPdas.vault(OCTO.id), tokenAccount(o.balance ?? 777n));
+  // the owner's rule: one share for every agent, so the admin's bounds are one number
+  accounts.set(claimPdas.config(), acct("ClaimConfig", new Writer().address(o.attestorOnChain ?? attestor.id).u16(2000).u16(2000).i64(600).i64(120).i64(600).bool(!!o.paused).u8(255)));
+  /** An agent registered on `repoUrl` whose route names `id`, with the id's escrow and vault. */
+  const routed = (id: number, repoUrl: string, balance = 777n) => {
+    const agent = generateAgentKey().id, mint = generateAgentKey().id;
+    accounts.set(claimPdas.feeRoute(agent), acct("FeeRoute", new Writer().address(agent).u64(id).u16(2000).i64(1_900_000_000).u64(0).u16(0).i64(0).u64(777).u64(777).u32(0).u8(254)));
+    accounts.set(generateAgentKey().id, acct("AgentLaunch", new Writer().address(agent).address(mint).address(generateAgentKey().id).fixed32("ab".repeat(32)).string(repoUrl)));
+    accounts.set(claimPdas.escrow(id), acct("ClaimEscrow", new Writer().u64(id).address(o.pinned ?? ZERO).address(ZERO).i64(0).u64(777).u64(0).u64(o.seq ?? 0n).u8(255).u8(254)));
+    accounts.set(claimPdas.vault(id), tokenAccount(balance));
+    return agent;
+  };
+  const agent = routed(HELLO.id, "https://github.com/octocat/hello-world", o.balance ?? 777n);
+  const orgAgent = routed(ENGINE.id, "https://github.com/acme/engine", o.balance ?? 555n);
+  // the first build keyed a route by an ACCOUNT id: this agent works on another repository and names octocat's account id
+  const legacyAgent = routed(OCTO.id, "https://github.com/someone/else");
   const fc = feeClaimsOf(env.core).configure({
     githubApi: gh.url, rpc: fakeChain(accounts), lineMint: LINE, attestor,
     oauth: { clientId: "cid", clientSecret: "csecret", authorizeUrl: `${gh.url}/login/oauth/authorize`, tokenUrl: `${gh.url}/login/oauth/access_token`,
-      redirectUri: `${env.base}/v1/fee-claims/oauth/callback`, name: "mock" },
+      redirectUri: `${env.base}/v1/fee-claims/oauth/callback`, scope: "", name: "mock" },
     claimPage: "http://127.0.0.1:9661/claim",
+    ...(o.directCheckMax !== undefined ? { directCheckMax: o.directCheckMax } : {}),
   });
-  return { e: env, gh, fc, attestor, agent };
+  return { e: env, gh, fc, attestor, agent, orgAgent, legacyAgent };
 }
 
 const get = async (e: E, path: string) => {
@@ -84,8 +104,8 @@ const walletProof = (e: E, wallet: AgentKey, login: string, at = e.clock.now() /
   return { statement, sig: signMessage(wallet, feeClaimDigest(statement)) };
 };
 /** The whole mock OAuth round trip, as a browser would follow it. */
-async function oauthSession(e: E, login?: string): Promise<string> {
-  const start = await get(e, "/v1/fee-claims/oauth/start");
+async function oauthSession(e: E, login?: string, repo?: string): Promise<string> {
+  const start = await get(e, `/v1/fee-claims/oauth/start${repo ? `?repo=${repo}` : ""}`);
   expect(start.status).toBe(302);
   const authorize = new URL(start.location!);
   if (login) authorize.searchParams.set("login", login);
@@ -96,6 +116,7 @@ async function oauthSession(e: E, login?: string): Promise<string> {
   expect(back.status).toBe(302);
   const page = new URL(back.location!);
   expect(page.origin + page.pathname).toBe("http://127.0.0.1:9661/claim");
+  if (repo) expect(page.searchParams.get("repo")).toBe(repo);
   return page.hash.replace(/^#session=/, "");
 }
 function verifyAttestation(att: any, attestor: string) {
@@ -105,67 +126,173 @@ function verifyAttestation(att: any, attestor: string) {
   return edVerify(null, Buffer.from(msg), key, Buffer.from(base58Decode(att.signature)));
 }
 
+const names = (body: any) => (body.repositories as { full_name: string }[]).map((r) => r.full_name).sort();
+/** Signs in, binds a fresh wallet, returns the bound session and the wallet. */
+async function signedIn(e: E, login: string, repo?: string) {
+  const session = await oauthSession(e, login, repo);
+  const wallet = generateAgentKey();
+  const bound = await post(e, "/v1/fee-claims/wallet", { session, ...walletProof(e, wallet, login) });
+  expect([bound.status, bound.body.wallet]).toEqual([200, wallet.id]);
+  return { session: bound.body.session as string, wallet, body: bound.body };
+}
+async function gistSession(e: E, g: MockGithub, login: string) {
+  const wallet = generateAgentKey();
+  const p = walletProof(e, wallet, login);
+  const r = await post(e, "/v1/fee-claims/proofs/gist", { gist_url: g.addGist(login, feeClaimGistText(p.statement, p.sig)) });
+  return { ...r, wallet, session: r.body?.session as string };
+}
+
 describe("fee claims", () => {
   test("off by default: every route answers 404 feature_off", async () => {
     const { e } = setup({ flag: false });
-    for (const p of ["/v1/github/users/octocat", "/v1/fee-claims/providers", `/v1/fee-claims/recipients/${OCTO.id}`, "/v1/fee-claims/oauth/start", "/v1/fee-claims/session?session=x"]) {
+    for (const p of ["/v1/github/repos/octocat/Hello-World", "/v1/fee-claims/providers", `/v1/fee-claims/recipients/${HELLO.id}`, "/v1/fee-claims/recipients?repo=octocat/Hello-World", "/v1/fee-claims/oauth/start", "/v1/fee-claims/session?session=x"]) {
       const r = await get(e, p);
       expect([p, r.status, r.body?.error]).toEqual([p, 404, "feature_off"]);
     }
     for (const p of ["/v1/fee-claims/proofs/gist", "/v1/fee-claims/wallet", "/v1/fee-claims/attest"]) expect((await post(e, p, {})).status).toBe(404);
   });
 
-  test("lookup, route and recipient views", async () => {
-    const { e, agent } = setup();
-    const u = await get(e, "/v1/github/users/OctoCat");
-    expect([u.status, u.body.id, u.body.login]).toEqual([200, OCTO.id, "octocat"]);
-    expect((await get(e, "/v1/github/users/nobody-here")).status).toBe(404);
-    expect((await get(e, "/v1/github/users/bad_login!")).status).toBe(400);
+  test("keyed by the repository's numeric id: lookup, route and escrow views; the share is the one number in the chain config", async () => {
+    const { e, agent, legacyAgent } = setup();
+    const u = await get(e, "/v1/github/repos/OctoCat/hello-world");
+    expect([u.status, u.body.id, u.body.full_name, u.body.owner.login, u.body.owner.type]).toEqual([200, String(HELLO.id), "octocat/Hello-World", "octocat", "User"]);
+    // a former name still resolves to the same id (GitHub redirects a renamed or transferred repository)
+    expect((await get(e, "/v1/github/repos/octocat/old-hello")).body.id).toBe(String(HELLO.id));
+    expect((await get(e, "/v1/github/repos/acme/engine")).body).toMatchObject({ id: String(ENGINE.id), owner: { login: "acme", type: "Organization" } });
+    expect((await get(e, "/v1/github/repos/octocat/nothing-here")).status).toBe(404);
+    expect((await get(e, "/v1/github/repos/bad_owner!/x")).status).toBe(400);
+    // the account lookup of the first build is gone: nothing turns a login into an escrow key
+    expect((await get(e, "/v1/github/users/octocat")).status).toBe(404);
     const r = await get(e, `/v1/agents/${agent}/fee-route`);
-    expect(r.body.route).toMatchObject({ github_id: String(OCTO.id), login: "octocat", bps: 2000, accrued: "777", pending: null });
-    expect(r.body.bounds).toMatchObject({ min_bps: 1000, max_bps: 3000 });
+    expect(r.body.route).toMatchObject({ github_id: String(HELLO.id), repository: { full_name: "octocat/Hello-World" }, bps: 2000, accrued: "777", pending: null });
+    expect(r.body.bounds).toMatchObject({ min_bps: 2000, max_bps: 2000 });
     expect((await get(e, `/v1/agents/${generateAgentKey().id}/fee-route`)).body.route).toBeNull();
-    const rec = await get(e, `/v1/fee-claims/recipients/${OCTO.id}`);
+    const rec = await get(e, `/v1/fee-claims/recipients/${HELLO.id}`);
+    expect(rec.body).toMatchObject({ github_id: String(HELLO.id), repository: { full_name: "octocat/Hello-World" }, claimable_by_admins: true });
     expect(rec.body.escrow).toMatchObject({ accrued: "777", claimed: "0", claimable: "777", claim_seq: "0", wallet: null });
     expect(rec.body.agents).toEqual([{ agent, bps: 2000, accrued: "777", set_at: 1_900_000_000, pending_change: null }]);
-    expect((await get(e, "/v1/fee-claims/recipients?login=octocat")).body.github_id).toBe(String(OCTO.id));
-    expect((await get(e, "/v1/fee-claims/recipients/2")).body).toMatchObject({ escrow: null, agents: [] });
+    expect((await get(e, "/v1/fee-claims/recipients?repo=octocat/Hello-World")).body.github_id).toBe(String(HELLO.id));
+    expect((await get(e, "/v1/fee-claims/recipients?repo=https://github.com/acme/engine")).body.github_id).toBe(String(ENGINE.id));
+    expect((await get(e, "/v1/fee-claims/recipients/424242")).body).toMatchObject({ escrow: null, agents: [], claimable_by_admins: false });
+    // an escrow keyed by an ACCOUNT id: its number is also some repository's id on GitHub, and it is still nobody's
+    const legacy = await get(e, `/v1/fee-claims/recipients/${OCTO.id}`);
+    expect(legacy.body).toMatchObject({ repository: null, claimable_by_admins: false, escrow: { claimable: "777" } });
+    expect((await get(e, `/v1/agents/${legacyAgent}/fee-route`)).body.route).toMatchObject({ github_id: String(OCTO.id), repository: null });
   });
 
-  test("mock OAuth, wallet statement, attestation over the program's exact bytes", async () => {
+  test("admin proof by sign-in on a personal repository: no scope asked, the token used inside the callback only, attestation over the program's exact bytes", async () => {
     const { e, gh, attestor } = setup();
-    const session = await oauthSession(e);
+    const session = await oauthSession(e, "octocat");
+    expect(gh.scopes).toEqual([""]);
     expect(gh.calls).toEqual({ authorize: 1, token: 1, user: 1 });
+    // with the token Core asked who the user is and about each routed repository, and nothing else
+    const during = [...gh.tokenCalls].sort();
+    expect(during).toEqual(["GET /repositories/1296269", "GET /repositories/5000001", "GET /user"]);
     const s = await get(e, `/v1/fee-claims/session?session=${session}`);
     expect(s.body).toMatchObject({ github_id: String(OCTO.id), login: "octocat", method: "mock", wallet: null });
-    // no wallet yet
-    expect((await post(e, "/v1/fee-claims/attest", { session })).body.error).toBe("no_wallet");
+    // octocat owns Hello-World; on acme/engine octocat can push but is no admin
+    expect(names(s.body)).toEqual(["octocat/Hello-World"]);
+    expect((await post(e, "/v1/fee-claims/attest", { session, repo_id: String(HELLO.id) })).body.error).toBe("no_wallet");
     const wallet = generateAgentKey();
-    // a statement for another account, by another key, stale, or future
-    const other = walletProof(e, wallet, "mona");
-    expect((await post(e, "/v1/fee-claims/wallet", { session, ...other })).status).toBe(400);
+    // a statement for another account, by another key, stale
+    expect((await post(e, "/v1/fee-claims/wallet", { session, ...walletProof(e, wallet, "mona") })).status).toBe(400);
     const forged = { statement: feeClaimStatement("octocat", wallet.id, e.clock.now() / 1000), sig: signMessage(generateAgentKey(), feeClaimDigest(feeClaimStatement("octocat", wallet.id, e.clock.now() / 1000))) };
     expect((await post(e, "/v1/fee-claims/wallet", { session, ...forged })).status).toBe(403);
     expect((await post(e, "/v1/fee-claims/wallet", { session, ...walletProof(e, wallet, "octocat", e.clock.now() / 1000 - 90_000) })).status).toBe(400);
     const bound = await post(e, "/v1/fee-claims/wallet", { session, ...walletProof(e, wallet, "octocat") });
-    expect([bound.status, bound.body.wallet]).toEqual([200, wallet.id]);
-    const att = await post(e, "/v1/fee-claims/attest", { session: bound.body.session });
+    expect([bound.status, bound.body.wallet, names(bound.body)]).toEqual([200, wallet.id, ["octocat/Hello-World"]]);
+    const att = await post(e, "/v1/fee-claims/attest", { session: bound.body.session, repo_id: String(HELLO.id) });
     expect(att.status).toBe(200);
-    expect(att.body).toMatchObject({ github_id: String(OCTO.id), wallet: wallet.id, ceiling: "777", claim_seq: "0", attestor: attestor.id, rebind: null });
+    // the id in the signed bytes is the REPOSITORY's, not octocat's account id
+    expect(att.body).toMatchObject({ github_id: String(HELLO.id), repository: { full_name: "octocat/Hello-World" }, login: "octocat", wallet: wallet.id, ceiling: "777", claim_seq: "0", attestor: attestor.id, rebind: null });
+    expect(att.body.escrow).toBe(claimPdas.escrow(HELLO.id));
     expect(att.body.expires_at - Math.floor(e.clock.now() / 1000)).toBeLessThanOrEqual(600);
     expect(verifyAttestation(att.body, attestor.id)).toBe(true);
-    // rate limit, then the record (no signature in it)
-    expect((await post(e, "/v1/fee-claims/attest", { session: bound.body.session })).status).toBe(429);
-    const log = await get(e, `/v1/fee-claims/attestations?github_id=${OCTO.id}`);
+    // rate limit, then the record (who claimed, never a signature)
+    expect((await post(e, "/v1/fee-claims/attest", { session: bound.body.session, repo_id: String(HELLO.id) })).status).toBe(429);
+    const log = await get(e, `/v1/fee-claims/attestations?github_id=${HELLO.id}`);
     expect(log.body).toHaveLength(1);
+    expect(log.body[0]).toMatchObject({ login: "octocat", wallet: wallet.id });
     expect(JSON.stringify(log.body)).not.toContain(att.body.signature);
-    // a session cannot be edited: flipping the id breaks the MAC
+    // the token: no GitHub call with it after the callback, none in the session, none in the database
+    expect([...gh.tokenCalls].sort()).toEqual(during);
+    expect(Buffer.from(bound.body.session.split(".")[0], "base64url").toString()).not.toContain("mock_");
+    const tables = e.core.db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'fee_claim%'").all().map((t) => t.name);
+    expect(tables).toContain("fee_claim_repos");
+    for (const t of tables) expect(JSON.stringify(e.core.db.query(`SELECT * FROM ${t}`).all())).not.toContain("mock_");
+    // a session cannot be edited: adding a repository breaks the MAC
     const [body, mac] = bound.body.session.split(".");
-    const edited = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), github_id: 2 })).toString("base64url");
-    expect((await post(e, "/v1/fee-claims/attest", { session: `${edited}.${mac}` })).status).toBe(401);
+    const edited = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), repos: [HELLO.id, ENGINE.id] })).toString("base64url");
+    expect((await post(e, "/v1/fee-claims/attest", { session: `${edited}.${mac}`, repo_id: String(ENGINE.id) })).status).toBe(401);
     // and it expires
     e.clock.advance(901_000);
-    expect((await post(e, "/v1/fee-claims/attest", { session: bound.body.session })).status).toBe(401);
+    expect((await post(e, "/v1/fee-claims/attest", { session: bound.body.session, repo_id: String(HELLO.id) })).status).toBe(401);
+  });
+
+  test("an organisation's repository: an admin claims it, a member without admin and a stranger are refused", async () => {
+    const { e, attestor } = setup();
+    const mona = await signedIn(e, "Mona");
+    // Mona administers acme/engine. She also administers a repository whose id equals octocat's account id, where an
+    // account-keyed escrow of the first build sits: that id is not listed and not claimable
+    expect(names(mona.body)).toEqual(["acme/engine"]);
+    const att = await post(e, "/v1/fee-claims/attest", { session: mona.session, repo_id: String(ENGINE.id) });
+    expect(att.body).toMatchObject({ github_id: String(ENGINE.id), wallet: mona.wallet.id, ceiling: "555" });
+    expect(verifyAttestation(att.body, attestor.id)).toBe(true);
+    const clash = await post(e, "/v1/fee-claims/attest", { session: mona.session, repo_id: String(OCTO.id) });
+    expect([clash.status, clash.body.error]).toEqual([403, "not_admin"]);
+    // octocat can push to acme/engine and is not an admin
+    const octo = await signedIn(e, "octocat");
+    const refused = await post(e, "/v1/fee-claims/attest", { session: octo.session, repo_id: String(ENGINE.id) });
+    expect([refused.status, refused.body.error]).toEqual([403, "not_admin"]);
+    // one repository in the session: it is the default; a bad id is refused before anything else
+    expect((await post(e, "/v1/fee-claims/attest", { session: octo.session })).body.github_id).toBe(String(HELLO.id));
+    expect((await post(e, "/v1/fee-claims/attest", { session: octo.session, repo_id: "1 OR 1" })).status).toBe(400);
+  });
+
+  test("an id that is not a repository's is never attested, even for a session that names it", async () => {
+    const { e, fc } = setup();
+    // a session Core itself would never issue: Mona with the clashing id (her repository's number, octocat's account's escrow)
+    const wallet = generateAgentKey();
+    const forged = (fc as any).issue({ github_id: MONA.id, login: "Mona", method: "mock", wallet: wallet.id, repos: [OCTO.id] }).session;
+    const r = await post(e, "/v1/fee-claims/attest", { session: forged, repo_id: String(OCTO.id) });
+    expect([r.status, r.body.error]).toEqual([403, "not_a_repository_escrow"]);
+    // a session of the first build (an account, no repositories) claims nothing
+    const oldBody = Buffer.from(JSON.stringify({ github_id: OCTO.id, login: "octocat", method: "mock", wallet: wallet.id, exp: Math.floor(e.clock.now() / 1000) + 600 })).toString("base64url");
+    const old = `${oldBody}.${createHmac("sha256", (fc as any).secret()).update(oldBody).digest().toString("base64url")}`;
+    expect((await post(e, "/v1/fee-claims/attest", { session: old })).status).toBe(401);
+  });
+
+  test("several admins: either claims the whole escrow; a second admin's other wallet on a pinned escrow starts a rebind", async () => {
+    let s = setup();
+    const mona = await signedIn(s.e, "Mona"), hubot = await signedIn(s.e, "hubot");
+    expect(names(hubot.body)).toEqual(["acme/engine"]);
+    const a1 = await post(s.e, "/v1/fee-claims/attest", { session: mona.session, repo_id: String(ENGINE.id) });
+    s.e.clock.advance(2_500);
+    const a2 = await post(s.e, "/v1/fee-claims/attest", { session: hubot.session, repo_id: String(ENGINE.id) });
+    // both attestations are for the whole balance at the same sequence number: the first to land on chain is paid, the other no longer verifies
+    expect([a1.body.ceiling, a1.body.claim_seq, a1.body.wallet]).toEqual(["555", "0", mona.wallet.id]);
+    expect([a2.body.ceiling, a2.body.claim_seq, a2.body.wallet, a2.body.rebind]).toEqual(["555", "0", hubot.wallet.id, null]);
+    expect((await get(s.e, `/v1/fee-claims/attestations?github_id=${ENGINE.id}`)).body.map((x: any) => x.login).sort()).toEqual(["Mona", "hubot"]);
+    s.e.close(); s.gh.stop();
+    const pinned = generateAgentKey().id;
+    s = setup({ pinned, seq: 3n });
+    const later = await signedIn(s.e, "hubot");
+    const att = await post(s.e, "/v1/fee-claims/attest", { session: later.session, repo_id: String(ENGINE.id) });
+    expect(att.body).toMatchObject({ claim_seq: "3", wallet: later.wallet.id, rebind: { pinned_wallet: pinned, delay_s: 120 } });
+  });
+
+  test("a large routed set is matched against the user's own list; a repository named at the sign-in is checked by name", async () => {
+    const { e, gh } = setup({ directCheckMax: 0 });
+    const mona = await signedIn(e, "Mona");
+    expect(names(mona.body)).toEqual(["acme/engine"]);
+    expect(gh.tokenCalls).toContain("GET /user/repos");
+    expect(gh.tokenCalls.some((c) => c.startsWith("GET /repositories/"))).toBe(false);
+    const octo = await signedIn(e, "octocat", "octocat/Hello-World");
+    expect(names(octo.body)).toEqual(["octocat/Hello-World"]);
+    expect(gh.tokenCalls).toContain("GET /repos/octocat/Hello-World");
+    // naming a repository one does not administer adds nothing
+    expect(names((await signedIn(e, "octocat", "acme/engine")).body)).toEqual(["octocat/Hello-World"]);
+    expect((await get(e, "/v1/fee-claims/oauth/start?repo=not-a-repo")).status).toBe(400);
   });
 
   test("an OAuth state works once and a code cannot be replayed", async () => {
@@ -181,57 +308,42 @@ describe("fee claims", () => {
     expect((await get(e, "/v1/fee-claims/oauth/start?return_to=/claim?id=5")).status).toBe(302);
   });
 
-  test("gist proof: the account's public gist holding the wallet's statement", async () => {
+  test("gist proof: opens the repositories the account owns itself, never an organisation's", async () => {
     const { e, gh, attestor } = setup();
+    const ok = await gistSession(e, gh, "octocat");
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ github_id: String(OCTO.id), login: "octocat", method: "gist", wallet: ok.wallet.id });
+    expect(names(ok.body)).toEqual(["octocat/Hello-World"]);
+    const att = await post(e, "/v1/fee-claims/attest", { session: ok.session, repo_id: String(HELLO.id) });
+    expect(att.body.github_id).toBe(String(HELLO.id));
+    expect(verifyAttestation(att.body, attestor.id)).toBe(true);
+    // Mona is an admin of acme/engine, which a gist cannot show: her gist opens nothing
+    const mona = await gistSession(e, gh, "Mona");
+    expect([mona.status, names(mona.body)]).toEqual([200, []]);
+    expect((await post(e, "/v1/fee-claims/attest", { session: mona.session, repo_id: String(ENGINE.id) })).body.error).toBe("not_admin");
+    expect((await post(e, "/v1/fee-claims/attest", { session: mona.session })).body.error).toBe("no_repository");
+    // the same statement posted by another account proves nothing
     const wallet = generateAgentKey();
     const p = walletProof(e, wallet, "octocat");
     const url = gh.addGist("octocat", feeClaimGistText(p.statement, p.sig));
-    const ok = await post(e, "/v1/fee-claims/proofs/gist", { gist_url: url });
-    expect(ok.status).toBe(200);
-    expect(ok.body).toMatchObject({ github_id: String(OCTO.id), login: "octocat", method: "gist", wallet: wallet.id });
-    const att = await post(e, "/v1/fee-claims/attest", { session: ok.body.session });
-    expect(verifyAttestation(att.body, attestor.id)).toBe(true);
-    // the same statement posted by another account proves nothing for octocat (and nothing for Mona: it names octocat)
-    const stolen = gh.addGist("Mona", feeClaimGistText(p.statement, p.sig));
-    expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: stolen })).status).toBe(400);
-    // a gist URL that names another owner than the real one
+    expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: gh.addGist("Mona", feeClaimGistText(p.statement, p.sig)) })).status).toBe(400);
     expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: url.replace("octocat", "mona") })).status).toBe(400);
     // secret gist, missing gist, a statement signed by another key
     expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: gh.addGist("octocat", feeClaimGistText(p.statement, p.sig), { public: false }) })).status).toBe(400);
     expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: "https://gist.github.com/octocat/00000000000000000000000000000000" })).status).toBe(400);
-    const bad = gh.addGist("octocat", feeClaimGistText(p.statement, signMessage(generateAgentKey(), feeClaimDigest(p.statement))));
-    expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: bad })).status).toBe(403);
+    const badSig = gh.addGist("octocat", feeClaimGistText(p.statement, signMessage(generateAgentKey(), feeClaimDigest(p.statement))));
+    expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: badSig })).status).toBe(403);
     expect((await post(e, "/v1/fee-claims/proofs/gist", { gist_url: "https://example.com/x" })).status).toBe(400);
   });
 
-  test("attest refuses: empty escrow, paused, an attestor the program does not trust; a pinned escrow is flagged as a rebind", async () => {
+  test("attest refuses: empty escrow, paused, an attestor the program does not trust", async () => {
     let s = setup({ balance: 0n });
-    let wallet = generateAgentKey();
-    let p = walletProof(s.e, wallet, "octocat");
-    let sess = (await post(s.e, "/v1/fee-claims/proofs/gist", { gist_url: s.gh.addGist("octocat", feeClaimGistText(p.statement, p.sig)) })).body.session;
-    expect((await post(s.e, "/v1/fee-claims/attest", { session: sess })).status).toBe(409);
+    expect((await post(s.e, "/v1/fee-claims/attest", { session: (await gistSession(s.e, s.gh, "octocat")).session })).status).toBe(409);
     s.e.close(); s.gh.stop();
     s = setup({ paused: true });
-    p = walletProof(s.e, wallet, "octocat");
-    sess = (await post(s.e, "/v1/fee-claims/proofs/gist", { gist_url: s.gh.addGist("octocat", feeClaimGistText(p.statement, p.sig)) })).body.session;
-    expect((await post(s.e, "/v1/fee-claims/attest", { session: sess })).status).toBe(409);
+    expect((await post(s.e, "/v1/fee-claims/attest", { session: (await gistSession(s.e, s.gh, "octocat")).session })).status).toBe(409);
     s.e.close(); s.gh.stop();
     s = setup({ attestorOnChain: generateAgentKey().id });
-    p = walletProof(s.e, wallet, "octocat");
-    sess = (await post(s.e, "/v1/fee-claims/proofs/gist", { gist_url: s.gh.addGist("octocat", feeClaimGistText(p.statement, p.sig)) })).body.session;
-    expect((await post(s.e, "/v1/fee-claims/attest", { session: sess })).status).toBe(503);
-    s.e.close(); s.gh.stop();
-    const pinned = generateAgentKey().id;
-    s = setup({ pinned, seq: 3n });
-    wallet = generateAgentKey();
-    p = walletProof(s.e, wallet, "octocat");
-    sess = (await post(s.e, "/v1/fee-claims/proofs/gist", { gist_url: s.gh.addGist("octocat", feeClaimGistText(p.statement, p.sig)) })).body.session;
-    const att = await post(s.e, "/v1/fee-claims/attest", { session: sess });
-    expect(att.body).toMatchObject({ claim_seq: "3", rebind: { pinned_wallet: pinned, delay_s: 120 } });
-    // Mona has no escrow
-    const mw = generateAgentKey();
-    const mp = walletProof(s.e, mw, "mona");
-    const ms = (await post(s.e, "/v1/fee-claims/proofs/gist", { gist_url: s.gh.addGist("Mona", feeClaimGistText(mp.statement, mp.sig)) })).body.session;
-    expect((await post(s.e, "/v1/fee-claims/attest", { session: ms })).status).toBe(404);
+    expect((await post(s.e, "/v1/fee-claims/attest", { session: (await gistSession(s.e, s.gh, "octocat")).session })).status).toBe(503);
   });
 });

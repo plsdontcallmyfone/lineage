@@ -109,6 +109,7 @@ export const RULES: Record<string, Rule> = {
   model_registry: "keep", msg_chain_cursor: "keep", prepay_admin: "keep", prepay_rates: "keep", social_config: "keep",
   recipe_proposals: "keep", calib_replays: "keep", upstream_repos: "keep", upstream_seen: "keep", revenue_sources: "keep",
   pool_kv: "keep", fee_claim_kv: "keep", fee_claim_states: "keep", fee_claim_users: "keep",
+  fee_claim_repos: "keep", fee_claim_repo_names: "keep", fee_claim_bound: "keep", // GitHub repositories by numeric id and the ids bound to them: no launch owns them
   shadows: "keep", shadow_keys: "keep", shadow_msg_keys: "keep", shadow_souls: "keep",
 };
 

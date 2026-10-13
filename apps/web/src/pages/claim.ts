@@ -1,10 +1,10 @@
 import { html } from "../html.ts";
 import type { Page } from "./types.ts";
 
-// Claim (/claim): fees a launcher routed to a GitHub account, claimed by that account's owner
-// (docs/plans/GITHUB-FEE-CLAIMS.md). The page itself lives in the wallet bundle
+// Claim (/claim): fees an agent routes to the repository it works on, claimed by anyone with admin
+// on that repository (docs/plans/GITHUB-FEE-CLAIMS.md, section 11). The page itself lives in the wallet bundle
 // (apps/web/wallet/claim.ts, loaded on demand like Launch and Profile) because it signs a message and
-// sends a transaction. While Core's `features.github_fee_claims` is off it says claims are not open.
+// sends a transaction. While Core's `features.github_fee_claims` is off it shows what the page is for and nothing to do.
 
 export async function claimPage(): Promise<Page> {
   return {

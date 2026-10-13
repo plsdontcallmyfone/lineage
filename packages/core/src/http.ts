@@ -349,13 +349,13 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/pools/config", "admin", (c) => poolsOf(core).setConfig(c.json())),
     route("POST", "/v1/admin/pools/run", "admin", () => poolsOf(core).keeperStep()),
     // GitHub fee routing and claims (docs/plans/GITHUB-FEE-CLAIMS.md 5); every route is 404 feature_off while the flag is off
-    route("GET", "/v1/github/users/:login", "none", (c) => feeClaimsOf(core).user(c.params.login!)),
+    route("GET", "/v1/github/repos/:owner/:repo", "none", (c) => feeClaimsOf(core).repo(c.params.owner!, c.params.repo!)),
     route("GET", "/v1/agents/:id/fee-route", "none", (c) => feeClaimsOf(core).routeView(c.params.id!)),
     route("GET", "/v1/fee-claims/providers", "none", () => feeClaimsOf(core).providers()),
-    route("GET", "/v1/fee-claims/recipients", "none", (c) => feeClaimsOf(core).recipientByLogin(q(c, "login") ?? "")),
+    route("GET", "/v1/fee-claims/recipients", "none", (c) => feeClaimsOf(core).recipientByRepo(q(c, "repo") ?? "")),
     route("GET", "/v1/fee-claims/recipients/:github_id", "none", (c) => feeClaimsOf(core).recipient(c.params.github_id!)),
     route("GET", "/v1/fee-claims/oauth/start", "none", (c) => {
-      const s = feeClaimsOf(core).oauthStart(q(c, "return_to"));
+      const s = feeClaimsOf(core).oauthStart(q(c, "return_to"), q(c, "repo"));
       return q(c, "json") === "1" ? s : new Response(null, { status: 302, headers: { location: s.url, "cache-control": "no-store" } });
     }),
     route("GET", "/v1/fee-claims/oauth/callback", "none", async (c) => {
@@ -365,7 +365,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/fee-claims/session", "none", (c) => feeClaimsOf(core).session(q(c, "session"))),
     route("POST", "/v1/fee-claims/proofs/gist", "none", (c) => feeClaimsOf(core).gistProof(c.json())),
     route("POST", "/v1/fee-claims/wallet", "none", (c) => feeClaimsOf(core).bindWallet((c.json() as { session?: unknown })?.session, c.json())),
-    route("POST", "/v1/fee-claims/attest", "none", (c) => feeClaimsOf(core).attest((c.json() as { session?: unknown })?.session)),
+    route("POST", "/v1/fee-claims/attest", "none", (c) => feeClaimsOf(core).attest((c.json() as { session?: unknown })?.session, (c.json() as { repo_id?: unknown })?.repo_id)),
     route("GET", "/v1/fee-claims/attestations", "none", (c) => feeClaimsOf(core).attestations(q(c, "github_id"))),
     // agent wallets (docs/plans/AGENT-WALLET-SAFETY.md 2): the treasury (registry signing key) and the compute vault, balances read from chain
     route("GET", "/v1/agents/:id/wallet", "none", (c) => agentWalletOf(core).view(c.params.id!)),
