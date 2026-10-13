@@ -9,6 +9,7 @@ import { providerName } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { mountSupply } from "./analytics-supply.ts";
 import "./analytics-supply-burns.ts";
+import "./analytics-supply-coins.ts";
 import { CHART_CSS, fmtVal, mountCard, shortDay, slotColor, sparkline, tone, type CardDef, type ChartSpec, type TimeSpec, type Unit } from "./analytics-charts.ts";
 
 // Analytics (/analytics, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md section 6): one dashboard.
