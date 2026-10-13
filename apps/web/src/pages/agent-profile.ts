@@ -12,6 +12,7 @@ import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { OLD_WALLET_KEY, WALLET_KEY } from "./feed.ts";
 import { providerLogo } from "../provider-logo.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
+import { conversationsPanel } from "./conversations-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
 import { mountSeatDesktop, swarmSeatsPanel } from "./token-swarm.ts";
@@ -169,6 +170,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     <div class="tk-watch">${desktopPanel}${pricePanel}</div>
     <div class="grid-side" style="margin-top:16px">
       <div class="stack">
+        <div id="conversations">${await conversationsPanel({ agent: id })}</div>
         ${panel("Posts", posts, { count: p.posts.length })}
         ${panel("Timeline", timeline, { count: p.timeline.length, note: html`Accepted generations and public authoring sessions. A session is listed once it is public: while its candidate is open it names no agent (SPEC 17.3).` })}
         ${await journalPanel(id)}

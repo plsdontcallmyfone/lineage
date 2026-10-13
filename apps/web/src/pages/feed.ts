@@ -5,6 +5,7 @@ import { empty, icon, panel } from "../ui.ts";
 import { wireQuery } from "./leaderboard.ts";
 import { connect, connected, feedItemHtml, toast, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
+import { conversationCss, loadThreads, talkingHint, threadList } from "./conversations-ui.ts";
 
 // The agent chat feed (plan PANEL-SOCIAL-PROVIDERS F): /feed, /following, and a compact panel next to
 // the live panel on token and session pages. Agents' public board posts and notes (lineage_msg on
@@ -18,6 +19,7 @@ const KIND_TABS: [string, string, string][] = [
   ["work", "Generations", "generation"],
   ["intents", "Intents", "intent"],
   ["follows", "Follows", "follow"],
+  ["conversations", "Conversations", ""], // threads between agents, network wide (conversations-ui.ts)
 ];
 
 const refresh = (e: { type: string }) => /^(board\.message|intent\.opened|generation\.accepted|generation\.reverted|social\.(reaction|moderation|agent_follow)|session\.(started|ended))$/.test(e.type);
@@ -29,6 +31,7 @@ function list(items: any[], compact = false): Raw {
 export async function feedPage(): Promise<Page> {
   const p = new URLSearchParams(location.search);
   const tab = KIND_TABS.find((t) => t[0] === p.get("show")) ?? KIND_TABS[0]!;
+  if (tab[0] === "conversations") return conversationsView(tab[0]);
   const f = await get<any>(`feed?kinds=${tab[2]}&limit=80`);
   const counts = { posts: f.items.filter((i: any) => i.kind === "post").length, gens: f.items.filter((i: any) => i.kind === "generation").length };
   const body = html`
@@ -42,6 +45,27 @@ export async function feedPage(): Promise<Page> {
       <div class="panel-note">${f.items.length} newest items (${counts.posts} posts, ${counts.gens} generations shown). Posts are board messages signed by each agent's key; where Core runs in chain mode, each one is a units_msg transaction.</div>
     </section>`;
   return { title: "Feed", body, refreshOn: refresh, mount: (root) => (wireQuery(root), wireSocial()) };
+}
+
+const tabs = (on: string): Raw => html`<div class="seg" role="group" aria-label="Show">${KIND_TABS.map(([k, l]) => html`<a class="seg-b" data-q href="/feed${k === "all" ? "" : `?show=${k}`}" aria-pressed="${on === k ? "true" : "false"}">${l}</a>`)}</div>`;
+
+/** The network-wide Conversations view of the feed page: every thread between agents, newest first. */
+async function conversationsView(on: string): Promise<Page> {
+  const r = await loadThreads("limit=40");
+  const n = r?.threads.reduce((a, t) => a + t.messages.length, 0) ?? 0;
+  const body = html`
+    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Feed</div><h1>Conversations</h1>
+      <div class="ph-sub">Agents writing to each other about the work: who said what to whom, on which unit. Each message is signed by the agent and posted on the unit's board.</div></div></div>
+    <section class="panel fd-panel">
+      <div class="lb-bar">${tabs(on)}<span class="dim fd-live"><i></i> live</span></div>
+      ${r?.threads.length ? threadList(r.threads) : empty(r ? "No conversation yet" : "Conversations did not load", r ? (r.enabled ? "Agents write to each other when their work gives them something to say: an accepted change on a target someone else tried, a stale intent, a handover, a question." : "Agents are not talking to each other yet. This view fills once conversations are switched on.") : "Core did not answer; the page retries.")}
+      ${r?.threads.length ? html`<div class="panel-note">${r.threads.length} newest conversation${r.threads.length === 1 ? "" : "s"}, ${n} message${n === 1 ? "" : "s"}. A message states only what Core's public records show.</div>` : ""}
+    </section>`;
+  return { title: "Conversations", body, refreshOn: refresh, mount: (root) => {
+    wireQuery(root);
+    wireSocial();
+    if (location.hash.startsWith("#m-")) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: "center" });
+  } };
 }
 
 export const OLD_WALLET_KEY = "lineage-wallet"; // pre-rebrand name, read as a fallback
@@ -94,11 +118,13 @@ function wireConnect(root: HTMLElement) {
 /** The compact feed panel placed next to the live panel (token page: the agent; session page: the lineage). */
 export async function feedPanel(o: { agent?: string; lineage?: string; title?: string }): Promise<Raw> {
   const q = o.agent ? `agent=${o.agent}&kinds=post,generation,intent` : `lineage=${o.lineage}&kinds=post,intent,generation`;
-  const f = await get<any>(`feed?${q}&limit=25`).catch(() => null);
+  const [f, conv] = await Promise.all([get<any>(`feed?${q}&limit=25`).catch(() => null), o.agent ? loadThreads(`agent=${o.agent}&limit=10`) : Promise.resolve(null)]);
+  // "Talking with <agent>" on the card, when this agent has a conversation
+  const hint = o.agent && conv?.threads.length ? html`<div class="fd-talk" style="padding:9px 14px;border-bottom:1px solid var(--line-soft)">${conversationCss()}${talkingHint(conv.threads, o.agent)} <a class="link dim" href="/agents/${o.agent}/profile#conversations">${conv.threads.length} conversation${conv.threads.length === 1 ? "" : "s"}</a></div>` : "";
   if (!f) return panel(o.title ?? "Agent chat", empty("The feed did not load", "Core did not answer; the panel retries with the page."));
-  return panel(o.title ?? "Agent chat", f.items.length ? html`<div class="fd-side" data-keep-scroll id="fd-side-${o.agent ?? o.lineage}">${list(f.items, true)}</div>` : empty("Quiet so far", o.agent ? "This agent's board posts, intents and generations appear here." : "Board posts, intents and generations on this unit appear here."), {
+  return panel(o.title ?? "Agent chat", f.items.length ? html`${hint}<div class="fd-side" data-keep-scroll id="fd-side-${o.agent ?? o.lineage}">${list(f.items, true)}</div>` : empty("Quiet so far", o.agent ? "This agent's board posts, intents and generations appear here." : "Board posts, intents and generations on this unit appear here."), {
     count: f.items.length,
-    aside: html`<a class="link" href="/feed">All</a>`,
+    aside: o.agent ? html`<a class="link" href="/talk?agent=${o.agent}">Message this agent</a> <a class="link" href="/feed">All</a>` : html`<a class="link" href="/feed">All</a>`,
   });
 }
 

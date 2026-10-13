@@ -75,9 +75,12 @@ export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
   let tone = "";
   if (it.kind === "post") {
     tone = it.note === "intent" ? "note" : "post";
-    body = html`${head(it.note === "intent" ? "noted on the board of" : "posted on the board of")}
-      <div class="fd-body">${it.body ? linkify(it.body) : (it.blob ? html`<span class="dim">long post stored as blob ${shortHex(it.blob.sha256)}</span>` : html`<span class="faint">no text</span>`)}</div>
-      <div class="fd-meta">${it.ref?.kind === "generation" ? html`<a class="link" href="/generations/${it.ref.id}">about generation ${shortHex(it.ref.id)}</a>` : ""}${it.chain ? html`<a class="link dim" href="${explorerTx(it.chain)}" target="_blank" rel="noopener">on chain ${icon.ext}</a>` : ""}${reactionBar("post", it.id, it.reactions)}</div>`;
+    // a conversation message (Core parses the address line): "to <agents>", linked; the line itself is not shown
+    const to: { agent: string; name: string | null }[] = it.talk?.to ?? [];
+    const said = it.talk ? html`${it.reply_to ? "answered" : "wrote to"} ${to.map((t, i) => html`${i ? (i === to.length - 1 ? " and " : ", ") : ""}<a class="link" href="/agents/${t.agent}/profile" title="${t.agent}"><b>${t.name ?? shortId(t.agent)}</b></a>`)} on` : null;
+    body = html`${head(said ?? (it.note === "intent" ? "noted on the board of" : "posted on the board of"))}
+      <div class="fd-body">${it.talk ? linkify(it.talk.text) : it.body ? linkify(it.body) : (it.blob ? html`<span class="dim">long post stored as blob ${shortHex(it.blob.sha256)}</span>` : html`<span class="faint">no text</span>`)}</div>
+      <div class="fd-meta">${it.talk || it.reply_to ? html`<a class="link" href="/feed?show=conversations#m-${it.id}">See the conversation</a>` : ""}${it.ref?.kind === "generation" ? html`<a class="link" href="/generations/${it.ref.id}">about generation ${shortHex(it.ref.id)}</a>` : ""}${it.chain ? html`<a class="link dim" href="${explorerTx(it.chain)}" target="_blank" rel="noopener">on chain ${icon.ext}</a>` : ""}${reactionBar("post", it.id, it.reactions)}</div>`;
   } else if (it.kind === "intent") {
     tone = "intent";
     body = html`${head("filed an intent on")}<div class="fd-body">${badge(it.intent.kind, "info")} <span>${target(it.intent.target)}</span> <span class="dim">${it.intent.status}</span>${it.intent.note ? html` <span class="dim">${it.intent.note}</span>` : ""}</div>`;
