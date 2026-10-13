@@ -125,7 +125,7 @@ own `$UNITS`; the program checks the improvement and the ordering; the refund go
   permissionless `refresh_awake` of `units_launch` then updates the agent's awake flag).
 - `refund`: anyone, after `deadline + refund_grace_s` with no standing claim; the escrow returns to the
   funder's token account.
-- `cancel`: the funder, only before the registry posts another epoch.
+- `cancel`: the funder, only before the registry posts another epoch. (Removed by the owner on 2026-10-13, before any mainnet deploy: section 8.5.)
 - No fee in v1. If the owner wants one it is a `fee_bps` setting of this program, admin editable.
 
 ### 4.3 The one Core change option A needs
@@ -201,7 +201,6 @@ Epoch accounts and calls no other units program. Deployed and proven on devnet (
 | `claim` | anyone | names a generation with its result leaf and proof; the first valid claim stands, a valid claim of a strictly lower height replaces it within the contest time |
 | `pay` | anyone, after the contest time | the vault to the winner's compute vault, less the bounty's fee to the fee vault; the vault's rent back to the funder |
 | `refund` | anyone, after deadline + grace, no claim standing | the vault to a token account of the funder |
-| `cancel` | the funder, while the registry has posted no epoch since the open | the same, at once |
 | `set_settings`, `propose_admin`, `accept_admin`, `withdraw_fees` | the admin (the proposed admin for `accept_admin`) | every setting; a two-step handover; the fee vault's balance |
 
 ### 8.2 The result leaf, and how a winner is verified
@@ -258,8 +257,11 @@ claim, a payout trusts the roots the Core authority posts, inside the registry's
   the funder), because a balance left behind would block the account's close.
 - **Terms are fixed at the open.** The fee, the contest time and the refund time are copied into the
   bounty, so a later setting cannot raise a fee on, lock or cut short a bounty already posted.
-- **Pause** stops open, claim and pay. Refund and cancel always work. A pause that outlasts a
-  deadline therefore sends unclaimed bounties back to their funders; it never moves an escrow.
+- **Pause** stops open, claim and pay. Refund always works. A pause that outlasts a deadline
+  therefore sends unclaimed bounties back to their funders; it never moves an escrow and never
+  keeps a funder from an expired reward.
+- **No cancel** (owner, 2026-10-13; section 8.5). The program has no instruction that returns an
+  escrow before its refund time.
 - **Payout to the compute vault** is a plain transfer; the page adds the launch program's
   permissionless `refresh_awake` to the same transaction.
 
@@ -272,5 +274,28 @@ launch program's, names the winner by the program's rule, serves the claim proof
 the program's Config exists and is not paused. The mainnet hold stays (`UNITS_FEATURE_BOUNTIES`).
 The page: the post form for any connected wallet (reward in US dollars with the coin amount, the
 exact cost before signing, what a wallet that holds too little still needs, no purchase offered), and
-a bounty's next step on its own page (name the winner, send the payout, return the reward, withdraw).
+a bounty's next step on its own page (name the winner, send the payout, return the reward).
 Not built: an admin form for the settings (the admin sends `set_settings` from a script).
+
+### 8.5 The mainnet rules (owner, 2026-10-13)
+
+- **No cancel.** A posted reward stays escrowed until it is won, or until its deadline and the grace
+  after it have passed; then anyone returns it to its funder with `refund`. The poster cannot pull it
+  back early. The `cancel` instruction, its accounts, its error (`Locked`) and its status value were
+  removed from the program; the first build had them, and it ran on devnet only. A Bounty account
+  keeps `epochs_posted_at_open` as a record (no instruction reads it), so the account layout did not
+  change and the devnet program was upgraded in place. A client of the first build that still sends
+  `cancel` is answered `InstructionFallbackNotFound`; bounties the first build cancelled on devnet
+  carry status byte 3, which the client reads as refunded.
+- **Fee 0%.** `fee_bps` 0 at `initialize`. It remains an admin setting.
+- **Smallest reward: 10 USD worth of $UNITS.** `min_amount` is stored in base units of the coin and
+  is an admin setting; the number is taken from the live price when `initialize` is sent, and the
+  admin moves it when the price has moved.
+- **Deployer, upgrade authority and admin on mainnet:** the dev wallet
+  `6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3`.
+- Grace before a refund 24 hours, contest time 1 hour, deadline 1 hour to 30 days: unchanged.
+
+Checked: `onchain/tests/tests/open_bounty.rs` `a_posted_reward_cannot_be_taken_back_before_it_expires`
+(the old `cancel` bytes are refused at the open, at the refund time and while paused; a refund is
+refused up to and at the refund time and passes one second later, also while paused), the mutation
+run, and the devnet proof on the upgraded program (onchain/DEVNET.md).

@@ -24,7 +24,7 @@ export interface BountyRow {
   kind?: "agent" | "escrow"; funder?: string; fee_bps?: number; refund_after?: number; contest_s?: number;
   claim?: { winner: string; gen_id: string | null; height: number | null; claimed_at: number | null; contest_until: number | null } | null;
   bounty_id: string; payer: string | null; opener: string; payee: string | null; amount: string; deadline: number; created_at: number; min_epoch: number;
-  status: string; state: "open" | "decided" | "paid" | "expired" | "refunded" | "cancelled"; lineage_id: string; repo: string | null; recipe_name: string | null;
+  status: string; state: "open" | "decided" | "paid" | "expired" | "refunded"; lineage_id: string; repo: string | null; recipe_name: string | null;
   condition_kind: string; metric: { name: string; kind: string; direction: string } | null; any_target: boolean;
   required: { bps: number; source: "terms" | "unit" | "chain" } | null; note: string | null; working: string[];
   winner: { gen_id: string; author: string | null; height: number; epoch: number | null; improvement_bps: number | null; accepted_at: number | null } | null;
@@ -47,8 +47,10 @@ const STATE: Record<BountyRow["state"], [string, string]> = {
   paid: ["Paid", "The reward was paid on chain"],
   expired: ["Ended with no winner", "The deadline passed; the reward returns to the paying agent"],
   refunded: ["Returned", "The reward went back to the paying agent"],
-  cancelled: ["Withdrawn", "Withdrawn by its poster before any work could count"],
 };
+// A bounty an agent funds from its compute balance can also close by its owner taking it back (the
+// launch program, not the escrow); its reward went back the same way, so it reads as returned.
+const known = (b: BountyRow): BountyRow => (b.state in STATE ? b : { ...b, state: "refunded" });
 
 const CSS = `
 .bo-page{display:grid;gap:20px;max-width:calc(1440px - 2 * var(--pad-x));margin-left:auto;margin-right:auto}
@@ -110,6 +112,7 @@ function deadlineCell(b: BountyRow, nowS: number): Raw {
 }
 
 export function bountyCard(b: BountyRow, byAgent: Map<string, DirToken>, nowS = Math.floor(Date.now() / 1000), opts: { link?: boolean } = {}): Raw {
+  b = known(b);
   const [label, tip0] = STATE[b.state];
   // an escrow's reward comes from a wallet and returns to it
   const tip = isEscrow(b) ? tip0.replace("the paying agent", "the wallet that funded it").replace("after its epoch's challenge window", "once its contest time is over") : tip0;
@@ -160,7 +163,7 @@ const how = (): Raw => html`<section class="bo-how"><h2>How a bounty works</h2><
   </ol></section>`;
 
 const sum = (xs: string[]) => xs.reduce((a, x) => a + BigInt(x), 0n).toString();
-const ORDER: BountyRow["state"][] = ["open", "decided", "paid", "expired", "refunded", "cancelled"];
+const ORDER: BountyRow["state"][] = ["open", "decided", "paid", "expired", "refunded"];
 
 /** The post form, or one bounty's next step (the element carries data-bounty-id): the wallet bundle mounts it (it reads the chain and signs). */
 async function mountPost(root: HTMLElement) {
@@ -189,7 +192,7 @@ export async function bountiesPage(): Promise<Page> {
   }
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
-  const rows = [...res.bounties].sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || (a.state === "open" ? a.deadline - b.deadline : b.created_at - a.created_at));
+  const rows = res.bounties.map(known).sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || (a.state === "open" ? a.deadline - b.deadline : b.created_at - a.created_at));
   const open = rows.filter((b) => b.state === "open");
   const paid = rows.filter((b) => b.state === "paid");
   return {
@@ -218,7 +221,7 @@ export async function bountyPage(params: string[]): Promise<Page> {
     getOptional<{ bounty: BountyRow; generations: Gen[]; settings: BountySettings | null; escrow?: EscrowSettings | null }>(`bounties/${id}/view`),
     market<{ tokens: DirToken[] }>("tokens?sort=building&limit=200").catch(() => ({ tokens: [] as DirToken[] })),
   ]);
-  const b = v.bounty;
+  const b = known(v.bounty);
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
   const w = b.winner;

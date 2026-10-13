@@ -460,7 +460,7 @@ unproven).
 `units_bounty` (docs/plans/OPEN-BOUNTIES.md option A; `onchain/programs/units-bounty`) is a program of
 its own beside the three above. It holds bounty escrows and nothing else, reads the registry's Config
 and Epoch accounts and calls no other units program. **It is NOT deployed on mainnet and nothing here
-has been sent.** Deploying it changes none of the three live programs and needs none of their keys.
+has been sent.** Deploying it changes none of the three live programs and sends them no instruction.
 Until its Config exists on mainnet, Core reports the program as not configured and the board offers
 no any-wallet posting; the board also stays closed on mainnet unless `UNITS_FEATURE_BOUNTIES=1`.
 
@@ -470,79 +470,104 @@ selects the mainnet registry id it reads). Id keypair: `~/.config/units/mainnet/
 the owner backs it up offline). It is only the program's address: it is not a wallet and holds no
 authority after the deploy.
 
-### What the owner provides
+### The rules (owner decisions, 2026-10-13)
 
-1. **A deploy key that is not the dev wallet** (`~/.config/units/mainnet/official-deployer*` is never
-   used for this), funded with the peak below. It pays the rent and signs `initialize`.
-2. **Who holds the upgrade authority** after the deploy: that key, a multisig vault, or nobody
-   (`--final` makes the program immutable; then a bug is fixed only by deploying a new program at a
-   new id and pointing the clients at it). The program holds users' escrows, so this is the decision
-   that matters most.
-3. **The admin** (`admin` in `scripts/mainnet/bounty-params.json`): the wallet or vault that edits
-   settings, pauses, withdraws fees and hands the role over. It cannot move an escrow.
-4. **The settings**, all editable later by the admin: smallest reward, deadline range, grace before a
-   refund, contest time, fee. `refund_grace_s` must be above the registry's challenge window (3,600 s
-   on mainnet, read 2026-10-13 from `GET /v1/challenges/config`); `bounty-init.ts send` refuses otherwise.
-5. **Whether it is audited first.** It is new code that holds users' funds. The internal evidence is
-   the LiteSVM suite (`onchain/tests/tests/open_bounty.rs`, 17 tests), the mutation run
-   (`onchain/scripts/bounty-mutations.sh`: 25 checks removed one at a time, the covering test fails
-   each time) and the devnet proof (onchain/DEVNET.md "Bounty escrow program").
+1. **No cancel.** A posted reward stays escrowed until it is won, or until its deadline and the grace
+   after it have passed; then anyone returns it to its funder with `refund`. The poster cannot pull it
+   back early: the program has no instruction that does it (the `cancel` of the first devnet build
+   was removed before any mainnet deploy). A pause stops open, claim and pay and never a refund, so
+   a poster is never kept from an expired reward.
+2. **Fee 0%** (`fee_bps` 0; an admin setting).
+3. **Smallest reward: 10 USD worth of $UNITS.** `min_amount_units` in
+   `scripts/mainnet/bounty-params.json` is in whole $UNITS and is an admin setting on chain. It is
+   filled at send time from the live price: 10 divided by the USD price of one $UNITS.
+4. **The deploy key is the dev wallet** `6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3`. It pays the
+   rent, signs the deploy and signs `initialize`.
+5. **The upgrade authority stays the dev wallet.** The program holds users' escrows and the upgrade
+   authority can replace its code, so this key decides what the escrows are safe from.
+6. **The admin is the dev wallet** (`admin` in the params file): it edits settings, pauses, withdraws
+   fees and hands the role over. It cannot move an escrow.
+7. **The other settings:** `refund_grace_s` 86,400 (24 hours), `contest_s` 3,600 (1 hour), deadline
+   3,600 s to 2,592,000 s (1 hour to 30 days), not paused. `refund_grace_s` must be above the
+   registry's challenge window (3,600 s on mainnet, read 2026-10-13 from `GET /v1/challenges/config`);
+   `bounty-init.ts send` refuses otherwise.
+
+`scripts/mainnet/bounty-params.json` holds these values with `owner_confirmed` false and
+`min_amount_units` null; the coordinator sets both when sending, and `bounty-init.ts send` refuses
+until then.
+
+Not decided here: an outside audit. It is new code that holds users' funds. The internal evidence is
+the LiteSVM suite (`onchain/tests/tests/open_bounty.rs`, 17 tests), the mutation run
+(`onchain/scripts/bounty-mutations.sh`: 24 checks removed one at a time, the covering test fails
+each time) and the devnet proof on this build (onchain/DEVNET.md "Bounty escrow program").
 
 ### Size and cost
 
 Build: `cargo build-sbf --offline --manifest-path onchain/programs/units-bounty/Cargo.toml --features mainnet --sbf-out-dir onchain/target/bounty-mainnet`
-gives `units_bounty.so` of **479,096 bytes** (sha256 `b155d1907689b30c406397b5c862391de87a98dc1b8950f967eb2e7727b0c7e3`
-on 2026-10-13; rebuild and compare before a deploy, and delete the throwaway keypair the build writes
-beside it).
+gives `units_bounty.so` of **474,152 bytes** (sha256 `35861064eb318fa3edef7d219797e051fefdcbaddbfce8fff9ad78c521ed137b`
+on 2026-10-13, the build without `cancel`; rebuild and compare before a deploy, and delete the
+throwaway keypair the build writes beside it). The devnet build of the same source (no feature,
+`onchain/target/bounty`) is 474,152 bytes, sha256 `0106edd79e5bab3ba02077283601db149753994195ec437b993cbae7cdc3e90d`;
+the two differ only in the program ids compiled in.
 
-Rent is `(bytes + 128) x 5,080` lamports, mainnet's rate (read 2026-10-13 with
-`getMinimumBalanceForRentExemption` on mainnet for each size below; `bun scripts/mainnet/bounty-init.ts plan`
-prints them again from the cluster):
+Rent is `(bytes + 128) x 5,080` lamports, mainnet's rate. Each figure below is that product and was
+read back on 2026-10-13 from mainnet's `getMinimumBalanceForRentExemption` by
+`bun scripts/mainnet/bounty-init.ts plan`, which printed the same numbers:
 
-| Account | Bytes | Rent (SOL) | |
-|---|---|---|---|
-| Program account | 36 | 0.000833120 | locked |
-| ProgramData (45 byte header + the build) | 479,141 | 2.434686520 | locked; returned only if the program is closed |
-| Deploy buffer (37 byte header + the build) | 479,133 | 2.434645880 | held while deploying, returned when the deploy lands |
-| Config, created by `initialize` | 269 | 0.002016760 | locked |
-| Fee vault (a token account of `$UNITS`), created by `initialize` | 165 | 0.001488440 | locked |
+| Account | Bytes | Arithmetic | Rent (SOL) | |
+|---|---|---|---|---|
+| Program account | 36 | 164 x 5,080 = 833,120 | 0.000833120 | locked |
+| ProgramData (45 byte header + the build) | 474,197 | 474,325 x 5,080 = 2,409,571,000 | 2.409571000 | locked; returned only if the program is closed |
+| Deploy buffer (37 byte header + the build) | 474,189 | 474,317 x 5,080 = 2,409,530,360 | 2.409530360 | held while deploying, returned when the deploy lands |
+| Config, created by `initialize` | 269 | 397 x 5,080 = 2,016,760 | 0.002016760 | locked |
+| Fee vault (a token account of `$UNITS`), created by `initialize` | 165 | 293 x 5,080 = 1,488,440 | 0.001488440 | locked |
 
-- Deploy, without `--max-len` (ProgramData sized to the build): locked 2.435519640 SOL. The devnet
-  deploy of the same number of bytes at the same rent rate spent 2.437909640 SOL in all, that is
-  0.002390000 SOL of fees (478 signatures at 5,000 lamports, no priority fee). A priority fee on
-  mainnet adds to the fees only.
-- Peak during the deploy: buffer + ProgramData + program account = 4.870165520 SOL, plus the fees.
-  Fund the deploy key with that and a margin; 2.434645880 SOL of it comes back when the deploy lands.
-- `--max-len N` reserves room for a larger upgrade and locks `(N - 479,096) x 5,080` lamports more.
+- Deploy, without `--max-len` (ProgramData sized to the build): locked 0.000833120 + 2.409571000 =
+  **2.410404120 SOL**. Fees come on top: the devnet upgrade to this build (the same bytes written through a
+  buffer, as a first deploy writes them) lowered the deployer's balance by 0.002360000 SOL, which is
+  472 signatures at 5,000 lamports with no priority fee; the first deploy of the earlier 479,096 byte
+  build spent 0.002390000 SOL (478 signatures). A priority fee on mainnet adds to the fees only.
+- Peak during the deploy: buffer + ProgramData + program account = 2.409530360 + 2.409571000 +
+  0.000833120 = **4.819934480 SOL**, plus the fees. The dev wallet must hold that and a margin when
+  the deploy starts; 2.409530360 SOL of it is free again when the deploy lands.
+- `--max-len N` reserves room for a larger upgrade and locks `(N - 474,152) x 5,080` lamports more.
   Without it a later upgrade larger than this build first needs `solana program extend`.
-- `initialize`: 0.003510200 SOL (the two accounts and one 5,000 lamport signature; 61,774 compute
-  units on devnet).
+- `initialize`: 0.002016760 + 0.001488440 + 0.000005000 = 0.003510200 SOL (the two accounts and one
+  5,000 lamport signature; 61,774 compute units on devnet with the first build).
+- Deploy and `initialize` together leave the dev wallet 2.413914320 SOL lower, plus the deploy fees.
 - Each bounty a wallet posts costs that wallet 0.002494280 SOL for its Bounty account (363 bytes, kept
   as the record) and 0.001488440 SOL for its escrow account, which returns when the bounty closes.
 
 ### Steps (none sent yet)
 
+The coordinator runs these with the dev wallet's key file. No agent reads that file.
+
 ```sh
 export UNITS_NETWORK=mainnet
 set -a; . ~/.config/units/rpc.env; set +a              # UNITS_MAINNET_RPC, mode 600, never printed
-D=<the deploy key file>                                # NOT the dev wallet
+D=<the dev wallet's key file>                          # 6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3: deployer, upgrade authority, admin
 PK=~/.config/units/mainnet/bounty-program-keypair.json
+solana-keygen pubkey $D                                # 6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3
+solana-keygen pubkey $PK                               # BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK
 cd onchain && cargo build-sbf --offline --manifest-path programs/units-bounty/Cargo.toml --features mainnet --sbf-out-dir target/bounty-mainnet
-rm -f target/bounty-mainnet/*-keypair.json && ls -l target/bounty-mainnet/units_bounty.so && cd ..
-bun scripts/mainnet/bounty-init.ts plan               # read only: sizes, rent, the initialize accounts
+rm -f target/bounty-mainnet/units_bounty-keypair.json && ls -l target/bounty-mainnet/units_bounty.so && shasum -a 256 target/bounty-mainnet/units_bounty.so && cd ..
+#   474152 bytes, 35861064eb318fa3edef7d219797e051fefdcbaddbfce8fff9ad78c521ed137b
+bun scripts/mainnet/bounty-init.ts plan               # read only: NOT deployed, sizes, rent, the initialize accounts, the params
+solana balance -u "$UNITS_MAINNET_RPC" 6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3   # above 4.819934480 SOL plus fees and a margin
 solana program deploy -u "$UNITS_MAINNET_RPC" -k $D --fee-payer $D --upgrade-authority $D --program-id $PK \
   [--with-compute-unit-price <micro-lamports>] onchain/target/bounty-mainnet/units_bounty.so
 # an interrupted deploy: solana program show -u "$UNITS_MAINNET_RPC" --buffers -k $D; resume with --buffer, or close the buffer
-solana program dump -u "$UNITS_MAINNET_RPC" BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK /tmp/units_bounty.so   # equal to the build
-# scripts/mainnet/bounty-params.json: admin, min_amount_units, the other settings, owner_confirmed true
-bun scripts/mainnet/bounty-init.ts send --payer $D --mainnet
-# then the upgrade authority, as decided:
-solana program set-upgrade-authority -u "$UNITS_MAINNET_RPC" -k $D BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK --new-upgrade-authority <vault> --skip-new-upgrade-authority-signer-check
+solana program dump -u "$UNITS_MAINNET_RPC" BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK /tmp/units_bounty.so && shasum -a 256 /tmp/units_bounty.so   # the build's sha256
+solana program show -u "$UNITS_MAINNET_RPC" BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK   # Authority 6UhUBoVp..., Data Length 474152
+# scripts/mainnet/bounty-params.json: min_amount_units = 10 / (USD price of one $UNITS now), owner_confirmed true
+bun scripts/mainnet/bounty-init.ts send --payer $D --mainnet    # initialize: admin, fee 0, grace 86400, contest 3600; reads the Config back
+bun scripts/mainnet/bounty-init.ts plan               # deployed, initialized
 ```
 
-`initialize` can be sent only by the program's upgrade authority (checked through ProgramData), so it
-is sent before the authority is handed over, in the same sitting as the deploy. It takes the quote
-mint, its token program and the launch program from the registry's Config and fixes them for good.
+The upgrade authority is not handed over: it stays the dev wallet, as decided. `initialize` can be
+sent only by the program's upgrade authority (checked through ProgramData), so nobody else can send
+it first. It takes the quote mint, its token program and the launch program from the registry's
+Config and fixes them for good.
 
 ### After the init
 
@@ -552,13 +577,13 @@ mint, its token program and the launch program from the registry's Config and fi
   `UNITS_FEATURE_BOUNTIES=1` when the owner opens the board. Deploy Core, the web server and the pages
   together: the page reads `escrow` and `kind` from the board.
 - Admin actions later, each one instruction signed by the admin (`packages/chain/src/open-bounty.ts`):
-  `setSettings`, `withdrawFees`, `proposeAdmin` then `acceptAdmin` by the new admin. Through a Squads
-  vault they go as vault transactions like the other admin actions; they are not yet entries of
+  `setSettings` (the smallest reward when the price has moved, among the others), `withdrawFees`,
+  `proposeAdmin` then `acceptAdmin` by the new admin. They are not yet entries of
   `scripts/mainnet/admin.ts`.
 - What the admin can and cannot do: edit settings for bounties opened afterwards (a bounty keeps the
   fee, contest time and refund time it was opened with), pause (stops open, claim and pay; refund
-  and cancel keep working), withdraw from the fee vault only, hand the role over. No admin
-  instruction moves an escrow.
+  keeps working), withdraw from the fee vault only, hand the role over. No admin instruction moves
+  an escrow, and none returns one early.
 
 ## Later admin actions
 

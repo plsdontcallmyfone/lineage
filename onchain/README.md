@@ -44,7 +44,7 @@ bun test packages/chain                                    # from the repo root
 ```sh
 cargo build-sbf --offline --manifest-path programs/units-bounty/Cargo.toml --sbf-out-dir target/bounty && rm -f target/bounty/*-keypair.json
 cargo test --offline -p units-onchain-tests --test open_bounty
-scripts/bounty-mutations.sh                                # each of 25 checks removed in a scratch copy: its test must fail
+scripts/bounty-mutations.sh                                # each of 24 checks removed in a scratch copy: its test must fail
 UPDATE_VECTORS=1 cargo test --offline -p units-onchain-tests --test open_bounty vectors   # after an instruction or layout change, then bun test packages/chain
 ```
 

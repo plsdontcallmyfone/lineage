@@ -5,7 +5,9 @@
 // on) writes its result leaf into the epoch's record root; the root is posted on the registry; Core
 // mirrors the bounty, names the winner and serves the claim proof; the claim, the payout into the
 // agent's compute vault and the refund of an expired bounty to its funder are sent on chain and read
-// back exactly. Forged and early instructions are sent too and must be refused.
+// back exactly. Forged and early instructions are sent too and must be refused. The program has no
+// cancel: the instruction an earlier build had is sent as that build's client sent it and must be unknown,
+// and a refund before the refund time must be refused, for the funder as for anyone.
 //
 // The devnet registry is shared with the devnet site's Core, which posts the registry's next epoch
 // number. This run must not take that number: its Core runs with --first-epoch at a number far above
@@ -27,7 +29,7 @@ import { join } from "node:path";
 import { canonicalJson, generateAgentKey, H, hashJson, type AgentKey } from "@units/protocol";
 import { loadRecipe, prepareDeps } from "@units/sandbox";
 import {
-  ata, BOUNTY_PROGRAM_ID, bountyTargetDigest, buildTransaction, claimFromResult, computeBudget, IDENTITY_MODE, launch, launchPdas, openBounty, openBountyPdas, paramsFromNetworkJson, registry, registryPdas,
+  ata, BOUNTY_PROGRAM_ID, bountyTargetDigest, buildTransaction, claimFromResult, computeBudget, IDENTITY_MODE, ixDisc, launch, launchPdas, openBounty, openBountyPdas, paramsFromNetworkJson, registry, registryPdas,
   token, TOKEN_2022_PROGRAM, type BountyResult, type Ix, type OpenBountySettings, type Signer,
 } from "@units/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
@@ -94,6 +96,10 @@ async function refused(payer: Signer, ixs: Ix[], signers: Signer[] = []): Promis
   const logs = (sim.logs ?? []).join("\n");
   return /Error Code: (\w+)/.exec(logs)?.[1] ?? JSON.stringify(sim.err);
 }
+/** The `cancel` instruction of the build before 2026-10-13, as its client sent it: the refund accounts, the registry's Config, the funder as signer. */
+const oldCancel = (bounty: string, funder: string): Ix => ({ programId: BOUNTY_PROGRAM_ID, data: ixDisc("cancel"),
+  keys: [...openBounty.refund({ bounty, funder, mint: lineMint, tokenProgram: T22 }).keys, { pubkey: registryPdas.config(), isSigner: false, isWritable: false },
+    { pubkey: funder, isSigner: true, isWritable: false }] });
 /** An instruction with its last account (a signer slot) replaced. */
 const lastKey = (ix: Ix, pubkey: string): Ix => ({ ...ix, keys: ix.keys.map((k, i, all) => (i === all.length - 1 ? { ...k, pubkey } : k)) });
 
@@ -295,7 +301,7 @@ async function main() {
   };
   const b1 = mk(base, { amount: 5n * ONE, bps: 1_000, ttl: 3_600n, note: "Train at least 10% faster" });
   const b2 = mk(base + 1n, { amount: 2n * ONE, bps: 9_500, ttl: 3_600n, note: "A result nothing reaches: stays open" });
-  const b3 = mk(base + 2n, { amount: ONE, bps: 1_000, ttl: 3_600n, note: "Withdrawn before the next epoch" });
+  const b3 = mk(base + 2n, { amount: ONE, bps: 9_600, ttl: 3_600n, note: "Its poster tries to take it back: stays escrowed" });
   const fSol0 = await rpc.getBalance(funder.id);
   for (const b of [b1, b2, b3]) await send(STEP, `open_bounty ${b.id}: ${b.args.amount} base units on ${METRIC} of unit ${L.slice(0, 12)}, at least ${b.args.minImprovementBps} bps (funder ${funder.id})`, funder, [b.ix], { computeUnits: 200_000 });
   const fSol1 = await rpc.getBalance(funder.id);
@@ -308,12 +314,17 @@ async function main() {
   const dust = await refused(funder, [openBounty.open({ funder: funder.id, mint: lineMint, tokenProgram: T22, args: { ...b1.args, bountyId: base + 9n, amount: ONE - 1n } })]);
   const stolen = await refused(caller, [openBounty.open({ funder: caller.id, mint: lineMint, tokenProgram: T22, funderToken, args: { ...b1.args, bountyId: base + 9n } })]);
   check("an open below the minimum, and an open from somebody else's token account, are refused", dust === "InvalidArgs" && stolen === "ConstraintTokenOwner", `${dust} / ${stolen}`);
-  const notFunder = await refused(caller, [lastKey(openBounty.cancel({ bounty: b3.address, funder: funder.id, mint: lineMint, tokenProgram: T22 }), caller.id)]);
-  check("only the funder cancels", notFunder === "Unauthorized", String(notFunder));
-  await send(STEP, `cancel ${b3.id} (the funder, before the next epoch)`, funder, [openBounty.cancel({ bounty: b3.address, funder: funder.id, mint: lineMint, tokenProgram: T22 })]);
-  check("cancel returned the escrow to the funder", (await reader.tokenBalance(funderToken))! - f1 === ONE && (await reader.openBountyAccount(b3.address))!.status === "cancelled");
+  // no cancel: before any epoch is posted since the open (when the earlier build let the funder take the reward back)
+  const takeBack = await refused(funder, [oldCancel(b3.address, funder.id)]);
+  const takeBackOther = await refused(caller, [lastKey(oldCancel(b3.address, funder.id), caller.id)]);
+  const earlyRefund = await refused(funder, [openBounty.refund({ bounty: b3.address, funder: funder.id, mint: lineMint, tokenProgram: T22 })]);
+  const acct3 = (await reader.openBountyAccount(b3.address))!;
+  check("a posted reward cannot be taken back: the program has no cancel instruction, and a refund before the refund time is refused for its funder too",
+    takeBack === "InstructionFallbackNotFound" && takeBackOther === "InstructionFallbackNotFound" && earlyRefund === "NotExpired" && acct3.status === "open" &&
+    (await reader.tokenBalance(openBountyPdas.vault(b3.address))) === ONE && (await reader.tokenBalance(funderToken))! === f1,
+    `cancel by the funder: ${takeBack}; by another wallet: ${takeBackOther}; refund now: ${earlyRefund}; escrow still ${ONE} base units, refund time ${acct3.refundAfter}`);
   await chainSync();
-  for (const b of [b1, b2]) await ok(anon.put(`/v1/bounties/${b.address}/terms`, b.terms), "terms");
+  for (const b of [b1, b2, b3]) await ok(anon.put(`/v1/bounties/${b.address}/terms`, b.terms), "terms");
   const board0 = await ok(anon.get("/v1/bounties/board"), "board");
   const row0 = board0.bounties.find((x: any) => x.bounty_id === b1.address);
   check("Core's board: posting open to any wallet, the bounty listed with its unit, metric and requirement", board0.posting.any_wallet === true && row0?.kind === "escrow" &&
@@ -418,8 +429,16 @@ async function main() {
   const late = await refused(caller, [openBounty.claim({ bounty: b4, result: cand!.result, proof: c.proof })]);
   const callerToken = await lineTo(caller.id, 1n, "caller");
   const steal = await refused(caller, [openBounty.refund({ bounty: b4, funder: funder.id, mint: lineMint, tokenProgram: T22, funderToken: callerToken })]);
+  // the refund is sent while the program is paused: a pause stops open, claim and pay, never the return of an expired reward
+  await send(STEP, "set_settings: paused (for the refund that follows)", dep, [openBounty.setSettings({ admin: dep.id, settings: { ...PROOF, paused: true } })]);
+  const pausedOpen = await refused(funder, [openBounty.open({ funder: funder.id, mint: lineMint, tokenProgram: T22, args: { ...b4args, bountyId: base + 8n, deadline: (await chainNow()) + BigInt(PROOF.minTtlS) + 60n } })]);
+  const pausedCancel = await refused(funder, [oldCancel(b3.address, funder.id)]);
   const fSolB = await rpc.getBalance(funder.id);
-  await send(STEP, `refund ${b4args.bountyId} to its funder ${funder.id} (sent by ${caller.id})`, caller, [openBounty.refund({ bounty: b4, funder: funder.id, mint: lineMint, tokenProgram: T22 })]);
+  await send(STEP, `refund ${b4args.bountyId} to its funder ${funder.id} (sent by ${caller.id}, program paused)`, caller, [openBounty.refund({ bounty: b4, funder: funder.id, mint: lineMint, tokenProgram: T22 })]);
+  const refundedPaused = (await reader.openBountyConfig())!.settings.paused && (await reader.openBountyAccount(b4))!.status === "refunded";
+  await send(STEP, "set_settings: not paused", dep, [openBounty.setSettings({ admin: dep.id, settings: PROOF })]);
+  check("a paused program still returns an expired reward, while it refuses a new bounty", refundedPaused && pausedOpen === "Paused" && pausedCancel === "InstructionFallbackNotFound",
+    `open while paused: ${pausedOpen}; cancel while paused: ${pausedCancel}`);
   const r1 = (await reader.tokenBalance(funderToken))!;
   check("the expired bounty refunded its funder exactly; before expiry, inside the grace, and into another wallet's account, the refund is refused; a claim after expiry is refused",
     r1 === r0 && (await reader.openBountyAccount(b4))!.status === "refunded" && before === "NotExpired" && inGrace === "NotExpired" && steal === "ConstraintTokenOwner" && late === "Expired" &&
@@ -430,9 +449,9 @@ async function main() {
   await chainSync();
   const board1 = await ok(anon.get("/v1/bounties/board"), "board");
   const st = (a: string) => board1.bounties.find((x: any) => x.bounty_id === a)?.state;
-  check("Core's board shows the outcomes: paid, returned, withdrawn, and the 95% bounty still open", st(b1.address) === "paid" && st(b4) === "refunded" && st(b3.address) === "cancelled" && st(b2.address) === "open",
+  check("Core's board shows the outcomes: paid, returned, and the two bounties nobody could take back still held", st(b1.address) === "paid" && st(b4) === "refunded" && st(b3.address) === "open" && st(b2.address) === "open",
     [b1.address, b4, b3.address, b2.address].map((x) => st(x)).join(", "));
-  check("the funder holds what it started with, less the reward that was won and the 2 test UNITS still escrowed for the 95% bounty", (await reader.tokenBalance(funderToken))! === f0 - 5n * ONE - 2n * ONE);
+  check("the funder holds what it started with, less the reward that was won and the 3 test UNITS still escrowed (the 95% bounty and the one it tried to take back)", (await reader.tokenBalance(funderToken))! === f0 - 5n * ONE - 3n * ONE);
 
   // ------------------------------------------------------------ the admin restores the settings
   await send(STEP, "set_settings: the devnet values (deadline 1 hour to 30 days, grace 24 hours, contest 1 hour, no fee)", dep, [openBounty.setSettings({ admin: dep.id, settings: FINAL })]);
@@ -445,7 +464,7 @@ async function main() {
   const passed = results.filter((r) => r.ok).length;
   writeFileSync(OUT, JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), program: BOUNTY_PROGRAM_ID, unit: L, metric: METRIC,
     funder: funder.id, agent: agentKey.id, agent_coin: mintKey.id, epoch: closed.n, post_epoch: post.signature, generation: final.gen_id,
-    result: cand!.result, bounties: { paid: b1.address, refunded: b4, cancelled: b3.address, open: b2.address }, sol_spent_by_all_keys: sol(spent), passed, of: results.length, results }, null, 2) + "\n");
+    result: cand!.result, bounties: { paid: b1.address, refunded: b4, held: b3.address, open: b2.address }, sol_spent_by_all_keys: sol(spent), passed, of: results.length, results }, null, 2) + "\n");
   log(`${passed}/${results.length} checks passed; SOL spent by every key of the run: ${sol(spent)}; wrote ${OUT}`);
   if (passed !== results.length) process.exitCode = 1;
 }

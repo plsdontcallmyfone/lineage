@@ -186,10 +186,14 @@ impl World {
         let ix = Instruction { program_id: lb::ID, accounts: self.refund_accounts(bounty, to).to_account_metas(None), data: lb::instruction::Refund {}.data() };
         send(&mut self.e.svm, &caller, &[], vec![ix])
     }
-    fn cancel_as(&mut self, bounty: &Pubkey, signer: &Keypair, to: &Pubkey) -> TransactionResult {
-        let accounts = lb::accounts::Cancel { r: self.refund_accounts(bounty, to), registry_config: registry_config(), signer: signer.pubkey() };
-        let ix = Instruction { program_id: lb::ID, accounts: accounts.to_account_metas(None), data: lb::instruction::Cancel {}.data() };
-        send(&mut self.e.svm, signer, &[], vec![ix])
+    /// The removed `cancel` instruction as a client of the earlier build sent it: its 8-byte name
+    /// (sha256("global:cancel")[..8]), the refund accounts, the registry's Config and the signer.
+    fn old_cancel_as(&mut self, bounty: &Pubkey, signer: &Keypair, to: &Pubkey) -> TransactionResult {
+        let mut accounts = self.refund_accounts(bounty, to).to_account_metas(None);
+        accounts.push(anchor_lang::solana_program::instruction::AccountMeta::new_readonly(registry_config(), false));
+        accounts.push(anchor_lang::solana_program::instruction::AccountMeta::new_readonly(signer.pubkey(), true));
+        let name = anchor_lang::solana_program::hash::hash(b"global:cancel").to_bytes()[..8].to_vec();
+        send(&mut self.e.svm, signer, &[], vec![Instruction { program_id: lb::ID, accounts, data: name }])
     }
     fn bounty(&self, b: &Pubkey) -> lb::Bounty {
         read(&self.e.svm, b)
@@ -452,8 +456,6 @@ fn a_claim_made_in_time_is_paid_even_after_the_refund_time() {
     warp(&mut w.e.svm, CONTEST as i64);
     let ft = w.funder_token;
     rejects(w.refund_to(&b, &ft), "ClaimStanding");
-    let f = w.funder.insecure_clone();
-    rejects(w.cancel_as(&b, &f, &ft), "Locked");
     let s0 = w.bal(&w.s.compute_vault);
     ok(w.pay(&b));
     assert_eq!(w.bal(&w.s.compute_vault), s0 + 30 * ONE);
@@ -517,44 +519,58 @@ fn a_funder_cannot_take_another_funders_escrow() {
     ok(w.open_as(&mallory, &mallory_token, a));
     let mb = bounty_pda(&mallory.pubkey(), 1);
     let ft = w.funder_token;
-    // cancel: only the funder's signature, and only into the funder's own account
-    rejects(w.cancel_as(&b, &mallory, &mallory_token), "ConstraintTokenOwner");
-    rejects(w.cancel_as(&b, &mallory, &ft), "Unauthorized");
-    // her own bounty with the other vault in its place
-    let mut r = w.refund_accounts(&mb, &mallory_token);
-    r.vault = vault_of(&b);
-    let ix = Instruction { program_id: lb::ID, accounts: lb::accounts::Cancel { r, registry_config: registry_config(), signer: mallory.pubkey() }.to_account_metas(None),
-        data: lb::instruction::Cancel {}.data() };
-    rejects(send(&mut w.e.svm, &mallory, &[], vec![ix]), "ConstraintSeeds");
-    // the other bounty named with herself as its funder
-    let mut r = w.refund_accounts(&b, &mallory_token);
-    r.funder = mallory.pubkey();
-    let ix = Instruction { program_id: lb::ID, accounts: lb::accounts::Cancel { r, registry_config: registry_config(), signer: mallory.pubkey() }.to_account_metas(None),
-        data: lb::instruction::Cancel {}.data() };
-    rejects(send(&mut w.e.svm, &mallory, &[], vec![ix]), "ConstraintHasOne");
+    // before expiry nobody takes either escrow, the funder included
+    rejects(w.refund_to(&b, &mallory_token), "ConstraintTokenOwner");
+    rejects(w.refund_to(&b, &ft), "NotExpired");
     // opening from somebody else's token account
     let a = w.open_args(2, 5 * ONE, 1_000);
     rejects(w.open_as(&mallory, &ft, a), "ConstraintTokenOwner");
     // after expiry each escrow returns to its own funder, exactly
     warp(&mut w.e.svm, TTL + GRACE as i64 + 1);
     rejects(w.refund_to(&b, &mallory_token), "ConstraintTokenOwner");
+    let refund = |r: lb::accounts::Refund| Instruction { program_id: lb::ID, accounts: r.to_account_metas(None), data: lb::instruction::Refund {}.data() };
+    // her own bounty with the other vault in its place
+    let mut r = w.refund_accounts(&mb, &mallory_token);
+    r.vault = vault_of(&b);
+    rejects(send(&mut w.e.svm, &mallory, &[], vec![refund(r)]), "ConstraintSeeds");
+    // the other bounty named with herself as its funder
+    let mut r = w.refund_accounts(&b, &mallory_token);
+    r.funder = mallory.pubkey();
+    rejects(send(&mut w.e.svm, &mallory, &[], vec![refund(r)]), "ConstraintHasOne");
+    assert_eq!((w.bal(&vault_of(&b)), w.bal(&vault_of(&mb))), (40 * ONE, 5 * ONE));
     ok(w.refund_to(&mb, &mallory_token));
     ok(w.refund_to(&b, &ft));
     assert_eq!((w.bal(&ft), w.bal(&mallory_token)), (1_000 * ONE, 100 * ONE));
 }
 
 #[test]
-fn the_funder_cancels_only_before_the_next_epoch_is_posted() {
+fn a_posted_reward_cannot_be_taken_back_before_it_expires() {
     let mut w = world();
     w.post(1);
     let b = w.open(1, 10 * ONE);
-    let b2 = w.open(2, 10 * ONE);
     let (f, ft) = (w.funder.insecure_clone(), w.funder_token);
-    ok(w.cancel_as(&b, &f, &ft));
-    assert_eq!((w.bounty(&b).status, w.bal(&ft)), (lb::STATUS_CANCELLED, 990 * ONE));
-    assert!(w.cancel_as(&b, &f, &ft).is_err());
-    w.post(2);
-    rejects(w.cancel_as(&b2, &f, &ft), "Locked");
+    let held = |w: &World| assert_eq!((w.bounty(&b).status, w.bal(&vault_of(&b)), w.bal(&ft)), (lb::STATUS_OPEN, 10 * ONE, 990 * ONE));
+    // at once, with no epoch posted since the open: the program has no cancel, and the refund waits
+    rejects(w.old_cancel_as(&b, &f, &ft), "InstructionFallbackNotFound");
+    rejects(w.refund_to(&b, &ft), "NotExpired");
+    held(&w);
+    // past the deadline but inside the grace, and at the refund time to the second
+    warp(&mut w.e.svm, TTL + 1);
+    rejects(w.refund_to(&b, &ft), "NotExpired");
+    let wait = w.bounty(&b).refund_after - now(&w.e.svm);
+    warp(&mut w.e.svm, wait);
+    rejects(w.refund_to(&b, &ft), "NotExpired");
+    rejects(w.old_cancel_as(&b, &f, &ft), "InstructionFallbackNotFound");
+    held(&w);
+    // one second later the reward returns, also while the program is paused
+    let mut s = settings();
+    s.paused = true;
+    w.set(s);
+    warp(&mut w.e.svm, 1);
+    rejects(w.old_cancel_as(&b, &f, &ft), "InstructionFallbackNotFound");
+    ok(w.refund_to(&b, &ft));
+    assert_eq!((w.bounty(&b).status, w.bal(&ft)), (lb::STATUS_REFUNDED, 1_000 * ONE));
+    assert!(w.gone(&vault_of(&b)));
 }
 
 #[test]
@@ -673,8 +689,8 @@ fn admin_powers_are_settings_pause_fees_and_handover_and_never_an_escrow() {
     let ix = wd(&admin.pubkey(), fee_vault(), 2_500_000, &w.e);
     ok(send(&mut w.e.svm, &admin, &[], vec![ix]));
     assert_eq!((w.bal(&to), w.bal(&fee_vault()), w.bal(&vault_of(&b3))), (2_500_000, 0, 10 * ONE));
-    // the admin has no way to cancel, refund early or redirect an escrow
-    rejects(w.cancel_as(&b3, &admin, &ft), "Unauthorized");
+    // the admin has no way to take back, refund early or redirect an escrow
+    rejects(w.old_cancel_as(&b3, &admin, &ft), "InstructionFallbackNotFound");
     rejects(w.refund_to(&b3, &ft), "NotExpired");
 
     // a paused program still refunds at expiry
@@ -734,9 +750,6 @@ fn client_vectors_for_units_bounty() {
         ix_json("pay", Instruction { program_id: lb::ID, accounts: lb::accounts::Pay { config: bconfig(), bounty: b, vault: vault_of(&b), authority: bauthority(), funder,
             winner_compute: compute_vault(&author), fee_vault: fee_vault(), mint, token_program: tp }.to_account_metas(None), data: lb::instruction::Pay {}.data() }),
         ix_json("refund", Instruction { program_id: lb::ID, accounts: refund.to_account_metas(None), data: lb::instruction::Refund {}.data() }),
-        ix_json("cancel", Instruction { program_id: lb::ID, accounts: lb::accounts::Cancel { r: lb::accounts::Refund { config: bconfig(), bounty: b, vault: vault_of(&b),
-            authority: bauthority(), funder, funder_token, mint, token_program: tp }, registry_config: registry_config(), signer: funder }.to_account_metas(None),
-            data: lb::instruction::Cancel {}.data() }),
     ];
     // live account bytes after a claim, with the fields the program itself reads back
     let mut w = world();

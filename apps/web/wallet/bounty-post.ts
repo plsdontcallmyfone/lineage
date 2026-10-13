@@ -9,7 +9,7 @@
 // computed from chain reads (bounty-plan.ts), simulated, and only then signed.
 //
 // The same module draws the next step of one bounty of the escrow program on its own page (name the
-// winner, send the payout, return the reward, withdraw): mountBountyPost on an element that carries
+// winner, send the payout, return the reward): mountBountyPost on an element that carries
 // data-bounty-id.
 import { ata, bounty, bountyPdas, launch, launchPdas, openBounty, openBountyPdas, token, type AgentLaunch, type BountyConfig, type BountyLedger, type BountyResult,
   type Ix, type OpenBountyConfig } from "../../../packages/chain/src/browser/index.ts";
@@ -324,7 +324,7 @@ function walletReviewView(r: WalletReview): Raw {
       <div>New accounts</div><div><span data-review-rent="${p.rentLamports.toString()}">${sol(p.rentLamports)} SOL</span> (${usdSol(p.rentLamports)}) from this wallet; ${sol(p.rentReturned)} SOL returns to it when the bounty closes</div>
       <div>Network fee</div><div>${sol(r.fee)} SOL (${usdSol(r.fee)}) at the current priority price</div>
     </div>
-    <p style="margin-top:10px">The chain pays the whole reward to the earliest accepted generation that improves ${r.metric.name} by at least ${bpsPct(p.minImprovementBps)}, into that agent's compute balance. A winner is paid ${span(c.contestS)} after it is named, so that an earlier generation can still be named first. With no winner, anyone can return the reward to this wallet ${span(c.refundGraceS)} after the deadline, and to no other wallet. You can withdraw it yourself only until the next epoch is posted.</p>
+    <p style="margin-top:10px">The chain pays the whole reward to the earliest accepted generation that improves ${r.metric.name} by at least ${bpsPct(p.minImprovementBps)}, into that agent's compute balance. A winner is paid ${span(c.contestS)} after it is named, so that an earlier generation can still be named first. With no winner, anyone can return the reward to this wallet ${span(c.refundGraceS)} after the deadline, and to no other wallet. Once posted, the reward cannot be withdrawn: it stays in escrow until it is won or returned that way.</p>
     <div class="wl-row"><button type="button" class="wl-btn primary" data-bounty-act="sign"${B.busy ? raw(" disabled") : ""}>Sign and post</button><button type="button" class="wl-btn" data-bounty-act="back"${B.busy ? raw(" disabled") : ""}>Back</button></div>${status()}`);
 }
 
@@ -342,7 +342,7 @@ function reviewView(r: Review): Raw {
       <div>New accounts</div><div><span data-review-rent="${p.rentLamports.toString()}">${sol(p.rentLamports)} SOL</span> (${usdSol(p.rentLamports)}) from this wallet; ${sol(p.rentReturned)} SOL returns to it when the bounty closes</div>
       <div>Network fee</div><div>${sol(r.fee)} SOL (${usdSol(r.fee)}) at the current priority price</div>
     </div>
-    <p style="margin-top:10px">The first accepted generation that meets this wins the whole reward, paid into the winning agent's compute balance. With no winner, anyone can return the reward to ${short(r.payer.agent)}'s compute balance ${span(c.refundGraceS)} after the deadline. You can withdraw it yourself only until the next epoch is posted.</p>
+    <p style="margin-top:10px">The first accepted generation that meets this wins the whole reward, paid into the winning agent's compute balance. With no winner, anyone can return the reward to ${short(r.payer.agent)}'s compute balance ${span(c.refundGraceS)} after the deadline.</p>
     <div class="wl-row"><button type="button" class="wl-btn primary" data-bounty-act="sign"${B.busy ? raw(" disabled") : ""}>Sign and post</button><button type="button" class="wl-btn" data-bounty-act="back"${B.busy ? raw(" disabled") : ""}>Back</button></div>${status()}`);
 }
 
@@ -436,7 +436,7 @@ interface ClaimView {
   next: { action: "claim" | "pay" | "refund" | "wait" | "none"; at: number | null; why: string };
   candidates: { result: BountyResult; proof: string[]; record_root: string; winner: boolean; claimable_at: number }[];
 }
-type Step = "claim" | "pay" | "refund" | "cancel";
+type Step = "claim" | "pay" | "refund";
 const N: { root: HTMLElement | null; id: string; v: ClaimView | null; chain: ChainCfg | null; busy: string | null; err: string | null;
   ready: { step: Step; ixs: Ix[]; units: number; fee: bigint } | null; done: { step: Step; signature: string } | null } =
   { root: null, id: "", v: null, chain: null, busy: null, err: null, ready: null, done: null };
@@ -445,7 +445,6 @@ const STEP: Record<Step, { button: string; done: string }> = {
   claim: { button: "Name the winner", done: "The winner is named on chain" },
   pay: { button: "Send the payout", done: "The reward is paid" },
   refund: { button: "Return the reward", done: "The reward is back with its funder" },
-  cancel: { button: "Withdraw the bounty", done: "The bounty is withdrawn" },
 };
 
 async function loadNext() {
@@ -470,7 +469,7 @@ async function stepIxs(step: Step, w: string): Promise<{ ixs: Ix[]; units: numbe
   }
   // a refund goes only to a token account of the funder; its own account is made first if it was closed
   const mk = token.createAtaIdempotent(w, b.funder, st.line_mint, st.line_token_program);
-  return { ixs: [mk, step === "cancel" ? openBounty.cancel(common) : openBounty.refund(common)], units: 250_000 };
+  return { ixs: [mk, openBounty.refund(common)], units: 250_000 };
 }
 
 async function nextAct(label: string, fn: () => Promise<void>) {
@@ -527,7 +526,7 @@ function renderNext() {
     const r = N.ready;
     body = html`<div class="kv" data-next-review="${r.step}">
         ${r.step === "pay" ? html`<div>Paid to</div><div>the compute balance of ${short(b.claim!.winner)}: <b>${usdOf(amount - fee)}</b> as ${coins(amount - fee)}${fee > 0n ? html`, after a fee of ${bpsPct(b.fee_bps)}` : ""}</div>` : ""}
-        ${r.step === "refund" || r.step === "cancel" ? html`<div>Returned to</div><div>${short(b.funder)}: <b>${usdOf(amount)}</b> as ${coins(amount)}</div>` : ""}
+        ${r.step === "refund" ? html`<div>Returned to</div><div>${short(b.funder)}: <b>${usdOf(amount)}</b> as ${coins(amount)}</div>` : ""}
         ${r.step === "claim" ? html`<div>Then</div><div>the reward is paid ${span(b.contest_s)} later, unless an earlier generation is named first</div>` : ""}
         <div>Network fee</div><div>${sol(r.fee)} SOL (${usdSol(r.fee)}) from your wallet; nothing else leaves it</div>
       </div>
@@ -540,7 +539,7 @@ function renderNext() {
       : nx.action === "refund" ? html`<p>The bounty ended with no winner. Anyone can return <b>${usdOf(amount)}</b> as ${coins(amount)} to the wallet that funded it, ${short(b.funder)}.</p><div class="wl-row">${button("refund")}</div>`
       : nx.action === "wait" ? html`<p>${b.claim ? "The winner is named. The payout can be sent" : "A generation meets the terms. It can be named"} from ${nx.at ? when(nx.at) : "the next step"}.</p>`
       : html`<p>${nx.at ? `Nothing has met the terms. The reward can be returned to its funder from ${when(nx.at)}.` : "Nothing to send yet: no generation has met the terms."}</p>`;
-    body = html`${line}${mine ? html`<p style="margin-top:10px">You funded this bounty. You can withdraw it only until the next epoch is posted.</p><div class="wl-row">${button("cancel", false)}</div>` : ""}${st}`;
+    body = html`${line}${mine ? html`<p style="margin-top:10px" data-bounty-funder-note>You funded this bounty. The reward stays in escrow until it is won. With no winner it can be returned to this wallet from ${when(b.refund_after)}, and not before.</p>` : ""}${st}`;
   }
   el.innerHTML = nextBox(body).s;
 }

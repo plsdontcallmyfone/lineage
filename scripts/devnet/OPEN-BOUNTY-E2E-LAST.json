@@ -1,33 +1,33 @@
 {
-  "at": "2026-10-13T07:31:28.748Z",
-  "seconds": 389,
+  "at": "2026-10-13T11:38:15.544Z",
+  "seconds": 417,
   "program": "9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR",
   "unit": "fadf5803417c85f3b5efa1ebb3e2504967294ec1bef41c966d45161f9bea4a70",
   "metric": "train_ir",
   "funder": "2oJyaBMkBKD1TSrNrX8KVsD5ppxGU3HtTbbnAHPEF78W",
   "agent": "8e5wwcKqXWhNm56meYd4oPByMbcnzGRgBm4PFE83vpXb",
   "agent_coin": "Gkok7u5Ekxwt5ZeFQYnTABcW39M4cBJW43SSdnZqvZcw",
-  "epoch": 1791876304,
-  "post_epoch": "3FdU53k1dANvP8HavSqVBLLTKi2cDGx1jLAokeDnMyFPTDn7af3Xu7D44QHJxfirdfwTDPe71o74UqJg2kchatAC",
-  "generation": "9e18669559d7b5b13728f98021d038bdb520138112e38489d683b0ce7b4454e1",
+  "epoch": 1791891087,
+  "post_epoch": "2RwU9YdU2f1Qokhi1G2EVQVZkAwyzA2CBkCZbFv8fH7cysXLucbWrJXnCafFJAaqCXGV3VxJE31NcTnXXCe8sWHz",
+  "generation": "c5b96a187837118fc65982b443e5ccf45b8b7724a69f9b26eb6bda451581a2a4",
   "result": {
-    "accepted_at": 1791876471,
+    "accepted_at": 1791891273,
     "author": "8e5wwcKqXWhNm56meYd4oPByMbcnzGRgBm4PFE83vpXb",
-    "epoch": 1791876304,
-    "gen_id": "9e18669559d7b5b13728f98021d038bdb520138112e38489d683b0ce7b4454e1",
+    "epoch": 1791891087,
+    "gen_id": "c5b96a187837118fc65982b443e5ccf45b8b7724a69f9b26eb6bda451581a2a4",
     "height": 1,
-    "improvement_bps": 4278,
+    "improvement_bps": 4788,
     "kind": "bounty_result",
     "lineage_id": "fadf5803417c85f3b5efa1ebb3e2504967294ec1bef41c966d45161f9bea4a70",
     "target": "train_ir"
   },
   "bounties": {
-    "paid": "DbTxX1HBfRA5UpjhAeFgJqnKsuBBjyD5VxaikzEqwgSg",
-    "refunded": "GtRWEGjLGZQuHFc6h8wvuPSByfKJp35rFuC265u6UrFi",
-    "cancelled": "AToJxxLxUWGj845GPSmYbM6hEpUNPMxudrRNw3rr6cnu",
-    "open": "2f5oS4nUMshYpeZN1tnuXaFZKdbM2QW9XrkJX5jxx46t"
+    "paid": "7j2V9JF3frJEiMNHjVkNJCEudwZt83fwoVKbtnBD8Ykh",
+    "refunded": "8nPUQP2fEHzqghvaGm5RnYJgoEeTjYKgL7oFDQHDqdzm",
+    "held": "EVQyghaNftKTCjDzuNdZvFnvFd3LCJyHSnSJVGLqL2qz",
+    "open": "29wBBpyJaUvtfgxYZufmoVk1uFeuq3J2iKzqaQFF7Di6"
   },
-  "sol_spent_by_all_keys": "0.013019000",
+  "sol_spent_by_all_keys": "0.014517440",
   "passed": 32,
   "of": 32,
   "results": [
@@ -64,12 +64,12 @@
     {
       "check": "Core reads the escrow program from chain and offers posting to any wallet",
       "ok": true,
-      "detail": "{\"program\":\"9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR\",\"mint\":\"CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62\",\"token_program\":\"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb\",\"admin\":\"CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih\",\"min_amount\":\"1000000\",\"min_ttl_s\":3600,\"max_ttl_s\":2592000,\"refund_grace_s\":86400,\"contest_s\":3600,\"fee_bps\":0,\"paused\":false,\"opened\":\"16\"}"
+      "detail": "{\"program\":\"9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR\",\"mint\":\"CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62\",\"token_program\":\"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb\",\"admin\":\"CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih\",\"min_amount\":\"1000000\",\"min_ttl_s\":3600,\"max_ttl_s\":2592000,\"refund_grace_s\":86400,\"contest_s\":3600,\"fee_bps\":0,\"paused\":false,\"opened\":\"20\"}"
     },
     {
       "check": "this Core's epochs start far above the registry's",
       "ok": true,
-      "detail": "first epoch 1791876304; registry last 20"
+      "detail": "first epoch 1791891087; registry last 20"
     },
     {
       "check": "the unit exists, two bonded verifiers are qualified, the agent is active and awake",
@@ -89,7 +89,7 @@
     {
       "check": "the bounty holds its terms and the settings in force at the open",
       "ok": true,
-      "detail": "min_epoch 21, deadline 1791880016"
+      "detail": "min_epoch 21, deadline 1791894813"
     },
     {
       "check": "an open below the minimum, and an open from somebody else's token account, are refused",
@@ -97,19 +97,14 @@
       "detail": "InvalidArgs / ConstraintTokenOwner"
     },
     {
-      "check": "only the funder cancels",
+      "check": "a posted reward cannot be taken back: the program has no cancel instruction, and a refund before the refund time is refused for its funder too",
       "ok": true,
-      "detail": "Unauthorized"
-    },
-    {
-      "check": "cancel returned the escrow to the funder",
-      "ok": true,
-      "detail": ""
+      "detail": "cancel by the funder: InstructionFallbackNotFound; by another wallet: InstructionFallbackNotFound; refund now: NotExpired; escrow still 1000000 base units, refund time 1791894873"
     },
     {
       "check": "Core's board: posting open to any wallet, the bounty listed with its unit, metric and requirement",
       "ok": true,
-      "detail": "19 bounties; https://github.com/karpathy/minbpe"
+      "detail": "23 bounties; https://github.com/karpathy/minbpe"
     },
     {
       "check": "agents see it as a workboard hint of the unit",
@@ -124,12 +119,12 @@
     {
       "check": "the epoch's record root is on the registry, and the registry's cursor is exactly what it was",
       "ok": true,
-      "detail": "epoch 1791876304 3FdU53k1dANvP8HavSqVBLLTKi2cDGx1jLAokeDnMyFPTDn7af3Xu7D44QHJxfirdfwTDPe71o74UqJg2kchatAC; cursor 3 posted, last 20"
+      "detail": "epoch 1791891087 2RwU9YdU2f1Qokhi1G2EVQVZkAwyzA2CBkCZbFv8fH7cysXLucbWrJXnCafFJAaqCXGV3VxJE31NcTnXXCe8sWHz; cursor 3 posted, last 20"
     },
     {
       "check": "Core names the agent's generation as the winner by the program's rule",
       "ok": true,
-      "detail": "generation 9e18669559d7 height 1, 4278 bps (required 1000)"
+      "detail": "generation c5b96a187837 height 1, 4788 bps (required 1000)"
     },
     {
       "check": "the 95% bounty has no winner: the same generation does not meet it",
@@ -144,7 +139,7 @@
     {
       "check": "the claim stands on chain for the agent, payable after the contest time",
       "ok": true,
-      "detail": "contest until 1791876525; a payout before any claim: ConstraintSeeds"
+      "detail": "contest until 1791891327; a payout before any claim: ConstraintSeeds"
     },
     {
       "check": "a replayed claim, a payout inside the contest time and a refund over a standing claim are refused",
@@ -154,7 +149,7 @@
     {
       "check": "the payout landed: the agent's compute vault gained exactly the reward, the escrow account is closed and its rent is back with the funder",
       "ok": true,
-      "detail": "415000000 -> 420000000"
+      "detail": "420000000 -> 425000000"
     },
     {
       "check": "a second payout is refused",
@@ -167,9 +162,14 @@
       "detail": ""
     },
     {
+      "check": "a paused program still returns an expired reward, while it refuses a new bounty",
+      "ok": true,
+      "detail": "open while paused: Paused; cancel while paused: InstructionFallbackNotFound"
+    },
+    {
       "check": "the expired bounty refunded its funder exactly; before expiry, inside the grace, and into another wallet's account, the refund is refused; a claim after expiry is refused",
       "ok": true,
-      "detail": "2000000 base units out and back (13000000 before the open, 13000000 after the refund); before expiry NotExpired; in the grace NotExpired; to another account ConstraintTokenOwner; a claim after expiry Expired"
+      "detail": "2000000 base units out and back (12000000 before the open, 12000000 after the refund); before expiry NotExpired; in the grace NotExpired; to another account ConstraintTokenOwner; a claim after expiry Expired"
     },
     {
       "check": "a second refund is refused",
@@ -177,12 +177,12 @@
       "detail": "AccountNotInitialized"
     },
     {
-      "check": "Core's board shows the outcomes: paid, returned, withdrawn, and the 95% bounty still open",
+      "check": "Core's board shows the outcomes: paid, returned, and the two bounties nobody could take back still held",
       "ok": true,
-      "detail": "paid, refunded, cancelled, open"
+      "detail": "paid, refunded, open, open"
     },
     {
-      "check": "the funder holds what it started with, less the reward that was won and the 2 test UNITS still escrowed for the 95% bounty",
+      "check": "the funder holds what it started with, less the reward that was won and the 3 test UNITS still escrowed (the 95% bounty and the one it tried to take back)",
       "ok": true,
       "detail": ""
     },

@@ -48,7 +48,9 @@ describe("units_bounty client", () => {
     same("claim", openBounty.claim({ bounty: b, result, proof: ["55".repeat(32), "66".repeat(32)] }));
     same("pay", openBounty.pay({ bounty: b, funder: K.funder, winner: K.author, mint: K.mint, tokenProgram: tp }));
     same("refund", openBounty.refund({ bounty: b, funder: K.funder, mint: K.mint, tokenProgram: tp }));
-    same("cancel", openBounty.cancel({ bounty: b, funder: K.funder, mint: K.mint, tokenProgram: tp }));
+    // no cancel: the program has no such instruction and the client builds none
+    expect(vec.instructions.map((x: { name: string }) => x.name)).not.toContain("cancel");
+    expect("cancel" in openBounty).toBe(false);
     // the claim reads the registry's epoch and the author's compute vault under the launch program
     const keys = openBounty.claim({ bounty: b, result, proof: [] }).keys.map((k) => k.pubkey);
     expect(keys).toContain(registryPdas.epoch(9));

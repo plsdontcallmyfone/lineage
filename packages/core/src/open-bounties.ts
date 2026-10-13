@@ -45,7 +45,7 @@ export const OPEN_BOUNTIES_SCHEMA = `
     created_at INTEGER NOT NULL,         -- unix seconds (chain clock)
     refund_after INTEGER NOT NULL,
     contest_s INTEGER NOT NULL,
-    status TEXT NOT NULL,                -- open | paid | refunded | cancelled
+    status TEXT NOT NULL,                -- open | paid | refunded
     winner TEXT,                         -- the standing claim's author (the paid agent once paid)
     win_height INTEGER,
     win_epoch INTEGER,
@@ -133,7 +133,7 @@ export class OpenBounties {
       if (!prev) ev("bounty.opened");
       if (prev && prev.winner !== a.winner && a.status === "open") ev("bounty.claimed");
       if (prev?.status !== a.status && a.status === "paid") ev("bounty.released");
-      if (prev?.status !== a.status && (a.status === "refunded" || a.status === "cancelled")) ev("bounty.refunded");
+      if (prev?.status !== a.status && a.status === "refunded") ev("bounty.refunded");
     }
   }
 

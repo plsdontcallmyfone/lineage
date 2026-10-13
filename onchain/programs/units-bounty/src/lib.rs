@@ -26,6 +26,9 @@
 //! Terms a funder agreed to never change under it: `fee_bps`, `contest_s` and the refund time are
 //! copied into the bounty at open. The admin edits settings for later bounties, pauses, and withdraws
 //! collected fees; no admin instruction moves an escrow.
+//!
+//! An escrow leaves its vault in two ways only: `pay` to the winner, or `refund` to the funder after
+//! the bounty's refund time. There is no cancel: the funder cannot take a posted reward back early.
 #![allow(clippy::result_large_err, clippy::too_many_arguments)]
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
@@ -52,7 +55,6 @@ pub const MAX_TARGET_LEN: usize = 96;
 pub const STATUS_OPEN: u8 = 0;
 pub const STATUS_PAID: u8 = 1;
 pub const STATUS_REFUNDED: u8 = 2;
-pub const STATUS_CANCELLED: u8 = 3;
 
 // ---------- leaf ----------
 
@@ -340,20 +342,25 @@ pub mod units_bounty {
         Ok(())
     }
 
-    /// Anyone, after the bounty's refund time with no claim standing: the escrow back to the funder.
+    /// Anyone, after the bounty's refund time with no claim standing: the whole vault balance back to
+    /// the funder's token account. The only way an unwon escrow leaves, and never before that time.
+    /// Not stopped by a pause, so an expired reward can always be returned. Never with a claim
+    /// standing: a named winner is paid, whatever the clock says.
     pub fn refund(ctx: Context<Refund>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
-        require!(now > ctx.accounts.bounty.refund_after, BountyError::NotExpired);
-        give_back(ctx.accounts, STATUS_REFUNDED, now)
-    }
-
-    /// The funder, only while the registry has posted no epoch since the open (no generation can
-    /// qualify yet): the escrow back at once.
-    pub fn cancel(ctx: Context<Cancel>) -> Result<()> {
-        require!(ctx.accounts.registry_config.epochs_posted == ctx.accounts.r.bounty.epochs_posted_at_open, BountyError::Locked);
-        require_keys_eq!(ctx.accounts.signer.key(), ctx.accounts.r.bounty.funder, BountyError::Unauthorized);
-        let now = Clock::get()?.unix_timestamp;
-        give_back(&mut ctx.accounts.r, STATUS_CANCELLED, now)
+        let a = ctx.accounts;
+        require!(now > a.bounty.refund_after, BountyError::NotExpired);
+        require!(a.bounty.status == STATUS_OPEN, BountyError::BountyClosed);
+        require!(a.bounty.winner == Pubkey::default(), BountyError::ClaimStanding);
+        let amount = a.vault.amount;
+        let m = Mover { bump: a.config.authority_bump, vault: &a.vault, mint: &a.mint, token_program: &a.token_program, authority: &a.authority };
+        m.send(&a.funder_token.to_account_info(), amount)?;
+        m.close(&a.funder.to_account_info())?;
+        let b = &mut a.bounty;
+        b.status = STATUS_REFUNDED;
+        b.closed_at = now;
+        emit!(BountyRefunded { bounty: b.key(), funder: b.funder, amount });
+        Ok(())
     }
 }
 
@@ -392,22 +399,6 @@ impl<'info> Mover<'_, 'info> {
     }
 }
 
-/// Refund and cancel: the whole vault balance to the funder's token account. Never with a claim
-/// standing: a named winner is paid, whatever the clock says.
-fn give_back(a: &mut Refund, status: u8, now: i64) -> Result<()> {
-    require!(a.bounty.status == STATUS_OPEN, BountyError::BountyClosed);
-    require!(a.bounty.winner == Pubkey::default(), BountyError::ClaimStanding);
-    let amount = a.vault.amount;
-    let m = Mover { bump: a.config.authority_bump, vault: &a.vault, mint: &a.mint, token_program: &a.token_program, authority: &a.authority };
-    m.send(&a.funder_token.to_account_info(), amount)?;
-    m.close(&a.funder.to_account_info())?;
-    let b = &mut a.bounty;
-    b.status = status;
-    b.closed_at = now;
-    emit!(BountyRefunded { bounty: b.key(), funder: b.funder, amount, cancelled: status == STATUS_CANCELLED });
-    Ok(())
-}
-
 // ---------- state ----------
 
 /// Every setting of the program; all admin editable (`set_settings`).
@@ -425,7 +416,7 @@ pub struct Settings {
     pub contest_s: u32,
     /// Fee taken from a payout, in basis points (0 = none). Never taken from a refund.
     pub fee_bps: u16,
-    /// Stops open, claim and pay. Refund and cancel always work.
+    /// Stops open, claim and pay. Refund always works.
     pub paused: bool,
 }
 impl Settings {
@@ -470,7 +461,7 @@ pub struct Bounty {
     pub min_improvement_bps: u16,
     /// Only generations in epochs from here on qualify (the registry's next epoch at open).
     pub min_epoch: u64,
-    /// The registry's `epochs_posted` at open; cancel needs it unchanged.
+    /// The registry's `epochs_posted` at open. A record only: no instruction reads it.
     pub epochs_posted_at_open: u64,
     pub deadline: i64,
     pub created_at: i64,
@@ -670,15 +661,6 @@ pub struct Refund<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-#[derive(Accounts)]
-pub struct Cancel<'info> {
-    pub r: Refund<'info>,
-    #[account(seeds = [units_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = units_registry::ID)]
-    pub registry_config: Box<Account<'info, units_registry::Config>>,
-    /// The bounty's funder.
-    pub signer: Signer<'info>,
-}
-
 // ---------- events ----------
 
 #[event]
@@ -745,7 +727,6 @@ pub struct BountyRefunded {
     pub bounty: Pubkey,
     pub funder: Pubkey,
     pub amount: u64,
-    pub cancelled: bool,
 }
 
 #[error_code]
@@ -786,8 +767,6 @@ pub enum BountyError {
     NotExpired,
     #[msg("a claim stands: the bounty pays its winner")]
     ClaimStanding,
-    #[msg("an epoch was posted since the open")]
-    Locked,
 }
 
 #[cfg(test)]

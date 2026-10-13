@@ -8,7 +8,8 @@ import { r, registryPdas, w, type Ix } from "./registry.ts";
 // Open bounties (docs/plans/OPEN-BOUNTIES.md option A), the `units_bounty` program: any wallet
 // escrows $UNITS for one unit, one metric and a required improvement; the escrow is paid to the
 // author of the earliest accepted generation that meets the terms, proven by Core's result leaf
-// against the registry's Epoch.record_root, and returns to the funder at expiry. Account order and
+// against the registry's Epoch.record_root, and returns to the funder at expiry. There is no cancel:
+// a posted reward leaves its escrow only by `pay` or, after the refund time, by `refund`. Account order and
 // encodings match onchain/programs/units-bounty/src/lib.rs (test/open-bounty.test.ts checks the
 // leaf against onchain/tests/fixtures/merkle.json, which the program's own suite is run on).
 
@@ -16,7 +17,11 @@ const data = (name: string) => new Writer().bytes(ixDisc(name));
 const ZERO32 = "0".repeat(64);
 const NOBODY: Address = "11111111111111111111111111111111";
 
-export const OPEN_BOUNTY_STATUS = ["open", "paid", "refunded", "cancelled"] as const;
+// Status byte 3 was written by a `cancel` instruction the program had on devnet until 2026-10-13
+// (the escrow went back to its funder). The program has no such instruction now; an account that
+// still carries the byte reads as refunded.
+export const OPEN_BOUNTY_STATUS = ["open", "paid", "refunded"] as const;
+const STATUS_BYTES: readonly OpenBountyStatus[] = [...OPEN_BOUNTY_STATUS, "refunded"];
 export type OpenBountyStatus = (typeof OPEN_BOUNTY_STATUS)[number];
 
 export const openBountyPdas = {
@@ -144,10 +149,6 @@ export const openBounty = {
   refund(a: { bounty: Address; funder: Address; mint: Address; funderToken?: Address; tokenProgram?: Address }): Ix {
     return { programId: BOUNTY_PROGRAM_ID, keys: refundKeys(a), data: data("refund").done() };
   },
-  /** The funder, only while the registry has posted no epoch since the open. */
-  cancel(a: { bounty: Address; funder: Address; mint: Address; funderToken?: Address; tokenProgram?: Address }): Ix {
-    return { programId: BOUNTY_PROGRAM_ID, keys: [...refundKeys(a), r(registryPdas.config()), r(a.funder, true)], data: data("cancel").done() };
-  },
 };
 function refundKeys(a: { bounty: Address; funder: Address; mint: Address; funderToken?: Address; tokenProgram?: Address }) {
   const p = openBountyPdas;
@@ -195,6 +196,7 @@ export interface OpenBountyAccount {
   targetDigest: string;
   minImprovementBps: number;
   minEpoch: bigint;
+  /** the registry's epochs_posted at open; a record only */
   epochsPostedAtOpen: bigint;
   deadline: bigint;
   createdAt: bigint;
@@ -221,7 +223,7 @@ export function decodeOpenBounty(d: Uint8Array): OpenBountyAccount {
   return {
     funder: rd.address(), bountyId: rd.u64(), amount: rd.u64(), feeBps: rd.u16(), termsDigest: rd.hex32(), lineageId: rd.hex32(), targetDigest: rd.hex32(),
     minImprovementBps: rd.u16(), minEpoch: rd.u64(), epochsPostedAtOpen: rd.u64(), deadline: rd.i64(), createdAt: rd.i64(), refundAfter: rd.i64(),
-    contestS: rd.u32(), status: OPEN_BOUNTY_STATUS[rd.u8()] ?? "open", winner: orNull(rd.address()), winHeight: rd.u64(), winEpoch: rd.u64(),
+    contestS: rd.u32(), status: STATUS_BYTES[rd.u8()] ?? "open", winner: orNull(rd.address()), winHeight: rd.u64(), winEpoch: rd.u64(),
     winGenId: z(rd.hex32()), winImprovementBps: rd.u64(), winLeaf: z(rd.hex32()), claimedAt: rd.i64(), contestUntil: rd.i64(), paid: rd.u64(),
     feePaid: rd.u64(), closedAt: rd.i64(),
   };

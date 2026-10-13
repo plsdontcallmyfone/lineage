@@ -38,7 +38,6 @@ PY
   if ! cargo build-sbf --offline --manifest-path "$MUT/Cargo.toml" --sbf-out-dir "$OUT" >"$OUT/build.log" 2>&1; then
     echo "FAIL $name: the weakened program does not build (see $OUT/build.log)"; fail=1; continue
   fi
-  rm -f "$OUT"/*-keypair.json
   if UNITS_BOUNTY_SO="$OUT/units_bounty.so" cargo test --offline -p units-onchain-tests --test open_bounty "$test" >"$OUT/test.log" 2>&1; then
     echo "FAIL $name: $test passes without the check"; fail=1
   else
@@ -51,15 +50,14 @@ metric of the bounty|a_wrong_winner_is_refused|        require!(target_digest(&t
 generation after the open|a_wrong_winner_is_refused|        require!(args.epoch >= b.min_epoch && args.accepted_at >= b.created_at, BountyError::BeforeOpen);
 epoch posted by the deadline|a_claim_after_expiry_is_refused_and_the_funder_is_refunded|        require!(ep.posted_at <= b.deadline, BountyError::Late);
 first claim before the refund time|a_claim_after_expiry_is_refused_and_the_funder_is_refunded|            require!(now <= b.refund_after, BountyError::Expired);
-refund only after expiry|a_claim_after_expiry_is_refused_and_the_funder_is_refunded|        require!(now > ctx.accounts.bounty.refund_after, BountyError::NotExpired);
+refund only after expiry|a_claim_after_expiry_is_refused_and_the_funder_is_refunded|        require!(now > a.bounty.refund_after, BountyError::NotExpired);
+no early return to the funder|a_posted_reward_cannot_be_taken_back_before_it_expires|        require!(now > a.bounty.refund_after, BountyError::NotExpired);
 earlier height only|an_earlier_generation_replaces_a_standing_claim_and_a_replayed_claim_does_not|            require!(args.height < b.win_height, BountyError::NotEarlier);
 contest time bounds a replacement|after_the_contest_time_the_standing_claim_cannot_be_replaced|            require!(now < b.contest_until, BountyError::ContestOver);
 payout waits for the contest time|a_wallet_with_no_agent_posts|        require!(now >= b.contest_until, BountyError::ContestOpen);
 closed bounty takes no claim|a_wallet_with_no_agent_posts|require!(b.status == STATUS_OPEN, BountyError::BountyClosed); => ;
 challenge hold|a_claim_waits_for_the_registry_challenge_hold|.map_err(|_| error!(BountyError::Held))?; => .ok();
-no refund over a standing claim|a_claim_made_in_time_is_paid_even_after_the_refund_time|    require!(a.bounty.winner == Pubkey::default(), BountyError::ClaimStanding);
-cancel is the funder's|a_funder_cannot_take_another_funders_escrow|        require_keys_eq!(ctx.accounts.signer.key(), ctx.accounts.r.bounty.funder, BountyError::Unauthorized);
-cancel before the next epoch|the_funder_cancels_only_before_the_next_epoch_is_posted|        require!(ctx.accounts.registry_config.epochs_posted == ctx.accounts.r.bounty.epochs_posted_at_open, BountyError::Locked);
+no refund over a standing claim|a_claim_made_in_time_is_paid_even_after_the_refund_time|        require!(a.bounty.winner == Pubkey::default(), BountyError::ClaimStanding);
 pause stops a payout|admin_powers_are_settings|        require!(!c.settings.paused, BountyError::Paused);
 unit and metric named|a_bounty_for_a_unit_or_metric|        require!(args.lineage_id != [0u8; 32] && args.target_digest != [0u8; 32], BountyError::InvalidArgs);
 refund goes to the funder|a_funder_cannot_take_another_funders_escrow|token::authority = funder,  => 
