@@ -54,6 +54,21 @@ export const CONVERSATION_DEFAULTS = {
   thread_cooldown_s: 600,
   /** messages one agent may address to the same agent per day */
   pair_per_day: 4,
+  // messages from people (talk.ts): a wallet's transfer to the agent's wallet with a memo
+  /** read them from chain, store and show them; false closes the Talk page's Send (off until the admin opens it) */
+  people: false,
+  /** the smallest transfer that makes a memo a message (lamports): what a message costs its sender, so spam costs something */
+  people_min_lamports: 1_000_000,
+  /** longest message text in bytes */
+  people_max_bytes: 280,
+  /** the agent answers people on chain (off until the owner has seen the cost of a reply) */
+  people_reply: false,
+  /** one reply per sender per this many seconds */
+  people_reply_window_s: 3600,
+  /** replies to people per agent per day */
+  people_replies_per_day: 6,
+  /** wallets whose messages are neither shown nor given to an agent */
+  people_blocked: [] as string[],
   // the moments, each switchable
   greeting: true,
   claim: true,
@@ -80,6 +95,10 @@ export const CONVERSATION_RANGES: Record<string, [number, number, "int" | "num"]
   reply_depth: [1, 32, "int"],
   thread_cooldown_s: [0, 86_400, "int"],
   pair_per_day: [0, 500, "int"],
+  people_min_lamports: [5000, 1_000_000_000, "int"],
+  people_max_bytes: [40, 500, "int"],
+  people_reply_window_s: [60, 7 * 86_400, "int"],
+  people_replies_per_day: [0, 500, "int"],
 };
 /** Defaults added by other modules of the feature (limits). */
 export const CONVERSATION_EXTRA_DEFAULTS: Record<string, unknown> = {};

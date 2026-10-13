@@ -706,7 +706,7 @@ export class Social {
   /** POST /v1/admin/social/hide { kind: post | media, id, hidden, reason }: every change is on the public record. */
   hide(body: unknown) {
     return this.c.tx(() => {
-      if (!isObj(body) || (body.kind !== "post" && body.kind !== "media") || typeof body.id !== "string" || !HEX64.test(body.id)) throw bad("bad_body", "{ kind: post | media, id: 64 hex, hidden, reason } expected");
+      if (!isObj(body) || (body.kind !== "post" && body.kind !== "media" && body.kind !== "talk") || typeof body.id !== "string" || !HEX64.test(body.id)) throw bad("bad_body", "{ kind: post | media | talk, id: 64 hex, hidden, reason } expected");
       const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
       if (!reason) throw bad("bad_body", "reason is required: it is published");
       const kind = body.kind;
@@ -714,7 +714,9 @@ export class Social {
       const agent =
         kind === "post"
           ? (this.db.query<{ from_agent: string }, [string]>("SELECT from_agent FROM messages WHERE msg_id = ? AND board IS NOT NULL").get(id)?.from_agent ?? null)
-          : (this.mediaOf(id)?.agent ?? null);
+          : kind === "talk"
+            ? (this.db.query<{ agent: string }, [string]>("SELECT agent FROM talk_messages WHERE id = ?").get(id)?.agent ?? null) // a person's message to an agent (talk.ts)
+            : (this.mediaOf(id)?.agent ?? null);
       if (!agent) throw notFound(kind);
       const hidden = body.hidden !== false;
       const was = this.isHidden(kind, id);

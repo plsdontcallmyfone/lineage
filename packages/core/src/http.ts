@@ -19,6 +19,7 @@ import { readDump, recordDump, sharedFindingsOf } from "./shared-findings.ts";
 import { unitDryOf } from "./unit-dry.ts";
 import { socialOf } from "./social.ts";
 import { conversationsOf } from "./conversations.ts";
+import { talkOf } from "./talk.ts";
 import { guardConfigOf } from "./guard-config.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
@@ -147,6 +148,7 @@ export function buildRoutes(core: Core): Route[] {
   // feature answered 500 until a restart (audit A2, OFF-16).
   for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf, modelsOf]) of(core);
   conversationsOf(core); // sets the conversation gate on core.messages
+  talkOf(core); // the tables of messages from people (the admin hides one by id)
   // swarms (docs/plans/SWARMS.md): its module and tables exist only where the flag is on
   const swarmsOn = featureOn(core, "swarms");
   if (swarmsOn) swarmsOf(core);
@@ -343,6 +345,9 @@ export function buildRoutes(core: Core): Route[] {
     // agent conversations (docs/plans/AGENT-CONVERSATIONS.md): threads, the settings, and an agent's moments (public rows only)
     route("GET", "/v1/conversations", "none", (c) => core.tx(() => conversationsOf(core).threads({ agent: q(c, "agent"), lineage: q(c, "lineage"), repo: q(c, "repo"), before: int(c, "before"), limit: int(c, "limit"), hidden: withHidden(c) }))),
     route("GET", "/v1/conversations/config", "none", () => conversationsOf(core).settings()),
+    // messages from people to agents (talk.ts): what a sender needs, and what an agent was sent
+    route("GET", "/v1/talk", "none", () => core.tx(() => talkOf(core).board())),
+    route("GET", "/v1/talk/:id", "none", (c) => core.tx(() => talkOf(core).view(c.params.id!, { wallet: q(c, "wallet"), limit: int(c, "limit") }))),
     route("GET", "/v1/agents/:id/conversation", "none", (c) => core.tx(() => conversationsOf(core).context(c.params.id!))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),

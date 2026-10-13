@@ -24,6 +24,7 @@ import { openBountiesOf } from "./open-bounties.ts";
 import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
+import { talkOf } from "./talk.ts";
 import { prepayOf } from "./prepay.ts";
 import { deploymentLabel, deploymentsOf } from "./deployments.ts";
 import { purgeOf } from "./purge.ts";
@@ -373,6 +374,13 @@ export class ChainBridge {
     } catch (e) {
       messages = { error: (e as Error).message, ...msgchainOf(this.core).status() };
       this.log(`messages not indexed: ${(e as Error).message}`);
+    }
+
+    // messages from people (talk.ts): transfers with a memo to the wallets of running agents, a few wallets per pass
+    try {
+      await talkOf(this.core).sync(this.reader.rpc);
+    } catch (e) {
+      this.log(`messages from people not read: ${(e as Error).message}`);
     }
 
     // bonded challenges (SPEC 10.8): mirror open_challenge accounts, record Core's resolutions (before epochs are posted, so a held epoch posts corrected)
