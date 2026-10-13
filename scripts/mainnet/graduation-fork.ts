@@ -563,7 +563,7 @@ try {
     const v = await look(pg.page);
     shots.after_pool_trades = await shot(pg.page, "6-after-pool-trades");
     pages.after_pool_trades = v;
-    const labels = await pg.page.evaluate(() => [...document.querySelectorAll("#mk-trades .tk-row-sub")].map((e) => (/PumpSwap/.test(e.textContent ?? "") ? "PumpSwap" : /curve/.test(e.textContent ?? "") ? "curve" : "?")));
+    const labels: string[] = await pg.page.evaluate(() => [...document.querySelectorAll("#mk-trades .tk-row-sub")].map((e) => (/PumpSwap/.test(e.textContent ?? "") ? "PumpSwap" : /curve/.test(e.textContent ?? "") ? "curve" : "?")));
     check("the coin's page lists the trades of both venues in one list, each named for where it happened, under one chart", labels.includes("PumpSwap") && labels.includes("curve") && !labels.includes("?") && v.chart && !pg.errors.length, `${labels.filter((x) => x === "PumpSwap").length} PumpSwap rows above ${labels.filter((x) => x === "curve").length} curve rows`);
     await pg.ctx.close();
   }
