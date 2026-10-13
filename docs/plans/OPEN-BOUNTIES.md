@@ -190,7 +190,8 @@ any-wallet form path and the admin form for its settings. Section 8 says what wa
 by the cargo feature `mainnet`). It holds bounty escrows and nothing else. `units_registry`,
 `units_launch` and `units_msg` are not changed and not upgraded; it reads the registry's Config and
 Epoch accounts and calls no other units program. Deployed and proven on devnet (onchain/DEVNET.md
-"Bounty escrow program"); NOT deployed on mainnet (docs/MAINNET-RUNBOOK.md "Bounty escrow program").
+"Bounty escrow program") and, since 2026-10-13, deployed and initialized on mainnet
+(docs/MAINNET-RUNBOOK.md "Bounty escrow program").
 
 ### 8.1 Instructions
 

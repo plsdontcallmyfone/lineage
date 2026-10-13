@@ -462,10 +462,23 @@ unproven).
 
 `units_bounty` (docs/plans/OPEN-BOUNTIES.md option A; `onchain/programs/units-bounty`) is a program of
 its own beside the three above. It holds bounty escrows and nothing else, reads the registry's Config
-and Epoch accounts and calls no other units program. **It is NOT deployed on mainnet and nothing here
-has been sent.** Deploying it changes none of the three live programs and sends them no instruction.
-Until its Config exists on mainnet, Core reports the program as not configured and the board offers
-no any-wallet posting; the board also stays closed on mainnet unless `UNITS_FEATURE_BOUNTIES=1`.
+and Epoch accounts and calls no other units program. **It is deployed and initialized on mainnet
+(2026-10-13, by the coordinator from the dev wallet).** The three other programs were not changed and
+were sent no instruction. The board on the site stays closed until the mainnet Core runs with
+`UNITS_FEATURE_BOUNTIES=1` ("Opening the board" below).
+
+| | |
+|---|---|
+| Program | `BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK`, ProgramData `2QQdd986zXgt61oTxkFBZdttmQxfkWW16i9qJjnsVeHv` (474,197 bytes, 2.409571000 SOL, read back 2026-10-13) |
+| Deployed | 2026-10-13 11:43:18 UTC, slot 456429864, `2nJXPQtyZe8DGyMUju3Kj9siBkaCLGtcNCRTqdihHqmRgFs6Zmtt6fPTCCM4NTftiEjGVKUeZgTi5b8uH2t6oNeF`; 474,152 bytes, the on-chain dump's sha256 `35861064eb318fa3edef7d219797e051fefdcbaddbfce8fff9ad78c521ed137b` equals the build |
+| Initialized | 2026-10-13 11:44:28 UTC, slot 456430185, `33t1KJm173LDSQT2mtyshws95zkBrcQAkpMXTVzzmcDFzGSuFUt24YU5h9U3NMfi9Y3R7px1XE7fkEx9QinNvnQ8`: Config `9W6wrFzjmS9cMicnGMt5vGhEZ9CVogzPcyWqQhi9U23S`, fee vault `Gggz7DXWDssWniup3Rc9caNfvEjhpuGuoE13GhYzHBZK` |
+| Upgrade authority and admin | the dev wallet `6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3` |
+| Settings | smallest reward 28,000 $UNITS (10.30 USD at 0.000367792 USD per $UNITS, the site's price when it was sent), deadline 1 hour to 30 days, grace 86,400 s, contest 3,600 s, fee 0, not paused |
+| Cost | the dev wallet went from 16.424088476 to 14.007653363 SOL: 2.416435113 SOL, of which 2.410404120 is the program's rent, 0.003505200 the Config and the fee vault, and the remaining 0.002525793 fees |
+
+The smallest reward is a number of coins, so its dollar value moves with the price: 28,000 $UNITS read
+8.81 USD and then 7.82 USD within two hours of the send (the site's quote, 2026-10-13). The admin
+moves it with `setSettings` (10 divided by the price of one $UNITS).
 
 Mainnet id: `BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK` (cargo feature `mainnet`, which also
 selects the mainnet registry id it reads). Id keypair: `~/.config/units/mainnet/bounty-program-keypair.json`
@@ -541,9 +554,9 @@ read back on 2026-10-13 from mainnet's `getMinimumBalanceForRentExemption` by
 - Each bounty a wallet posts costs that wallet 0.002494280 SOL for its Bounty account (363 bytes, kept
   as the record) and 0.001488440 SOL for its escrow account, which returns when the bounty closes.
 
-### Steps (none sent yet)
+### Steps (sent 2026-10-13; kept as the record of what was run)
 
-The coordinator runs these with the dev wallet's key file. No agent reads that file.
+The coordinator ran these with the dev wallet's key file. No agent reads that file.
 
 ```sh
 export UNITS_NETWORK=mainnet
@@ -555,7 +568,7 @@ solana-keygen pubkey $PK                               # BxJzesTvwPWw9MU15wRebr9
 cd onchain && cargo build-sbf --offline --manifest-path programs/units-bounty/Cargo.toml --features mainnet --sbf-out-dir target/bounty-mainnet
 rm -f target/bounty-mainnet/units_bounty-keypair.json && ls -l target/bounty-mainnet/units_bounty.so && shasum -a 256 target/bounty-mainnet/units_bounty.so && cd ..
 #   474152 bytes, 35861064eb318fa3edef7d219797e051fefdcbaddbfce8fff9ad78c521ed137b
-bun scripts/mainnet/bounty-init.ts plan               # read only: NOT deployed, sizes, rent, the initialize accounts, the params
+bun scripts/mainnet/bounty-init.ts plan               # read only: deployed or not, sizes, rent, the initialize accounts, the params
 solana balance -u "$UNITS_MAINNET_RPC" 6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3   # above 4.819934480 SOL plus fees and a margin
 solana program deploy -u "$UNITS_MAINNET_RPC" -k $D --fee-payer $D --upgrade-authority $D --program-id $PK \
   [--with-compute-unit-price <micro-lamports>] onchain/target/bounty-mainnet/units_bounty.so
@@ -572,13 +585,42 @@ sent only by the program's upgrade authority (checked through ProgramData), so n
 it first. It takes the quote mint, its token program and the launch program from the registry's
 Config and fixes them for good.
 
+### Opening the board
+
+One deploy of the mainnet instance with the two switches opens it:
+
+```sh
+UNITS_FEATURE_OPEN_BOUNTIES=1 UNITS_FEATURE_BOUNTIES=1 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> activate
+```
+
+- `UNITS_FEATURE_OPEN_BOUNTIES=1`: Core writes the result leaf of every accepted metric generation
+  into the record roots from then on. A generation in an epoch closed before the switch cannot win a
+  bounty: its root has no such leaf.
+- `UNITS_FEATURE_BOUNTIES=1`: the board serves its settings, so the page shows the form and the
+  navigation shows the Bounties link (header and footer; neither exists while the board is closed).
+- Both are written into the instance's `site.env`, which the Core unit reads, only when on. A later
+  deploy without them keeps the server's lines; `=0` turns one off (`scripts/deploy/instance.sh`,
+  tested in `scripts/deploy/instance.test.ts`).
+- No profile line is needed: the program id follows the network
+  (`packages/chain/src/programs.ts` `BOUNTY_PROGRAM_IDS`), in Core, the web server and the pages.
+- Core, the web server and the pages go out together: the page reads `escrow` and `kind` from the board.
+
+Checked against live mainnet state with nothing sent, `bun scripts/mainnet/bounty-board-proof.ts --ui`
+(2026-10-13, record in `scripts/mainnet/BOUNTY-BOARD-PROOF-LAST.json`): the chain client decodes the
+live Config; a local read-only Core with both switches reports those settings on its board and offers
+posting to any wallet; `open_bounty` for the first metric of every unit the live site lists simulates
+on mainnet (54,749 to 60,749 compute units, fee 5,000 lamports) for a wallet that holds the coin, and
+one base unit under the smallest reward is refused; `tests/ui/bounties.spec.ts` passes on a local
+build over that state at 1280 and 390 with a watch-only wallet. The dev wallet held no $UNITS in its
+token account at the time, so the simulated funder was the largest plain holder (its address only).
+
+Not proven until the first real bounty: a signed `open_bounty` from a browser wallet, Core's mirror of
+a live bounty on the site, a result leaf in a mainnet record root, and a claim, payout or refund on
+mainnet.
+
 ### After the init
 
-- Core: `UNITS_FEATURE_OPEN_BOUNTIES=1` in the mainnet Core's environment, so that it writes the
-  result leaf of every accepted metric generation into the record roots from then on (a generation in
-  an epoch closed before the switch cannot win a bounty: its root has no such leaf), and
-  `UNITS_FEATURE_BOUNTIES=1` when the owner opens the board. Deploy Core, the web server and the pages
-  together: the page reads `escrow` and `kind` from the board.
+- Core's two switches: see "Opening the board".
 - Admin actions later, each one instruction signed by the admin (`packages/chain/src/open-bounty.ts`):
   `setSettings` (the smallest reward when the price has moved, among the others), `withdrawFees`,
   `proposeAdmin` then `acceptAdmin` by the new admin. They are not yet entries of

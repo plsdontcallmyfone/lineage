@@ -176,3 +176,4 @@ try {
 } finally {
   stop();
 }
+process.exit(process.exitCode ?? 0); // the proxy would keep the process alive

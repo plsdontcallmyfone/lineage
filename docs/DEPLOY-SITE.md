@@ -864,6 +864,7 @@ UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain-plan       # read o
 MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain   # 3 registrations, 2 bonds, before activate
 UNITS_INSTANCE=mainnet WITH_RUNTIME=1 scripts/deploy/deploy.sh <host> activate   # only once the programs exist on mainnet
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> status | stop | start
+UNITS_FEATURE_OPEN_BOUNTIES=1 UNITS_FEATURE_BOUNTIES=1 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> activate   # Core's bounty switches: kept in site.env by later deploys, =0 turns one off
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> sweep-plan       # read only: what the keys on the server hold
 MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> sweep <recipient>   # their SOL and quote tokens back
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> remove [--purge [--force]]   # after the test; --purge deletes its keys, data and accounts

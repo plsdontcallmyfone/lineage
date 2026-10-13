@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-13T11:53:15.723Z",
+  "at": "2026-10-13T12:09:30.805Z",
   "program": "BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK",
   "site": "https://main-157-245-71-188.sslip.io",
   "funder": "AjkTR1m5Uw6NiqZNBNgu4L3rQGZq365f7RR1xjokm4qi",
@@ -89,6 +89,25 @@
         "decode_ir",
         "save_load_ir"
       ]
+    },
+    {
+      "lineage_id": "1e0bb4c35c430a87e83781ab192b096c5e272395d0535ecc81a6174261831705",
+      "repo": "https://github.com/gorbagana-dev/gorbagana-chain",
+      "recipe_name": "gorbagana-chain",
+      "metrics": [
+        "add_ir",
+        "contains_ir",
+        "concurrent_ir"
+      ]
+    },
+    {
+      "lineage_id": "aec2d7ba6f400c77bd8a4004077c87b146bba112dcfc4547f5e09c2557cb07cc",
+      "repo": "https://github.com/morluto/rea",
+      "recipe_name": "rea",
+      "metrics": [
+        "hits_ir",
+        "report_ir"
+      ]
     }
   ],
   "simulations": [
@@ -97,7 +116,7 @@
       "repo": "fixture:b58",
       "metric": "encode_ir",
       "err": null,
-      "units_consumed": 60749,
+      "units_consumed": 56249,
       "fee": "5000"
     },
     {
@@ -105,7 +124,7 @@
       "repo": "https://github.com/keis/base58",
       "metric": "encode_ir",
       "err": null,
-      "units_consumed": 59249,
+      "units_consumed": 54749,
       "fee": "5000"
     },
     {
@@ -113,7 +132,7 @@
       "repo": "https://github.com/karpathy/minbpe",
       "metric": "train_ir",
       "err": null,
-      "units_consumed": 56249,
+      "units_consumed": 60749,
       "fee": "5000"
     },
     {
@@ -121,7 +140,7 @@
       "repo": "https://github.com/keis/base58",
       "metric": "encode_ir",
       "err": null,
-      "units_consumed": 60749,
+      "units_consumed": 54749,
       "fee": "5000"
     },
     {
@@ -129,7 +148,23 @@
       "repo": "https://github.com/karpathy/minbpe",
       "metric": "train_basic_ir",
       "err": null,
-      "units_consumed": 60749,
+      "units_consumed": 59249,
+      "fee": "5000"
+    },
+    {
+      "unit": "1e0bb4c35c430a87e83781ab192b096c5e272395d0535ecc81a6174261831705",
+      "repo": "https://github.com/gorbagana-dev/gorbagana-chain",
+      "metric": "add_ir",
+      "err": null,
+      "units_consumed": 56249,
+      "fee": "5000"
+    },
+    {
+      "unit": "aec2d7ba6f400c77bd8a4004077c87b146bba112dcfc4547f5e09c2557cb07cc",
+      "repo": "https://github.com/morluto/rea",
+      "metric": "hits_ir",
+      "err": null,
+      "units_consumed": 56249,
       "fee": "5000"
     }
   ],
@@ -138,8 +173,8 @@
     "exit": 0
   },
   "sent": 0,
-  "passed": 11,
-  "of": 11,
+  "passed": 13,
+  "of": 13,
   "results": [
     {
       "check": "the chain client decodes the live Config of units_bounty",
@@ -154,7 +189,7 @@
     {
       "check": "the live site lists the units a bounty can name",
       "ok": true,
-      "detail": "5 units: fixture:b58 (fixture-b58, 3 metrics); keis/base58 (base58-py, 3 metrics); karpathy/minbpe (minbpe, 2 metrics); keis/base58 (base58-py-heavy, 6 metrics); karpathy/minbpe (minbpe-heavy, 5 metrics)"
+      "detail": "7 units: fixture:b58 (fixture-b58, 3 metrics); keis/base58 (base58-py, 3 metrics); karpathy/minbpe (minbpe, 2 metrics); keis/base58 (base58-py-heavy, 6 metrics); karpathy/minbpe (minbpe-heavy, 5 metrics); gorbagana-dev/gorbagana-chain (gorbagana-chain, 3 metrics); morluto/rea (rea, 2 metrics)"
     },
     {
       "check": "the simulated funder holds the smallest reward and SOL for the rent",
@@ -164,27 +199,37 @@
     {
       "check": "open_bounty simulates on mainnet: fixture:b58, encode_ir",
       "ok": true,
-      "detail": "60749 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
-    },
-    {
-      "check": "open_bounty simulates on mainnet: keis/base58, encode_ir",
-      "ok": true,
-      "detail": "59249 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
-    },
-    {
-      "check": "open_bounty simulates on mainnet: karpathy/minbpe, train_ir",
-      "ok": true,
       "detail": "56249 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
     },
     {
       "check": "open_bounty simulates on mainnet: keis/base58, encode_ir",
       "ok": true,
+      "detail": "54749 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
+    },
+    {
+      "check": "open_bounty simulates on mainnet: karpathy/minbpe, train_ir",
+      "ok": true,
       "detail": "60749 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
+    },
+    {
+      "check": "open_bounty simulates on mainnet: keis/base58, encode_ir",
+      "ok": true,
+      "detail": "54749 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
     },
     {
       "check": "open_bounty simulates on mainnet: karpathy/minbpe, train_basic_ir",
       "ok": true,
-      "detail": "60749 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
+      "detail": "59249 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
+    },
+    {
+      "check": "open_bounty simulates on mainnet: gorbagana-dev/gorbagana-chain, add_ir",
+      "ok": true,
+      "detail": "56249 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
+    },
+    {
+      "check": "open_bounty simulates on mainnet: morluto/rea, hits_ir",
+      "ok": true,
+      "detail": "56249 compute units, fee 5000 lamports, 28000000000 base units escrowed; nothing sent"
     },
     {
       "check": "one base unit below the smallest reward is refused by the program",
