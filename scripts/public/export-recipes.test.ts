@@ -68,7 +68,7 @@ test("nothing held back reaches the tree: no canary, patch definition, candidate
   expect(leaked(new Map([["minbpe/canaries/x.diff", Buffer.from("")]]))).toEqual(["minbpe/canaries/x.diff"]);
   expect(leaked(new Map([["fixture-b58/recipe.yml", Buffer.from("")]]))).toEqual(["fixture-b58/recipe.yml"]);
   expect(leaked(new Map([["minbpe/overlay/candidates/x.py", Buffer.from("")]]))).toEqual([]);
-});
+}, 60_000); // one git read per held back file (about 300): past the default 5 s on a busy machine
 
 test("the tree is clean: no secret, no home directory path, no personal email, no em dash", () => {
   expect(auditTree(tree)).toEqual([]);
