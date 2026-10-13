@@ -36,6 +36,8 @@ import { tweetLaunchesOf } from "./tweet-launches.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
 import { poolsOf } from "./pools.ts";
 import { purgeOf } from "./purge.ts";
+import { swarmsOf } from "./swarms.ts";
+import { featureOn } from "./features.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -52,6 +54,8 @@ interface Ctx {
   body: string;
   json: () => unknown;
   agent: string | null;
+  /** the seat of a swarm the signed request speaks for (header x-units-seat; swarms.ts), null for a solo agent or with the flag off */
+  seat: number | null;
 }
 
 interface Route {
@@ -135,7 +139,10 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf]) of(core);
+  for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf, modelsOf]) of(core);
+  // swarms (docs/plans/SWARMS.md): its module and tables exist only where the flag is on
+  const swarmsOn = featureOn(core, "swarms");
+  if (swarmsOn) swarmsOf(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -214,7 +221,11 @@ export function buildRoutes(core: Core): Route[] {
       }),
     ),
     route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") }))),
-    route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
+    route("POST", "/v1/sessions", "agent", (c) => {
+      const s = sessionsOf(core).start(c.agent!, c.json());
+      if (c.seat !== null) swarmsOf(core).noteSession(s.session_id, c.agent!, c.seat); // which seat of a swarm the session is (swarms.ts)
+      return s;
+    }),
     route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/end", "agent", (c) => sessionsOf(core).end(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/recording", "agent", (c) => sessionsOf(core).recording(c.agent!, c.params.id!, c.json())),
@@ -332,6 +343,10 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, int(c, "epoch"))),
     route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
     // souls (SPEC 14.8, packages/core/src/souls.ts): public once launched; PUT is self-authenticating (the doc's signature)
+    // swarms (docs/plans/SWARMS.md): 404 feature_off while the flag is off
+    route("GET", "/v1/swarms/config", "none", () => swarmsOf(core).config()),
+    route("GET", "/v1/swarms", "none", (c) => swarmsOf(core).list(withHidden(c))),
+    route("GET", "/v1/agents/:id/swarm", "none", (c) => swarmsOf(core).view(c.params.id!)),
     route("GET", "/v1/agents/:id/soul", "none", (c) => soulsOf(core).view(c.params.id!)),
     route("PUT", "/v1/agents/:id/soul", "none", (c) => core.tx(() => soulsOf(core).put(c.params.id!, c.json()))),
     route("GET", "/v1/souls/:digest", "none", (c) => soulsOf(core).byDigest(c.params.digest!)),
@@ -448,7 +463,8 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/replays/:id/reveal", "agent", (c) => core.revealReplay(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/epochs/:n/claim", "agent", (c) => core.claim(c.agent!, epochN(c), c.json())),
     route("POST", "/v1/activity", "agent", (c) => core.live.postActivity(c.agent!, c.json())),
-    route("POST", "/v1/heartbeat", "agent", (c) => core.live.postHeartbeat(c.agent!, c.json())),
+    // a swarm's seats 2 and up keep their own heartbeat row (swarms.ts); seat 1 and every solo agent use the agent's row, as before
+    route("POST", "/v1/heartbeat", "agent", (c) => (c.seat !== null && c.seat > 1 ? swarmsOf(core).heartbeat(c.agent!, c.seat, c.json()) : core.live.postHeartbeat(c.agent!, c.json()))),
     route("PUT", "/v1/blobs/:sha", "agent", async (c) => {
       const sha = c.params.sha!;
       if (!/^[0-9a-f]{64}$/.test(sha)) throw bad("bad_digest", "blob name must be a lowercase sha256 hex");
@@ -501,8 +517,11 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
     route("POST", "/v1/admin/runtime/spend", "runtime", (c) => {
       const spend = runtimeSpendOf(core); // its tables are made outside the transaction, so a refused report cannot roll them back
-      return core.tx(() => spend.report(c.agent!, c.json()));
+      const out = core.tx(() => spend.report(c.agent!, c.json()));
+      if (swarmsOn) core.tx(() => swarmsOf(core).reportSeats(c.json())); // the seat part of the report (swarms.ts)
+      return out;
     }),
+    route("POST", "/v1/admin/swarms/config", "admin", (c) => core.tx(() => swarmsOf(core).setConfig(c.json()))),
     route("POST", "/v1/admin/epochs/close", "admin", () => core.closeEpoch()),
     route("POST", "/v1/admin/tick", "admin", () => (core.tick(), { ok: true, now: core.now() })),
     route("POST", "/v1/admin/chain/sync", "admin", async () => {
@@ -598,6 +617,7 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
         params,
         body,
         agent,
+        seat: agent && req.headers.has("x-units-seat") && featureOn(core, "swarms") ? swarmsOf(core).seatOf(agent, req.headers.get("x-units-seat")) : null,
         json: () => {
           if (!body) return {};
           try {

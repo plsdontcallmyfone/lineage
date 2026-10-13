@@ -98,11 +98,72 @@ export interface NetworkConfig {
   /** Prepaid credits at launch (plan C): minimum and default deposit, the $UNITS rate (TEST on devnet). Optional; absent = no minimum. */
   prepay?: PrepayConfig | null;
   /** Feature flags (docs/plans/AGENT-POOLS.md 2, GITHUB-FEE-CLAIMS.md 2). Both false unless the config sets them; UNITS_FEATURE_<NAME>=1|0 overrides for one process (features.ts). */
-  features: { agent_pools: boolean; github_fee_claims: boolean };
+  features: { agent_pools: boolean; github_fee_claims: boolean; swarms: boolean };
+  /** Swarm settings (docs/plans/SWARMS.md 4, 5; swarms.ts). Read only while features.swarms is on; the admin edits them with POST /v1/admin/swarms/config. */
+  swarm: SwarmSettings;
   /** Guard limits (SPEC 10.1 rule 6): default max regression of a non-target metric, a fraction. Optional, default 0.01; seeds guard config version 1. */
   guard_max_regression: number;
   /** When guard config version 1 takes effect (ms); Core seeds it at max(this, its clock) on first start. Optional; absent or null = guards off until an admin sets a version. */
   guard_activation_ms: number | null;
+}
+
+/**
+ * Swarm settings (docs/plans/SWARMS.md). Every value is configuration; none is fixed in code.
+ * `seat_desktop_usd_per_h`: what a running screen of seats past `seat_desktop_free_seats` costs the
+ * swarm's vault per hour; null means the desktop service's own rate for the time the screen ran, 0
+ * means no charge.
+ */
+export interface SwarmSettings {
+  /** largest swarm a launch may declare (the soul validator's hard bound is 16) */
+  max_members: number;
+  seat_desktop_usd_per_h: number | null;
+  /** how many seats' screens the platform pays, counted from seat 1 */
+  seat_desktop_free_seats: number;
+  /** optional caps per usage epoch, USD of model spend: the whole swarm, and one seat */
+  swarm_epoch_max_usd: number | null;
+  seat_epoch_max_usd: number | null;
+  /** attempt slots when scarce: one per coin before any coin's second seat ("coin"), or by seat alone ("seat") */
+  slot_fairness: "coin" | "seat";
+  /** the lead's planning call before a round; and its cost cap in USD (null: the runtime's journal reserve) */
+  lead_plan: boolean;
+  lead_plan_max_usd: number | null;
+}
+
+export const SWARM_DEFAULTS: SwarmSettings = { max_members: 4, seat_desktop_usd_per_h: null, seat_desktop_free_seats: 1, swarm_epoch_max_usd: null, seat_epoch_max_usd: null, slot_fairness: "coin", lead_plan: true, lead_plan_max_usd: null };
+
+/** Checks a swarm settings object (or a patch of one, with `partial`). Throws with the field at fault. */
+export function parseSwarmSettings(raw: unknown, base: SwarmSettings = SWARM_DEFAULTS): SwarmSettings {
+  if (raw === undefined || raw === null) return { ...base };
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("swarm settings: must be an object");
+  const r = raw as Record<string, unknown>;
+  const out: SwarmSettings = { ...base };
+  const usd = (k: "seat_desktop_usd_per_h" | "swarm_epoch_max_usd" | "seat_epoch_max_usd" | "lead_plan_max_usd") => {
+    if (r[k] === undefined) return;
+    if (r[k] !== null && !(typeof r[k] === "number" && Number.isFinite(r[k]) && (r[k] as number) >= 0)) throw new Error(`swarm settings: ${k} must be a non-negative number of USD or null`);
+    out[k] = r[k] as number | null;
+  };
+  for (const k of Object.keys(r)) if (!k.startsWith("_") && !(k in SWARM_DEFAULTS)) throw new Error(`swarm settings: unknown field ${k}`);
+  if (r.max_members !== undefined) {
+    if (typeof r.max_members !== "number" || !Number.isInteger(r.max_members) || r.max_members < 1 || r.max_members > 16) throw new Error("swarm settings: max_members must be an integer from 1 to 16");
+    out.max_members = r.max_members;
+  }
+  if (r.seat_desktop_free_seats !== undefined) {
+    if (typeof r.seat_desktop_free_seats !== "number" || !Number.isInteger(r.seat_desktop_free_seats) || r.seat_desktop_free_seats < 0 || r.seat_desktop_free_seats > 16) throw new Error("swarm settings: seat_desktop_free_seats must be an integer from 0 to 16");
+    out.seat_desktop_free_seats = r.seat_desktop_free_seats;
+  }
+  usd("seat_desktop_usd_per_h");
+  usd("swarm_epoch_max_usd");
+  usd("seat_epoch_max_usd");
+  usd("lead_plan_max_usd");
+  if (r.slot_fairness !== undefined) {
+    if (r.slot_fairness !== "coin" && r.slot_fairness !== "seat") throw new Error('swarm settings: slot_fairness must be "coin" or "seat"');
+    out.slot_fairness = r.slot_fairness;
+  }
+  if (r.lead_plan !== undefined) {
+    if (typeof r.lead_plan !== "boolean") throw new Error("swarm settings: lead_plan must be true or false");
+    out.lead_plan = r.lead_plan;
+  }
+  return out;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -210,8 +271,13 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   out.prepay = raw.prepay === undefined || raw.prepay === null ? null : parsePrepayConfig(raw.prepay);
   const feats = (raw.features ?? {}) as Record<string, unknown>;
   if (typeof feats !== "object" || Array.isArray(feats)) throw new Error("network config: features must be an object");
-  for (const k of ["agent_pools", "github_fee_claims"]) if (feats[k] !== undefined && typeof feats[k] !== "boolean") throw new Error(`network config: features.${k} must be true or false`);
-  out.features = { agent_pools: feats.agent_pools === true, github_fee_claims: feats.github_fee_claims === true };
+  for (const k of ["agent_pools", "github_fee_claims", "swarms"]) if (feats[k] !== undefined && typeof feats[k] !== "boolean") throw new Error(`network config: features.${k} must be true or false`);
+  out.features = { agent_pools: feats.agent_pools === true, github_fee_claims: feats.github_fee_claims === true, swarms: feats.swarms === true };
+  try {
+    out.swarm = parseSwarmSettings(raw.swarm);
+  } catch (e) {
+    throw new Error(`network config: ${(e as Error).message}`);
+  }
   const cfg = out as unknown as NetworkConfig;
   if (cfg.agent_compute_bps + cfg.protocol_bps > 10_000) throw new Error("network config: agent_compute_bps + protocol_bps exceeds 10000");
   if (cfg.wake_threshold < cfg.sleep_threshold) throw new Error("network config: wake_threshold below sleep_threshold");

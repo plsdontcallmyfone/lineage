@@ -21,6 +21,11 @@ export type SigningKey = AgentKey & { agent?: string };
 
 export class CoreClient {
   private seq = 0;
+  /**
+   * A swarm's seat (docs/plans/SWARMS.md; Core swarms.ts): sent as `x-units-seat` with every signed
+   * request, so Core keeps the seat's own heartbeat and session rows. Unset for a solo agent: no header.
+   */
+  seat?: number;
   constructor(
     public base: string,
     public key: SigningKey | null = null,
@@ -42,6 +47,7 @@ export class CoreClient {
       headers["x-lineage-agent"] = key.agent ?? key.id;
       headers["x-lineage-nonce"] = nonce;
       headers["x-lineage-sig"] = signRequest(key, method, path, text, nonce);
+      if (this.seat !== undefined) headers["x-units-seat"] = String(this.seat);
     }
     // bounded: a request Core accepted but never answered (seen during deploys) used to hang a worker forever
     const send = () =>

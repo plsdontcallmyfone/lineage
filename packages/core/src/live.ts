@@ -2,6 +2,7 @@ import type { Core } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import type { Recipe } from "./protocol.ts";
 import type { TreeSource } from "./trees.ts";
+import { seatScale } from "./swarms.ts";
 
 // Live activity and heartbeats, SPEC 17.1. Activity is evidence of effort, never of value: it earns
 // nothing and is stored apart from verified work. Two rules keep it honest and keep sealed work
@@ -146,7 +147,8 @@ export class Live {
       if (events.length > MAX_BATCH) throw new ApiError(413, "too_many_events", `at most ${MAX_BATCH} events per request`);
       const now = this.core.now();
       const used = this.db.query<{ c: number }, [string, number]>("SELECT COUNT(*) AS c FROM activity WHERE agent_id = ? AND received_at > ?").get(agent, now - 60_000)!.c;
-      let budget = Math.max(0, this.core.cfg.activity_rate - used);
+      // a swarm's seats report under the one agent id (docs/plans/SWARMS.md 2): the rate counts per seat; 1 for a solo agent
+      let budget = Math.max(0, this.core.cfg.activity_rate * seatScale(this.core, agent) - used);
       const refused: { index: number; error: string }[] = [];
       const accepted: ActivityRow[] = [];
       let rateLimited = 0;

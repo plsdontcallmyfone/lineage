@@ -90,6 +90,8 @@ export const RULES: Record<string, Rule> = {
   runtime_spend: "rows", runtime_spend_samples: "rows", runtime_spend_daily: "rows", viewer_samples: "rows", viewer_hourly: "rows",
   revenue_cranks: "rows", revenue_identity: "rows", revenue_tokens: "rows",
   pool_mirror: "rows", pool_actions: "rows", pool_milestones: "rows", pool_settlements: "rows", fee_claim_attestations: "rows",
+  // swarms (swarms.ts): a seat's session link, heartbeat and the runtime's statement about it
+  swarm_sessions: "rows", swarm_heartbeats: "rows", swarm_seat_state: "rows",
   // reports a service sends again on its next pass (one row holds every agent)
   runtime_spend_global: "rows", findings_dump: "rows", model_availability: "rows",
   // the event log: an event that names anything purged goes
@@ -108,6 +110,7 @@ export const RULES: Record<string, Rule> = {
   epochs: "keep", chain_epochs: "keep", chain_deployments: "keep", meta: "keep", schema_migrations: "keep", guard_configs: "keep",
   model_registry: "keep", msg_chain_cursor: "keep", prepay_admin: "keep", prepay_rates: "keep", social_config: "keep",
   recipe_proposals: "keep", calib_replays: "keep", upstream_repos: "keep", upstream_seen: "keep", revenue_sources: "keep",
+  swarm_settings: "keep", // the admin's swarm settings (swarms.ts): no launch owns them
   pool_kv: "keep", fee_claim_kv: "keep", fee_claim_states: "keep", fee_claim_users: "keep",
   fee_claim_repos: "keep", fee_claim_repo_names: "keep", fee_claim_bound: "keep", // GitHub repositories by numeric id and the ids bound to them: no launch owns them
   shadows: "keep", shadow_keys: "keep", shadow_msg_keys: "keep", shadow_souls: "keep",

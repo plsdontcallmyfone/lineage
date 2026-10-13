@@ -4,8 +4,9 @@ import { ApiError } from "./errors.ts";
 // Feature flags of the pools and claims lane (docs/plans/AGENT-POOLS.md 2, GITHUB-FEE-CLAIMS.md 2).
 // Off unless config/network.json `features` says true; UNITS_FEATURE_AGENT_POOLS and
 // UNITS_FEATURE_GITHUB_FEE_CLAIMS ("1" or "0") override the file for one process.
+// `swarms` (docs/plans/SWARMS.md, swarms.ts) follows the same rule: UNITS_FEATURE_SWARMS.
 
-export type FeatureName = "agent_pools" | "github_fee_claims";
+export type FeatureName = "agent_pools" | "github_fee_claims" | "swarms";
 
 export function featureOn(core: Core, name: FeatureName): boolean {
   const env = process.env[`UNITS_FEATURE_${name.toUpperCase()}`];
