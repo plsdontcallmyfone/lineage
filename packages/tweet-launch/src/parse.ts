@@ -83,8 +83,10 @@ export const tickerOk = (s: string) => /^[A-Z0-9]{1,10}$/.test(s);
 export const VIBE_MAX = 200;
 
 /**
- * The command in a mention's text: the word `launch` anywhere after the handle (any case); without
- * it, `stop` right after the handle. `launch` may be followed by `name <Name>`, `ticker <TICKER>`
+ * The command in a mention's text: the word `launch` right after the handle (any case; only spaces,
+ * commas, colons, other @handles and at most two short words such as "please" may stand between), so a post that merely talks about the bot
+ * ("@handle turns a reply into an agent launch") is not a request; without it, `stop` right after the
+ * handle. `launch` may be followed by `name <Name>`, `ticker <TICKER>`
  * and `vibe: <text>`. A field that breaks the wizard's rule or the soul safety check is
  * dropped (named in `dropped`); the ticker is only ever what was typed after `ticker:`.
  */
@@ -92,7 +94,7 @@ export function parseCommand(text: string, handle: string): Command {
   const tag = new RegExp(`@${esc(handle)}(?![A-Za-z0-9_])`, "i").exec(text);
   if (!tag) return { kind: "none" };
   const after = text.slice(tag.index + tag[0].length);
-  const word = /(^|[^A-Za-z0-9_])launch(?![A-Za-z0-9_])/i.exec(after);
+  const word = /^(?:[\s,:]*@[A-Za-z0-9_]{1,15})*(?:[\s,:]+[A-Za-z']{1,8}){0,2}[\s,:]*launch(?![A-Za-z0-9_])/i.exec(after);
   if (!word) return /^[\s,:]*stop(?![A-Za-z0-9_])/i.test(after) ? { kind: "stop" } : { kind: "none" };
   const rest = after.slice(word.index + word[0].length);
   const out: Command = { kind: "launch", name: null, ticker: null, vibe: null, dropped: [] };

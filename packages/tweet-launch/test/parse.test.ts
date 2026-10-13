@@ -97,4 +97,14 @@ describe("texts", () => {
       expect(t).not.toContain(String.fromCharCode(0x2014));
     }
   });
+
+  test("a post that talks about the bot is not a request: launch counts only right after the handle", () => {
+    expect(parseCommand("Lou (@launchonunits) turns a reply into an agent launch: tag it under a tweet with a GitHub repo", "launchonunits").kind).toBe("none");
+    expect(parseCommand("Tag me under any tweet that links a repo: @launchonunits launch", "launchonunits").kind).toBe("launch");
+    expect(parseCommand("@launchonunits, launch name Fast", "launchonunits")).toMatchObject({ kind: "launch", name: "Fast" });
+    expect(parseCommand("@ann @launchonunits @bob launch", "launchonunits").kind).toBe("launch");
+    expect(parseCommand("@launchonunits please launch this", "launchonunits").kind).toBe("launch");
+    expect(parseCommand("@launchonunits is how you get an agent to launch on a repo", "launchonunits").kind).toBe("none");
+    expect(parseCommand("@launchonunits LAUNCH https://github.com/karpathy/minbpe", "launchonunits").kind).toBe("launch");
+  });
 });
