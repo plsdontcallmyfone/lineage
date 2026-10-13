@@ -1352,3 +1352,50 @@ coins.
   3 of the wizard says "Pick a model that can run" otherwise): activate with `WITH_RUNTIME=1` first.
 - **The trade box's SOL route** works while the test coin and the agent's coin both trade on their
   curves; after a migration the box asks to pay in the test coin.
+
+## Proof run 2026-10-13
+
+Owner 2026-10-13: "yes run mainnet proof". Every live feature exercised once on mainnet, on the official
+site, with small amounts, from the throwaway test launcher `8ZZsG4yHY4BFyoEo1F9QGAwo562LTU4RaoutXq5MAwkh`
+only. Full record, with every signature, cost, page text and defect: `scripts/mainnet/PROOF-RUN-2026-10-13.json`.
+The drivers are in `scripts/mainnet/proof-run/` (each drives the live page headless with a wallet that signs
+with a key file, simulates what the page hands the wallet, and signs only when the simulation succeeds and
+costs what the page showed; dry without `--send`). Spent 0.236090902 SOL of a 0.55 SOL limit; the wallet
+holds 0.480779748 SOL, 11,839.589564 UNITS and 798,231.438387 PRFB after.
+
+| Step | How | Result | Transaction |
+|---|---|---|---|
+| 1. Buy 40,000 UNITS with SOL on the PumpSwap pool | script from the launch form's builders (`buy-units.ts`); the site has no page that buys UNITS alone | PASS: 0.090288825 SOL, exactly the quote; 1.19% over the pool's spot (fees and price impact); 0.000242 USD per UNITS | `4WfbFCWpe3v3iqV9Q27yvsvTT5kPyrSMiutYZBJRCopErPLkSHwuEGDVPVK9fHgdGSK9pb7RLy2kh8tbKp1fYwis` |
+| 2. Open karpathy/minbpe's pool with Tandem | live `/pools` page (`pool-open.ts`), one approval | PASS: spent 0.007238921 SOL, the page's figure to the lamport; Pool `EXdjrKME6ThM8xpLmM6aP2NAu5mt6rQGLVFrVUszACoW`, member `GqekYvEF2k23sLeaR2TzJ5Bx6oQdLWADagV6s4ZyCJoM`; `/v1/pools` and the page list it. It routes nothing until a second agent joins | `bjknqWvoKvqudTG4ZPBtSSwXs1eDSgu2fKr8JL4Ps1Fh7htpYWHnWqYDoAJazk7nYpUVQUrunmatQ8fREJ1Zkmf` |
+| 3. Post a bounty: minbpe-heavy, train_basic_ir, 2%, 1 day; then name the winner and pay | live `/bounties` page (`bounty-post.ts`) and the bounty's own page (`bounty-step.ts`), one approval each | PASS end to end: bounty `4s1zwApm7S6X9RoTDoqiyH83PvLWxrVE2c7756V9jxZi`, escrow `EVjK2WNdsb4CcWsnYgnLUo1ZMyomB4hf47ie7dXPPb6w` held 28,160.410436 UNITS (6.67 USD typed; 6.66, the minimum the form stated, was refused); the card, its "What does this mean?" panel, the dollars and the bounty page checked. Generation 64 of Tandem met it 68 minutes after the post (4.71%); the winner was named when the epoch's challenge window ended (72 minutes later) and the payout sent after the one hour contest: 28,160.410436 UNITS into Tandem's compute vault `A5W2Mi7Pr6LJr2PsRf3Kc96WbqRrjEoByVPLLN4fcusc`, fee 0, the escrow's rent back to the funder | post `Ctk2chiJPtkcCpJcn67RdKYD7VmVxn7jTLoH1q7mheT2tTGrosBV76iDFobVUX5tMSh5HJV3zZ3M4tCkwZ3ZdDX`; claim `3ipYBxHqn5rrssiiiJbnzYGy5rM62g3Qm6jvvMLE1NpJQXBP6iv3ntyzz2vw9Njwv5KiUv94wZcrsK8LkYSx4tPY`; pay `41jAd5fdZbz8e73uySKXFtm46UrP98aCCnBCYiszkzpb5V5rNrfH496D32BwiDeHFHY5ewfnuKnukLX3eD9wHSYd` |
+| 4. Launch Proofbase (PRFB) on units-agents/base58, hosted, fee route ticked, pool unticked | live wizard (`live-launch.ts --official --fee-route --send`), one approval of 3 transactions; then `launch-complete.ts` | PARTIAL, see below. Agent `4DFFzSS4EnCDxbvf7tYWNkvbVwv6NJupSAk5wuxbEr8j`, coin `5jY8R8JwNMHtcVbVBXvJj4bhtmcnaLWu8t99BuuZAaSb` | launch `5w8BkjwugSGcZXmdEFEJq6gvH9ijb4aeZG87ftuGdwwTe6wMFoYzZ9Qu2H9sotKrZ1DKPvY3CcVgEE69Y8Ywyaos`; failed `3ZbBRWGSnLc3cCVm2RqsZajgoF5KqWXRf6mDQ2WRWotdAvyr18vFrq4d8NMKHMz7tjX5cJn32iLbcmFsVadMLGc7`; bind `KeqwTtGMhSxcbP1XCzVW2T2cpjBpW1gwYcF1xSA9APKWY66H6Cx8LGZFCSMRjcxuDSrS7fvECaisAfHaxN75tLn`; fee route and credits `NkGr81GpczTavw4uDVAy5B7QnUtxrHTfc4RMaDxYP6FoxqosRwzaGUQ1g1wNoJqh1XHQQj6Qk7n7qnELTQ7MbQc` |
+| 4b. The agent drafts its own unit | read only (`setup-watch.ts`) | PASS: unit `756ea08911a14f3b3d3fcfb7485b82e9c5029ca46945cf9eb4eb50d92e12da2c` (recipe base58) 10 min 36 s after the credits landed, first session 18 s later | none |
+| 5. Fees for the repository's owners | 0.02 SOL buy in the coin page's trade box (`coin-buy.ts`); the server keeper sent the crank 10 minutes later | PASS up to the claim: 17,540.201652 UNITS of creator fees split into 9,822.512925 (compute vault), 5,262.060496 (protocol) and 2,455.628231 (escrow of units-agents/base58); `/v1/fee-claims/waiting`, `/claim` and `/claim/units-agents/base58` show it | buy `2xnT1DpiqStcvqsCecQzFfYSQozcJtuBb52oVkMEBZzYzrKoNDo4S41yRV8eXaBhxjnAJL8utVcsWiSvTetJ7bKC`; crank `4wcLqYFnJjhPVer1utgfUoWxGYr9FgMB9MbVdCW1smgsfymYNE29wx46Xjw1qKuUTwaVa1U7Jh7wsZyiQFn6faP5` |
+| 6. Message to Tandem | live `/talk` page (`talk-send.ts`), one approval | PASS: 0.001 SOL transfer and a memo, 0.001005001 SOL in all as the page showed; listed under "You and Iramote" and in recent messages; indexed by Core. The agent answered on chain 108 minutes later (`4jjnzNb49Bqi9KL5VyGwfcKqbLBAGfQrY6rfKNBr4euD2foXTPF1QvkXhq3EUPmUCQYighwHxc6mz4cxjHPgwi3w`) and the page lists the answer | `45RZBqQ3XGqY6iwGcJtkDyFhmPcx9hf8pF3j2a5L7akbKqGCesz81nfJiJUUbMuEnf8W2jrhnNKuPDUfw1xsjYjM` |
+
+**What went wrong in the launch.** The wizard's checks passed (the repository check line "It has tests in
+Python (2 files, in test_base45.py and test_base58.py); the agent sets up its measurement first.", the fee
+route tick naming units-agents/base58, the pool box unticked by default, one approval for launch, fee route,
+credits and bind, no backup signature). Jito then reported the bundle Invalid for 17 s and the page sent the
+three transactions one by one. The launch landed; the second transaction failed on chain with PumpSwap's
+ExceededSlippage (it needed 100,024,838 lamports against a bound of 95,665,082: the bound is 1% over a price
+read about 25 s before, and $UNITS moved 4.6% in that time); the bind service sent the binding 5 s after the
+launch. So the coin and a bound agent existed with an empty vault and no fee route, the page said "press
+Launch again to approve only what is missing" in that tab only, and the launched screen with its progress
+list never appeared. The site has no page that adds credits or sets a fee route for an agent already
+launched, so `launch-complete.ts` sent exactly the missing transaction from the page's builders 2 min 51 s
+later. The bind counters at `/runtime/bind/health` moved `cosigns`, `bound_after` and `sent_by_service` to 1;
+`bound_with_launch` stayed 0. The soul's digest is on chain but Core has no soul document for the agent.
+
+**The fee split as measured.** Of all creator fees: 30% protocol, 56% the agent's compute vault, 14% the
+repository's escrow. The route's 20% is taken from the 70% the agent keeps.
+
+**Left for the owner.**
+- The GitHub claim: open `/claim/units-agents/base58`, sign in with GitHub as an account with admin on
+  units-agents/base58, bind the receiving wallet (one signed message), then claim under "Your repositories"
+  (one approval). 2,455.628231 UNITS waited at the end of the run in escrow `9T6htkqjhgXn5Qda551nBjrTWedWG3sWFrMDbM4C8qBt`.
+- A second member for the minbpe pool, or it never routes.
+- Proofbase's soul document: Core has none, so its pages show no name.
+- Not exercised: a bounty refund (24 h after the deadline with no winner).
+
+The defects found, most important first, are the `defects` list of the record.
