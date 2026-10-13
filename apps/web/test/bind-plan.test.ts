@@ -67,7 +67,7 @@ describe("talking to the runtime", () => {
   test("a reservation is asked for with { reserve: true }; any failure is no key, never an error", async () => {
     const seen: { url: string; body: unknown }[] = [];
     const ok = await reserveRuntimeKey(agent.id, async (url, init) => (seen.push({ url, body: JSON.parse(String(init!.body)) }), json(200, { agent: agent.id, new_key: runtime.id, status: "reserved", expires_at: 1 })));
-    expect(ok).toEqual({ agent: agent.id, new_key: runtime.id, status: "reserved" });
+    expect(ok).toEqual({ agent: agent.id, new_key: runtime.id, status: "reserved", nonce: null });
     expect(seen).toEqual([{ url: `/runtime/bind/${agent.id}`, body: { reserve: true } }]);
     expect(await reserveRuntimeKey(agent.id, async () => json(429, { error: "reservations_full" }))).toBeNull();
     expect(await reserveRuntimeKey(agent.id, async () => json(400, { error: "bad_body" }))).toBeNull(); // a runtime that predates reservations

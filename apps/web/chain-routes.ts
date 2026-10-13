@@ -44,6 +44,8 @@ export interface ChainRoutesOptions {
   state: Record<string, unknown> | null;
   /** built only when the profile has a faucet */
   faucet: FaucetLike | null;
+  /** the required bind's escape hatch (docs/plans/SEAMLESS-BIND.md 9.2): true lets a hosted launch go out without its bind. Off unless set. */
+  bindOptional?: boolean;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -150,7 +152,7 @@ export function chainRoutes(o: ChainRoutesOptions) {
     if (path === "/chain/config") {
       const c = await cluster();
       const pub = o.state ? Object.fromEntries(Object.entries(o.state).filter(([k]) => !/key/i.test(k) && k !== "test_epoch_leaves" && (p.network === "devnet" || k !== "rpc_url"))) : null;
-      return Response.json({ rpc: "/chain/rpc", rpc_upstream: o.rpcLabel ?? redactRpc(o.rpcUrl), genesis: c.genesis, cluster: c.cluster, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null, profile: publicProfile(p) });
+      return Response.json({ rpc: "/chain/rpc", rpc_upstream: o.rpcLabel ?? redactRpc(o.rpcUrl), genesis: c.genesis, cluster: c.cluster, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null, profile: publicProfile(p), ...(o.bindOptional ? { bind_optional: true } : {}) });
     }
     if (path === "/chain/rpc") {
       if (req.method !== "POST") return new Response("POST only", { status: 405 });

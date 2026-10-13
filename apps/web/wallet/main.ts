@@ -104,13 +104,13 @@ import { checkSoul, localSoul, soulDigest, soulSigningMessage, type SoulDoc, typ
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
 import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdWhy } from "../src/usd.ts";
-import { budgetIxs, buildAndSimulate, unitPrice, onRpcBusy, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, signAndSendAll, sol, testLabels, units, usym, devnetGate, type BundlePart, type ChainCfg } from "./chain.ts";
+import { budgetIxs, buildAndSimulate, unitPrice, onRpcBusy, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, signAndSendAll, sol, testLabels, units, usym, devnetGate, bindOptional, type BundlePart, type ChainCfg } from "./chain.ts";
 import { connectWallet, onSession, walletChain, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
 export { mountBind } from "./bind.ts";
 export { mountSetupBar } from "./setup-bar.ts";
 import { bindProblem, finishBind } from "./bind.ts";
-import { BIND_LABEL, BIND_UNITS, bindPart, declined, keepSignedBind, reserveRuntimeKey, withBind, type RuntimeKey } from "./bind-plan.ts";
+import { BACKUP_LABEL, BACKUP_WAIT_LINE, backupPart, BIND_DOWN_LINE, BIND_LABEL, BIND_NO_ANSWER, BIND_UNITS, bindHealth, bindPart, declined, hasBackup, keepSignedBind, noteBackup, reserveRequired, reserveRuntimeKey, withBind, type RuntimeKey } from "./bind-plan.ts";
 import { custodyHtml, ghClick, hasIdentityService, initGithubIdentity, launchTrackRows, showIdentity, submitLaunchToken } from "./identity.ts";
 import { builtRateNote, builtRateStale, depositBase, depositForBuild, depositNote, depositUsd, loadPrepay, P, prepayHelp, RATE_REBUILT, rateBlockedBox, rateBlockedNow, rateNote, showCorePrepay, tickRate } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, type FundingView, type InitialBuy } from "./fronting.ts";
@@ -563,6 +563,7 @@ function txTable(d: NonNullable<typeof S.draft>): Raw {
     <div class="tw"><table class="t wl-acc"><thead><tr><th>Transaction</th><th class="right">Bytes</th><th class="right">Compute limit</th><th class="right">Fee, SOL</th></tr></thead><tbody>
       ${d.plan.map((x, i) => html`<tr data-tx="${String(i)}" data-units="${String(d.txs[i]!.units)}" data-fee="${t.fees[i]!.toString()}"><td class="wrap">${x.groups.join(" + ")}${x.table ? html` <span class="dim">v0</span>` : ""}</td><td class="right num">${String(x.size)}</td><td class="right num">${d.txs[i]!.units.toLocaleString("en-US")}</td><td class="right num">${sol(t.fees[i]!)}</td></tr>`)}
       ${d.bind && d.txs[d.plan.length] ? html`<tr data-tx="${String(d.plan.length)}" data-units="${String(d.txs[d.plan.length]!.units)}" data-fee="${t.fees[d.plan.length]!.toString()}"><td class="wrap">${BIND_LABEL} <span class="dim">hands the agent's signing key to the hosted runtime</span></td><td class="right num"></td><td class="right num">${d.txs[d.plan.length]!.units.toLocaleString("en-US")}</td><td class="right num">${sol(t.fees[d.plan.length]!)}</td></tr>` : ""}
+      ${d.bind?.nonce && d.txs[d.plan.length] ? html`<tr data-tx-backup><td class="wrap">${BACKUP_LABEL} <span class="dim">the same binding, signed so it does not expire: the hosted runtime keeps it and sends it only if the binding above did not land</span></td><td class="right num"></td><td class="right num">${BIND_UNITS.toLocaleString("en-US")}</td><td class="right num"><span class="dim">no fee unless used</span></td></tr>` : ""}
     </tbody></table></div>
     <div class="tw"><table class="t wl-acc"><thead><tr><th>Account created</th><th class="right">Bytes</th><th class="right">Rent, SOL</th></tr></thead><tbody>
       ${t.rents.map((r) => html`<tr data-rent-group="${r.group}" data-lamports="${r.lamports.toString()}"><td class="wrap">${r.what}</td><td class="right num">${String(r.size)}</td><td class="right num">${sol(r.lamports)}</td></tr>`)}
@@ -804,8 +805,10 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
     // mainnet: the Jito tip rides in the last transaction (never through a lookup table)
     isMainnet() ? Promise.all([rpc.call<string[]>("getTipAccounts", []), rpc.call<{ lamports: string }>("getTipFloor", [])]) : null,
     rpc.getBalance(launcher),
-    // a hosted launch: the runtime reserves its key for this agent, so the bind is approved with the launch (never blocks the build)
-    args.hosted ? reserveRuntimeKey(agent.id) : null,
+    // a hosted launch: the runtime reserves its key for this agent, so the bind is approved with the launch. Required
+    // (docs/plans/SEAMLESS-BIND.md 9.2): asked for again for 20 s with a plain line, and with still no key the launch is
+    // not built. Only the admin's escape hatch (bindOptional) builds a hosted launch without it.
+    args.hosted ? (bindOptional() ? reserveRuntimeKey(agent.id) : reserveRequired(agent.id, { say: (line) => S.building && set("w-launch-out", html`<div class="panel-b dim" data-bind-wait>${line}</div>`) })) : null,
   ]);
   S.sol = balance;
   args.uri = uri;
@@ -986,7 +989,7 @@ function fundingView(): FundingView {
   }
   const identityChosen = (S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "purchased") === "purchased";
   return { costs: d?.costs ?? null, creditsUsd: usd, bps: P.cfg?.initial_buy_bps ?? null, identityChosen, solUsd: S.solUsd, solBalance: S.sol,
-    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) + (d.bind ? 1 : 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr,
+    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) + (d.bind ? 1 : 0) + (d.bind?.nonce ? 1 : 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr,
     unitsFmt: unitsAmt, unitsUsd: (b) => qUsd(b), unitsName: qsym(), getUnitsUrl: d?.costs.units && unitsShortfall(d.costs, S.line, unitsAmt) ? getUnitsUrl() : undefined };
 }
 
@@ -1021,7 +1024,7 @@ function renderLaunchReview() {
         ${txTable(d)}
         <div class="eyebrow" style="margin:8px 0 6px">register_pump_launch arguments</div>${kv(recordRows)}
       </details>
-      <div class="panel-b wl-row lz-launch">${btn("launch-sign", "Launch (one signature)", { primary: true, disabled: blocked ? `Launch disabled: ${blocked}` : false })}${btn("launch-review", "Read prices again")}<span class="wl-why">${S.wallet!.name} approves every transaction of the launch at once${d.bind ? ", the hosted runtime's binding with them" : d.args.hosted ? "; a hosted agent's binding follows it" : ""}.</span></div>
+      <div class="panel-b wl-row lz-launch">${btn("launch-sign", "Launch (one signature)", { primary: true, disabled: blocked ? `Launch disabled: ${blocked}` : false })}${btn("launch-review", "Read prices again")}<span class="wl-why">${S.wallet!.name} approves every transaction of the launch at once${d.bind ? `, the hosted runtime's binding with them${d.bind.nonce ? " and a backup of it that does not expire" : ""}` : d.args.hosted ? "; a hosted agent's binding follows it" : ""}.</span></div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
   // the real Launch button is drawn: the footer's stand-in leaves
@@ -1057,11 +1060,29 @@ async function launchSign() {
       parts.push({ ixs: t.ixs, units: d.txs[d.plan.indexOf(t)]!.units, price: d.txs[d.plan.indexOf(t)]!.price, table: t.table, label: t.groups.join(" + "),
         local: [...(t.groups.includes("launch") || t.groups.includes("soul") ? [d.agent] : []), ...(t.groups.includes("launch") ? [d.mint] : [])] });
     if (todo.length < d.plan.length) st(`${d.plan.length - todo.length} of ${d.plan.length} transactions are already on chain; approving the rest`);
-    // the bind rides last in the same approval (bind-plan.ts): optional, so the launch never fails or waits because of it
+    // The bind rides last in the same approval (bind-plan.ts) and is REQUIRED (docs/plans/SEAMLESS-BIND.md section 9):
+    // without the wallet's signature and the runtime's co-signature on it nothing of the launch is sent. Only the
+    // admin's escape hatch makes it optional again.
     const bindTx = d.bind && parts.length ? d.txs[d.plan.length] : undefined;
-    const all = bindTx ? withBind(parts, { ...bindPart({ owner: me()!, agent: d.agent.id, newKey: d.bind!.new_key, v0: parts.some((x) => x.table || x.tables?.length) }), price: bindTx.price }, { mainnet: isMainnet() }) : parts;
-    const r = all.length ? await signAndSendAll({ wallet: S.wallet!, account: S.account!, parts: all, onStatus: st }) : { landed: [], failed: null, left: [] };
+    const required = !!bindTx && !bindOptional();
+    let bindNow = d.bind ?? null;
+    if (required) {
+      // the reservation lives 15 minutes from when it was last asked for, and the review may have been open longer: asked
+      // for once more before the wallet is. No answer: nothing is signed. Another key: the launch is built again.
+      st("Checking the agent's runtime key");
+      bindNow = await reserveRequired(d.agent.id, { totalMs: 12_000, message: BIND_NO_ANSWER });
+      if (bindNow.new_key !== d.bind!.new_key) {
+        S.sending = false;
+        return void launchReview().then(() => set("w-launch-status", html`<span class="dim">The agent's runtime key changed while this review was open, so the launch was built again. Check it and press Launch.</span>`));
+      }
+    }
+    const v0 = parts.some((x) => x.table || x.tables?.length);
+    const withIt = bindTx ? withBind(parts, { ...bindPart({ owner: me()!, agent: d.agent.id, newKey: d.bind!.new_key, v0, required }), price: bindTx.price }, { mainnet: isMainnet() }) : parts;
+    // the backup signature (section 10): the same rotation over the reserved key's nonce account, kept by the runtime
+    const all = bindTx && bindNow?.nonce ? [...withIt, backupPart({ owner: me()!, agent: d.agent.id, newKey: d.bind!.new_key, nonce: bindNow.nonce, price: bindTx.price, v0 })] : withIt;
+    const r = all.length ? await signAndSendAll({ wallet: S.wallet!, account: S.account!, parts: all, onStatus: st }) : { landed: [], failed: null, left: [], kept: [] as string[] };
     if (d.bind) keepSignedBind(d.agent.id, d.bind.new_key, r.left);
+    noteBackup(d.agent.id, r.kept);
     for (const x of r.landed) {
       logSig(`${x.label} ${d.args.symbol}`, x.confirmed.signature, x.confirmed.fee, !x.confirmed.err);
       d.landed.push(...x.label.split(" + "));
@@ -1179,10 +1200,14 @@ async function renderLaunched() {
 let bindRun = 0;
 async function bindHosted(agent: string, attempt = 0) {
   const run = ++bindRun;
+  // the launched screen's Runtime row says the same as the detail row: it is the line a launcher reads
+  const row = (st: StepState, t: Raw | string) => run === bindRun && S.launched?.agent.id === agent && track.has("runtime") && mark("runtime", st, t);
   const out = (r: Raw | string) => run === bindRun && set("w-rt-bind", r);
   try {
-    const ready = requireReady();
-    const r = await finishBind({ agent, wallet: ready ? S.wallet : null, account: ready ? S.account : null, say: (line) => out(html`<span class="dim">${line}</span>`) });
+    // with a backup of the binding held by the hosted runtime (section 10) the wallet is never asked again: this only
+    // looks, and sends what the wallet already signed
+    const ready = requireReady() && !hasBackup(agent);
+    const r = await finishBind({ agent, wallet: ready ? S.wallet : null, account: ready ? S.account : null, say: (line) => out(html`<span class="dim">${line}</span>`), ...(hasBackup(agent) ? { tries: 2 } : {}) });
     if (r.signature) {
       const t2 = await rpc.getTransaction(r.signature).catch(() => null);
       logSig(`rotate_agent_key ${short(agent)} to the hosted runtime (co-signed by the runtime)`, r.signature, t2?.meta?.fee, true);
@@ -1194,7 +1219,16 @@ async function bindHosted(agent: string, attempt = 0) {
     const line = bindProblem(e);
     // what can pass by itself (the runtime catching up, a busy chain) is tried again without being asked; a refusal in the wallet is not
     const again = attempt < 3 && !declined(e) && !/Connect the wallet|Only the wallet/.test(line);
-    out(html`<span class="mark warn">${icon.warn} not bound yet</span> <span class="dim">${line}${again ? " Trying again by itself." : ""}</span><div class="wl-row" style="margin-top:6px">${btn("rt-bind", "Finish setup: bind")}</div>`);
+    // the hosted runtime holds a backup of the binding that does not expire (section 10): it sends it by itself, and this
+    // screen only keeps looking until the chain shows it
+    if (hasBackup(agent) && !declined(e)) {
+      out(html`<span class="mark" data-bind-backup>${icon.check} ${BACKUP_WAIT_LINE}</span>`);
+      row("wait", html`<span data-bind-backup>${BACKUP_WAIT_LINE}</span>`);
+      return void setTimeout(() => run === bindRun && void bindHosted(agent, attempt + 1), Math.min(60_000, 8000 * (attempt + 1)));
+    }
+    out(html`<span class="mark warn">${icon.warn} not bound yet</span> <span class="dim">${line}${again ? " Trying again by itself." : ""}</span><div class="wl-row" style="margin-top:6px">${btn("rt-bind", "Finish setup: bind", { primary: true })}</div>`);
+    // the one remaining action, with its reason, where the launcher is looking
+    row(again ? "wait" : "bad", html`not bound yet: ${line}${again ? " Trying again by itself." : ""} ${btn("rt-bind", "Finish setup: bind", { primary: true })}`);
     if (again) setTimeout(() => run === bindRun && void bindHosted(agent, attempt + 1), 8000 * (attempt + 1));
   }
 }
@@ -2259,7 +2293,8 @@ async function trackLaunch(agent: string, mint: string, hosted: boolean, started
       else mark("vault", "wait", html`vault ${tl(vault)}, ${la?.awake ? "awake" : "asleep"}`);
       if (hosted) {
         if (rec?.signingKey && rec.signingKey !== agent) mark("runtime", "ok", html`signing key ${addr(rec.signingKey)}, the hosted runtime's`);
-        else if (track.get("runtime")?.s !== "bad") mark("runtime", "wait", "waiting for the binding signature");
+        // (bindHosted writes this row while it works: its line, the backup's, or the one button that is left)
+        else if (!track.get("runtime") || /^(bound with the launch|finishing the hosted runtime's binding)/.test(String(track.get("runtime")!.t))) mark("runtime", "wait", hasBackup(agent) ? html`<span data-bind-backup>${BACKUP_WAIT_LINE}</span>` : "finishing the hosted runtime's binding");
       }
       const id = track.has("github") ? await fetch(`/identity/agents/${agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
       if (!track.has("github")) {
@@ -2864,6 +2899,11 @@ export async function mountLaunch(root: HTMLElement) {
   await boot(root, "launch", launchSkeleton());
   renderWizard();
   renderAvatar();
+  // a quiet line under the Runtime choice, only while the hosted runtime cannot hand out keys (docs/plans/SEAMLESS-BIND.md 9.2)
+  if (!bindOptional()) void bindHealth().then((h) => {
+    const el = root.querySelector<HTMLElement>("#w-bind-health");
+    if (el && (!h || !h.ok)) (el.textContent = BIND_DOWN_LINE), (el.hidden = false);
+  });
   void mountFeeRouteStep(root, root.querySelector<HTMLInputElement>('[name="l_repo"]')); // nothing unless a feature is on
   // a repository handed over in the address (the landing site's "Launch early" box: ?repo=owner/repo or a
   // GitHub URL) fills The work step, as if typed

@@ -225,7 +225,8 @@ const faucet = PROFILE.faucet && chainState?.line_mint
     })
   : null;
 // through the site's proxy the request carries the site's own Origin (its gate refuses cross-origin posts)
-const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet, rpcHeaders: RPC_VIA_SITE ? { origin: SITE } : undefined, rpcLabel: RPC_VIA_SITE ? `${SITE} (its /chain/rpc proxy)` : undefined });
+// the required bind's escape hatch (docs/plans/SEAMLESS-BIND.md 9.2), off unless the admin sets UNITS_BIND_OPTIONAL=1
+const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet, bindOptional: process.env.UNITS_BIND_OPTIONAL === "1", rpcHeaders: RPC_VIA_SITE ? { origin: SITE } : undefined, rpcLabel: RPC_VIA_SITE ? `${SITE} (its /chain/rpc proxy)` : undefined });
 const chainRoute = (req: Request, p: string) => chain.route(req, p);
 // A launched coin's metadata (coin-metadata.ts). The origin written into every coin's on-chain URI is ONE
 // value: UNITS_METADATA_ORIGIN, else config/sites.json metadata_origin on mainnet (the owner's permanent

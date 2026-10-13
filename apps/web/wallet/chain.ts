@@ -61,7 +61,16 @@ export interface ChainCfg {
   faucet: string | null;
   /** network profile (public view); absent from servers that predate it, read as devnet */
   profile?: PublicProfile;
+  /**
+   * The escape hatch of the required bind (docs/plans/SEAMLESS-BIND.md 9.2), an admin setting of the web
+   * server (UNITS_BIND_OPTIONAL=1), off by default: a hosted launch is then built and sent even when the
+   * hosted runtime gives no key, and its bind follows the launch as it did before the bind was required.
+   */
+  bind_optional?: boolean;
 }
+let lastCfg: ChainCfg | null = null;
+/** True only when the server said so: the bind of a hosted launch is required everywhere else. */
+export const bindOptional = (): boolean => lastCfg?.bind_optional === true;
 
 /**
  * The page's network profile: the repository's default (mainnet, the deployed mainnet deployment; bundled
@@ -115,6 +124,7 @@ export async function loadChainCfg(): Promise<ChainCfg> {
   cfgLoad ??= fetch("/chain/config").then(async (r) => {
     if (!r.ok) throw new Error(`/chain/config: HTTP ${r.status}`);
     const c = (await r.json()) as ChainCfg;
+    lastCfg = c;
     applyProfile(c.profile ?? DEVNET_PUBLIC_PROFILE);
     return c;
   });
@@ -252,6 +262,18 @@ export interface BundlePart {
    */
   optional?: boolean;
   hold?: boolean;
+  /**
+   * Required bind (docs/plans/SEAMLESS-BIND.md section 9): its signatures MUST be had before anything is
+   * sent. When the wallet declines or changes it, or its co-signer does not answer, the whole call throws
+   * and nothing is sent. With `optional` as well, a failure when it is SENT (after the others landed) is
+   * still only reported in `left`. With `hold` it is co-signed first, then sent by itself right after the
+   * others landed (a bundle that is already full).
+   */
+  mustSign?: boolean;
+  /** signed over this value instead of the fresh blockhash: a durable nonce's stored value (the backup bind signature, section 10) */
+  blockhash?: string;
+  /** signed and co-signed, and never sent from here: its co-signer keeps it (named in the answer's `kept`) */
+  keep?: boolean;
 }
 
 /** An optional part that was not sent, or failed: why, and its wallet-signed wire when the wallet signed it. */
@@ -299,7 +321,8 @@ export async function signAndSendAll(o: {
   onStatus?: (s: string) => void;
   skip?: (i: number) => Promise<boolean>;
 }): Promise<{ landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null; bundleId?: string; /** why the mainnet bundle was replaced by ordered sends, when it was */ ordered?: string;
-  /** optional parts that were not sent or failed (the rest went on without them) */ left: LeftPart[] }> {
+  /** optional parts that were not sent or failed (the rest went on without them) */ left: LeftPart[];
+  /** labels of `keep` parts that were signed and co-signed (their co-signer holds them) */ kept: string[] }> {
   await clusterGate();
   const payer = o.account.address;
   const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
@@ -307,7 +330,7 @@ export async function signAndSendAll(o: {
   for (const p of o.parts) {
     const all = p.raw ? p.ixs : p.price !== undefined ? [...budgetIxs(p.units, p.price), ...p.ixs] : await withBudget(payer, p.ixs, p.units);
     const tables = p.tables ?? (p.table ? [p.table] : []);
-    msgs.push(tables.length || p.v0 ? compileMessageV0(payer, all, blockhash, tables) : compileMessage(payer, all, blockhash));
+    msgs.push(tables.length || p.v0 ? compileMessageV0(payer, all, p.blockhash ?? blockhash, tables) : compileMessage(payer, all, p.blockhash ?? blockhash));
   }
   const left: LeftPart[] = [];
   const leave = (p: BundlePart, e: unknown, partial: Uint8Array | null = null) => left.push({ label: p.label, why: String((e as any)?.message ?? e).replace(/\.$/, ""), partial, lastValidBlockHeight });
@@ -326,8 +349,8 @@ export async function signAndSendAll(o: {
       try {
         signed.push(await signTransaction(o.wallet, o.account, unsignedWire(msg)));
       } catch (e2) {
-        // declining an optional transaction leaves only that one out
-        if (!p.optional) throw e2;
+        // declining an optional transaction leaves only that one out; one that must be signed stops everything, and nothing was sent
+        if (!p.optional || p.mustSign) throw p.mustSign ? Object.assign(new Error(`${p.label}: ${String((e2 as any)?.message ?? e2).replace(/\.$/, "")}. Nothing was sent.`), { code: (e2 as any)?.code }) : e2;
         signed.push(null);
         leave(p, e2);
       }
@@ -335,6 +358,9 @@ export async function signAndSendAll(o: {
   }
   const wires: Uint8Array[] = [];
   const parts: BundlePart[] = [];
+  const kept: string[] = [];
+  /** co-signed parts that go out by themselves right after the others landed */
+  const after: { wire: Uint8Array; part: BundlePart }[] = [];
   for (const [i, w] of signed.entries()) {
     const p = o.parts[i]!;
     if (!w) continue;
@@ -342,7 +368,7 @@ export async function signAndSendAll(o: {
     try {
       const signedMsg = walletMessage(msgs[i]!.bytes, parseWire(w).message, p.tables ?? (p.table ? [p.table] : []), i + 1);
       for (const k of p.local ?? []) wire = placeSignature(wire, k.id, await k.sign(signedMsg));
-      if (p.hold) throw new Error("it is sent after the others");
+      if (p.hold && !p.mustSign) throw new Error("it is sent after the others");
       if (p.cosign) {
         const back = await p.cosign.sign(wire);
         if (!sameBytes(parseWire(back).message, signedMsg)) throw new Error("the co-signer answered with another transaction");
@@ -351,31 +377,58 @@ export async function signAndSendAll(o: {
       const missing = missingSigners(wire);
       if (missing.length) throw new Error(`transaction ${i + 1}: signatures missing for ${missing.join(", ")}; nothing was sent`);
     } catch (e) {
+      if (p.mustSign) throw new Error(`${p.label}: ${String((e as Error).message).replace(/[.;] nothing was sent$/i, "").replace(/\.$/, "")}. Nothing was sent.`);
       if (!p.optional) throw e;
       // what the wallet signed is kept only when it is the transaction that was built (or that plus the wallet's own guard)
       leave(p, e, /the wallet changed/.test(String((e as Error).message)) ? null : wire);
       continue;
     }
+    if (p.keep) {
+      kept.push(p.label);
+      continue;
+    }
+    if (p.hold) {
+      after.push({ wire, part: p });
+      continue;
+    }
     wires.push(wire);
     parts.push(p);
   }
+  // Co-signed parts held out of a full bundle: sent by themselves the moment the others landed. One that
+  // does not land is reported in `left` with its fully signed wire (its co-signer holds it too and sends it).
+  const sendAfter = async <T extends { landed: { label: string; confirmed: Confirmed }[]; failed: unknown }>(r: T): Promise<T> => {
+    if (r.failed) for (const a of after) leave(a.part, "the launch did not finish", a.wire);
+    else
+      for (const a of after) {
+        try {
+          o.onStatus?.(`sending ${a.part.label}, right after the launch`);
+          const c = await sendWire(rpc, a.wire, lastValidBlockHeight, o.onStatus, { preflight: true });
+          if (c.err) throw new Error(`failed on chain: ${JSON.stringify(c.err)}`);
+          r.landed.push({ label: a.part.label, confirmed: c });
+        } catch (e) {
+          leave(a.part, e, a.wire);
+        }
+      }
+    return r;
+  };
   // an optional last part that fails when sent leaves the rest landed and is reported in `left`, not as a failed launch
-  const settle = <T extends { landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null }>(r: T): T & { left: LeftPart[] } => {
+  const settle = <T extends { landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null }>(r: T): T & { left: LeftPart[]; kept: string[] } => {
     const f = r.failed;
     if (f && parts[f.index]?.optional && f.index === parts.length - 1) {
-      leave(parts[f.index]!, f.error);
-      return { ...r, failed: null, left };
+      // its fully signed wire goes with it: the launched screen (and the co-signer that holds it) sends it again
+      leave(parts[f.index]!, f.error, wires[f.index]!);
+      return { ...r, failed: null, left, kept };
     }
-    return { ...r, left };
+    return { ...r, left, kept };
   };
-  if (!wires.length) return { landed: [], failed: null, left };
+  if (!wires.length) return { landed: [], failed: null, left, kept };
   let ordered: string | undefined;
   if (isMainnet()) {
     try {
       const sigs = wires.map((w) => wireSignature(w));
       const { bundleId } = await sendJitoBundle(rpc, wires.map((w) => base64Encode(w)), { onStatus: o.onStatus, signatures: sigs });
       const st = await rpc.call<{ value: ({ slot: number; err: unknown } | null)[] }>("getSignatureStatuses", [sigs]);
-      return { bundleId, failed: null, left, landed: sigs.map((signature, i) => ({ label: parts[i]!.label, confirmed: { signature, slot: st.value[i]?.slot ?? 0, err: st.value[i]?.err ?? null, logs: [] } })) };
+      return await sendAfter({ bundleId, failed: null, left, kept, landed: sigs.map((signature, i) => ({ label: parts[i]!.label, confirmed: { signature, slot: st.value[i]?.slot ?? 0, err: st.value[i]?.err ?? null, logs: [] as string[] } as Confirmed })) });
     } catch (e) {
       // The bundle failed, or Jito did not know it within the grace time, and none of it is on chain. The same
       // signed transactions are sent one by one, in order (sendInOrder): one that did land, before or while
@@ -397,7 +450,7 @@ export async function signAndSendAll(o: {
     skip: o.skip ? (i) => o.skip!(o.parts.indexOf(parts[i]!)) : undefined,
     onStatus: o.onStatus,
   });
-  return settle({ landed: r.landed.map((x) => ({ label: x.label, confirmed: x.confirmed })), ordered, failed: r.failed });
+  return sendAfter(settle({ landed: r.landed.map((x) => ({ label: x.label, confirmed: x.confirmed })), ordered, failed: r.failed }));
 }
 
 // ---------- amounts ----------

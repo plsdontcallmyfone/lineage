@@ -64,6 +64,13 @@ export function parsePlan(transactions: string, rows: { label: string; usd: stri
   };
 }
 
+/**
+ * The wallet's one request against the plan: every transaction of the plan, and for a hosted launch on a site whose
+ * runtime has a key pool one more that is in no plan because it is never sent: the binding's backup signature
+ * (docs/plans/SEAMLESS-BIND.md section 10; signed over a nonce account, kept by the hosted runtime).
+ */
+export const approvalFits = (asked: number, planned: number): boolean => asked === planned || asked === planned + 1;
+
 /** Why this plan must not be signed, or null. */
 export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number; unitsAccount?: boolean; initialBuy?: boolean }): string | null {
   if (!p.built) return "the page shows no built launch (or still speaks of a simulation)";
@@ -486,7 +493,7 @@ async function main() {
         // a wallet that refuses the batch is asked again one transaction at a time (apps/web/wallet/chain.ts signAndSendAll, for
         // wallets that cannot sign several at once): here that second request is refused too
         check("dry: Launch asked the wallet for every transaction in ONE request (after the refusal the page may ask once more for a single transaction), and the page made no simulateTransaction request up to that prompt",
-          signed.length >= 1 && signed.length <= 2 && signed[0]!.txs.length === plan.txs.length && signed.slice(1).every((r) => r.txs.length === 1) && (rpcCounts.simulateTransaction ?? 0) === 0, `signing requests ${JSON.stringify(signed.map((r) => r.txs.length))}; rpc methods ${JSON.stringify(rpcCounts)}`);
+          signed.length >= 1 && signed.length <= 2 && approvalFits(signed[0]!.txs.length, plan.txs.length) && signed.slice(1).every((r) => r.txs.length === 1) && (rpcCounts.simulateTransaction ?? 0) === 0, `signing requests ${JSON.stringify(signed.map((r) => r.txs.length))}; rpc methods ${JSON.stringify(rpcCounts)}`);
         await shot("7-dry-prompt");
         if (wires[0]) await verifyCosts(page, wires[0], wallet.id);
         return log("dry run: the wallet refused; nothing was signed or sent");
@@ -505,7 +512,7 @@ async function main() {
       S.rpc_methods_after_send = { ...rpcCounts };
       S.launch = { confirmed, signatures: sigs, approvals: signed.slice(n0).map((r) => r.txs.length), status_lines: statusLines, error: confirmed ? null : (await text("#w-launch-status, #w-launch-out [data-err]")).slice(0, 1500), at: new Date().toISOString() };
       save();
-      check("launch: one approval carried every transaction of the launch (one signTransaction request)", signed.length - n0 >= 1 && signed[n0]!.txs.length === plan.txs.length, `requests ${JSON.stringify(signed.slice(n0).map((r) => r.txs.length))}`);
+      check("launch: one approval carried every transaction of the launch (one signTransaction request)", signed.length - n0 >= 1 && approvalFits(signed[n0]!.txs.length, plan.txs.length), `requests ${JSON.stringify(signed.slice(n0).map((r) => r.txs.length))}`);
       if (!confirmed) throw new Error(`the launch did not confirm: ${S.launch.error}`);
       log(`LANDED: ${sigs.join(", ")}`);
       // what the wallet paid against the total the page showed before signing (read before anything else is signed)

@@ -75,6 +75,7 @@ export function launchSkeleton(): Raw {
         <fieldset><legend class="eyebrow">Runtime</legend>
           <label class="radio"><input type="radio" name="l_hosted" value="hosted" checked> <span><b>Hosted.</b> We run the agent for you around the clock on its own live desktop, and its work is paid from its compute vault, which its coin's fees refill.</span></label>
           <label class="radio"><input type="radio" name="l_hosted" value="self"> <span><b>Self-hosted.</b> You run the agent's worker on your own machine with its key and pay your own model costs; nothing runs for it here.</span></label>
+          <div class="wl-fine" id="w-bind-health" hidden></div>
         </fieldset>`)}
       ${card(3, "Identity", "The GitHub account the agent's commits are signed as (SPEC 13.9).", html`
         <fieldset><legend class="eyebrow">GitHub account</legend>
