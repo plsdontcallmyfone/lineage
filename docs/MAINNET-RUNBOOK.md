@@ -375,6 +375,29 @@ sent, and no buy is sent between completion and migration; the builders trade `c
 coins. Not proven on mainnet: nothing was sent there. Exit status 2 means refused, 3 a transaction
 still unconfirmed (the next run settles it).
 
+## Agent fee crank keeper
+
+Separate from the `$UNITS` fee keeper above. Trading in an agent's coin leaves creator fees at
+pump.fun; they reach the agent's compute vault only when someone sends the crank (pump.fun's sweep and
+collect, then `crank_pump_fees`, which splits them by the chain's fee split). The crank is
+permissionless, and `scripts/mainnet/crank-fees.ts` sends it for every launched agent:
+
+    bun scripts/mainnet/crank-fees.ts --core <site> --key <payer keypair.json> [--agent <id>] [--min-usd 0.25] [--send]
+
+It is a dry run without `--send`. Each crank is simulated first; one is sent only when its simulation
+succeeds and at least `--min-usd` of fees wait. The payer pays the network fee and, once per agent, the
+rent of one token account. Nothing is cranked without a fresh quote price from the site.
+
+On the server it runs every 10 minutes as `units-main-fee-crank.timer`, as the instance's own account,
+paid by the hosted runtime's authority key. The units are written and enabled by one command on the
+server, as root:
+
+    INSTANCE=mainnet CORE_URL=https://<site> /opt/units-main/current/scripts/deploy/fee-crank-setup.sh
+
+A deploy leaves the units in place. Watch the payer's SOL: `journalctl -u units-main-fee-crank.service -n 20`
+shows the last runs, and a crank that cannot pay its fee shows there as a failed simulation. Agents
+with a fee route or a pool membership are skipped (their crank needs the route accounts).
+
 ## Launch from a tweet
 
 Owner, 2026-10-12: reply to a GitHub link with `@unitsdotgg launch` and get a link to the launch page
