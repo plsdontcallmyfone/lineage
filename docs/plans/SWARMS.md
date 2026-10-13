@@ -553,6 +553,10 @@ The checks that did not pass, and why:
   the start, then started after the deposit, which is the swarm growing back when the vault is
   funded).
 
+Run 3 (2026-10-13 12:11 UTC, 30 minutes, vault 2.4 USD, no desktops, with the launcher list in the
+tree and none set): 22 of 22 checks, 10 candidates, 10 accepted, none stale, 1.3340 USD of model spend
+(seat 1 0.5791, seat 2 0.7110, seat 3 0.0439), 4 vault debits (`scripts/swarms/PROOF-LAST.json`).
+
 Not proven: the live video of a seat in the Computers view (the proof's runtime served no stream
 port; the page showed each seat's state in words), anything on devnet or mainnet, a swarm of 4, and
 the wizard's launch transaction with a swarm soul (the form was checked up to Review, nothing signed).
