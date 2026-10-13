@@ -271,3 +271,68 @@ write, so `core_url` must then be Core itself (`http://127.0.0.1:9660/v1` on the
 Without a key, or when Core refuses or is away, the link is given as before and no line is shown.
 State per link now also holds the asker's handle, the handle above and whether Core took the
 statement. Links made before this (none were posted) have no row in Core and show nothing.
+
+## 10. The maintainer notice (off by default)
+
+Owner, 2026-10-13: "Unclaimed fees waiting for you." When the fees waiting for a repository's owners
+(docs/plans/GITHUB-FEE-CLAIMS.md 12) first cross a threshold, the account posts once and links the
+repository's page. Code: `src/notices.ts`. Built, OFF, nothing posted, no call to the real X API.
+
+The post, word for word:
+
+`<amount> is waiting for the owners of <owner>/<repo>. Fees from agents working on it, claimable by
+anyone with admin on the repository: <app_url>/claim/<owner>/<repo>`
+
+with `@<handle> ` in front only when a handle is named (below). The amount is Core's dollar figure
+(`GET <core_url>/fee-claims/waiting`, a public read that passes the site's gate); a repository Core
+gives no dollar figure for is not posted about, and nothing is worked out in the bot.
+
+**The risk, and why the defaults are what they are.** X lets this account reply only to people who
+mentioned it (section 3), so the notice cannot be a reply: it is an original post. A post that names
+an account which never asked is an unsolicited mention, which X's automation rules treat as spam
+when automated ("automated replies only to users who asked", "no duplicate or substantially similar
+posts"); the same sentence posted for many repositories is also close to "substantially similar".
+A report or a spam flag can cost the account its API access, which would take the launch replies
+down with it. That is why the notice is off, why it has a dry mode to read before it is ever
+switched on, and why each limit below is small. Whether X accepts these posts at all is unproven.
+
+Settings (all in the config; apart from `enabled` and from the reply limits of section 3):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `notify_unclaimed` | `"off"` | `off`: nothing is read or posted. `dry`: what would be posted is written to the log and to the state file, nothing is posted. `on`: posts, and only in a run with `--send` |
+| `notify_threshold_usd` | 50 | the dollars waiting at which a repository is first posted about |
+| `notify_step_factor` | 10 | later posts only at this multiple of the last step: 50, 500, 5,000 |
+| `notify_per_day` | 3 | most notices in 24 hours, over all repositories (largest amount first) |
+
+Rules, as built:
+
+- **One post per repository per step, for good.** A step is used once: a claim that empties the
+  escrow and a second crossing of the same step posts nothing, and a repository that jumps past two
+  steps gets one post that uses up both.
+- **Naming someone.** Only the X username GitHub's own profile of the repository's owner lists
+  (`GET /users/<owner>`, field `twitter_username`, for a user and for an organisation), checked as a
+  handle, named once at the start. Nothing is read from a README, a bio, a website or a commit.
+  Without that field the post names nobody.
+- **A repository that asks to be left alone is skipped.** The README and CONTRIBUTING (root and
+  `.github/`) are read through GitHub's API; a line that asks for no bots, no automated messages or
+  no unsolicited contact means no post, a log line with the sentence found, and no second look for
+  30 days. The list of phrasings is short and errs toward skipping. When GitHub cannot be read the
+  repository waits for a later run. A repository whose name fails the safety list is never posted.
+- **State before the post.** The step, the text, the handle and the amount are written to
+  `state.json` (`notices`, by the repository's numeric id) before the post goes out, and X's id
+  after: a crash or a restart gives no post, never two. A dry record is kept apart and never counts
+  as a post, so switching from `dry` to `on` posts that step once.
+- **Stops.** The `STOP` file stops notices too. X answering 401 or 403 writes it (a duplicate
+  content refusal only skips that post); 429 waits for the reset time.
+- The stop list of section 2 is kept by X account id; a notice names a handle from GitHub and has
+  no id to compare, so someone who said `stop` can still be named once. Before `on`: resolve the
+  handle to an id (one user read) and skip listed ids. Not built.
+
+Tests (`test/notices.test.ts`, 11, the real client against the mock X API): the text and steps,
+off by default, once per step across restarts and after a claim, the crash between record and
+post, the daily cap, dry mode, where a handle may come from, the skip rule, no dollar figure, the
+kill switch, the settings.
+
+To try it: `notify_unclaimed: "dry"`, run the service as usual, read the log and `state.json`.
+

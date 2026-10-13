@@ -13,6 +13,7 @@
 import { join } from "node:path";
 import { loadConfig, loadCoreKey, loadCredentials, publicConfig, X_BASE, type Creds } from "./config.ts";
 import { readRepoFree } from "./github.ts";
+import { runNotices } from "./notices.ts";
 import { runOnce } from "./service.ts";
 import { Store } from "./state.ts";
 import { TokenStore } from "./tokens.ts";
@@ -63,6 +64,16 @@ async function main(): Promise<number> {
       if (a.text) say(`${a.kind} (${a.why}) to ${a.in_reply_to}: ${send ? (a.posted ? `posted ${a.post_id}` : "NOT posted") : "would post"}\n${a.text.replace(/^/gm, "    ")}`);
       else say(`${a.kind} ${a.mention_id}: ${a.why}`);
     }
+  }
+  // the maintainer notice: its own setting, off by default (notices.ts); never part of the pass above
+  if (cfg.notify_unclaimed !== "off") {
+    const n = await runNotices(cfg, { x, store, fetch, now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), log: say }, { send });
+    if (has("--json")) console.log(JSON.stringify(n, null, 2));
+    else {
+      say(n.halted ? `notices NOT RUN: ${n.halted}` : `notices (${n.mode}${n.mode === "on" && !send ? ", no --send: nothing is posted or written" : ""}): ${n.repositories} repositor${n.repositories === 1 ? "y" : "ies"} with fees waiting`);
+      for (const a of n.actions) say(a.kind === "notice" ? `notice for ${a.repo} (${a.why}): ${a.posted ? `posted ${a.post_id}` : "NOT posted"}\n${a.text!.replace(/^/gm, "    ")}` : a.kind === "notice_dry" ? `notice for ${a.repo} (${a.why}): written to the state file, not posted` : `no notice for ${a.repo}: ${a.why}`);
+    }
+    if (n.halted && !report.halted) return 2;
   }
   return report.halted ? 2 : 0;
 }

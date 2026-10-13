@@ -18,5 +18,9 @@
   "read_max_kb": 50000,
   "read_cache_hours": 24,
   "refresh_margin_s": 300,
-  "dialect": "tweet"
+  "dialect": "tweet",
+  "notify_unclaimed": "off",
+  "notify_threshold_usd": 50,
+  "notify_step_factor": 10,
+  "notify_per_day": 3
 }

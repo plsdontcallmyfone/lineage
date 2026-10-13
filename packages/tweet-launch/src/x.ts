@@ -18,6 +18,8 @@ export interface XApi {
   /** mentions newer than `sinceId`, oldest first, and the newest id seen */
   mentions(userId: string, sinceId: string | null): Promise<{ mentions: Mention[]; newest_id: string | null; dialect: "tweet" | "post" }>;
   reply(inReplyTo: string, text: string): Promise<{ id: string }>;
+  /** an original post, not a reply (the maintainer notice, notices.ts) */
+  post(text: string): Promise<{ id: string }>;
 }
 
 const pct = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -131,6 +133,12 @@ export class XClient implements XApi {
   async reply(inReplyTo: string, text: string) {
     const j = await this.call("POST", "/2/tweets", "POST /2/tweets", { text, reply: { in_reply_to_tweet_id: inReplyTo } });
     if (typeof j.data?.id !== "string") throw new Error("X accepted the reply but returned no id");
+    return { id: j.data.id as string };
+  }
+
+  async post(text: string) {
+    const j = await this.call("POST", "/2/tweets", "POST /2/tweets", { text });
+    if (typeof j.data?.id !== "string") throw new Error("X accepted the post but returned no id");
     return { id: j.data.id as string };
   }
 }

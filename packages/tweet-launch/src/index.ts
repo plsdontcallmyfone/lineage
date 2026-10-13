@@ -7,3 +7,4 @@ export * from "./tokens.ts";
 export * from "./x.ts";
 export * from "./github.ts";
 export * from "./service.ts";
+export * from "./notices.ts";

@@ -29,6 +29,18 @@ export interface Request {
   follow_up_id: string | null;
 }
 
+/** One maintainer notice as it was composed (notices.ts): written before the post goes out. */
+export interface NoticeRecord {
+  at: number;
+  /** the dollars waiting when it was composed */
+  usd: number;
+  text: string;
+  /** the handle named, from GitHub's own profile field of the repository's owner; null: none named */
+  handle: string | null;
+  /** X's id of the post; null in a dry record, and when X did not take it */
+  post_id: string | null;
+}
+
 export interface State extends PostLog {
   v: 1;
   me: { id: string; username: string } | null;
@@ -44,6 +56,11 @@ export interface State extends PostLog {
   stopped: Record<string, number>;
   /** ms: X asked to wait until then (HTTP 429) */
   backoff_until: number | null;
+  /**
+   * Maintainer notices by the repository's numeric GitHub id. `steps`: real posts by threshold step (a step is used once, for
+   * good). `dry`: what dry mode composed, which never counts as a post. `skipped`: the line that asked for no such contact.
+   */
+  notices?: Record<string, { repo: string; steps: Record<string, NoticeRecord>; dry: Record<string, NoticeRecord>; skipped?: { at: number; why: string } }>;
 }
 
 export const emptyState = (): State => ({ v: 1, me: null, since_id: null, dialect: null, answered: {}, requests: {}, readings: {}, stopped: {}, backoff_until: null, posts: [], by_author: {} });

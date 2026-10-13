@@ -46,6 +46,17 @@ export interface Config extends LimitConfig {
   read_repos: boolean;
   /** an OAuth 2.0 access token is refreshed this long before it runs out */
   refresh_margin_s: number;
+  /**
+   * The maintainer notice (notices.ts), apart from `enabled` and the reply limits. off (default): nothing. dry: what it would
+   * post is written to the log and the state file, nothing is posted. on: one original post per repository per step, with --send.
+   */
+  notify_unclaimed: "off" | "dry" | "on";
+  /** the dollars waiting at which a repository is first posted about */
+  notify_threshold_usd: number;
+  /** each later post only at this multiple of the last step (50, 500, 5,000 with the defaults), each at most once */
+  notify_step_factor: number;
+  /** most notices in 24 hours, over all repositories */
+  notify_per_day: number;
 }
 
 export const X_BASE = "https://api.x.com";
@@ -74,6 +85,10 @@ export const DEFAULTS: Config = {
   read_cache_hours: 24,
   read_repos: true,
   refresh_margin_s: 300,
+  notify_unclaimed: "off",
+  notify_threshold_usd: 50,
+  notify_step_factor: 10,
+  notify_per_day: 3,
 };
 
 const isLoopback = (u: URL) => u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]";
@@ -104,6 +119,10 @@ export function parseConfig(raw: unknown): Config {
     ["poll_max_results", 5, 100], ["poll_max_pages", 1, 10], ["link_hours", 1, 24 * 90], ["read_max_kb", 0, 100_000_000], ["read_cache_hours", 0, 24 * 30], ["refresh_margin_s", 0, 3600],
   ];
   for (const [k, lo, hi] of ints) if (!Number.isInteger(c[k]) || (c[k] as number) < lo || (c[k] as number) > hi) throw new Error(`config: ${k} is a whole number from ${lo} to ${hi}`);
+  if (!["off", "dry", "on"].includes(c.notify_unclaimed)) throw new Error('config: notify_unclaimed is "off", "dry" or "on"');
+  if (typeof c.notify_threshold_usd !== "number" || !(c.notify_threshold_usd >= 1) || c.notify_threshold_usd > 1e9) throw new Error("config: notify_threshold_usd is a number of dollars, at least 1");
+  if (!Number.isInteger(c.notify_step_factor) || c.notify_step_factor < 2 || c.notify_step_factor > 1000) throw new Error("config: notify_step_factor is a whole number from 2 to 1000");
+  if (!Number.isInteger(c.notify_per_day) || c.notify_per_day < 1 || c.notify_per_day > 50) throw new Error("config: notify_per_day is a whole number from 1 to 50");
   if (typeof c.state_dir !== "string" || !c.state_dir.startsWith("/")) throw new Error("config: state_dir is an absolute path");
   if (typeof c.credentials_file !== "string" || !c.credentials_file.startsWith("/")) throw new Error("config: credentials_file is an absolute path");
   if (typeof c.core_key_file !== "string" || (c.core_key_file && !c.core_key_file.startsWith("/"))) throw new Error("config: core_key_file is an absolute path, or empty");

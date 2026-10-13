@@ -25,7 +25,8 @@ export interface MockX {
   /** ids of posts that mention the account */
   mentionIds: string[];
   /** what the bot posted, in order */
-  posted: { id: string; text: string; in_reply_to: string }[];
+  /** every post the mock took; `in_reply_to` null for an original post */
+  posted: { id: string; text: string; in_reply_to: string | null }[];
   requests: { method: string; path: string; auth: string }[];
   /** the next POST /2/tweets answers this status instead */
   failNextPost: number | null;
@@ -137,6 +138,13 @@ export function startMockX(o: { port?: number; username?: string; now?: () => nu
         }
         const b = (await req.json().catch(() => null)) as { text?: unknown; reply?: { in_reply_to_tweet_id?: unknown } } | null;
         const to = b?.reply?.in_reply_to_tweet_id;
+        // an original post (no `reply`): the same duplicate rule, no summons needed
+        if (b && typeof b.text === "string" && b.text && b.reply === undefined) {
+          if (m.posted.some((p) => p.text === b.text)) return json({ title: "Forbidden", detail: "You are not allowed to create a Tweet with duplicate content." }, 403);
+          const p = m.add({ text: b.text, author_id: m.account.id });
+          m.posted.push({ id: p.id, text: b.text, in_reply_to: null });
+          return json({ data: { id: p.id, text: b.text } }, 201);
+        }
         if (!b || typeof b.text !== "string" || !b.text || typeof to !== "string") return json({ title: "Invalid Request", detail: "text and reply.in_reply_to_tweet_id are required" }, 400);
         const parent = m.posts.get(to);
         if (!parent) return json({ title: "Invalid Request", detail: "the post replied to does not exist" }, 400);
