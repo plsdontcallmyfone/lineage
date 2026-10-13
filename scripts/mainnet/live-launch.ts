@@ -15,6 +15,10 @@
 //        [--name Basalt] [--symbol BSLT] [--site https://main-157-245-71-188.sslip.io] [--out <dir>]
 //        [--image <png, jpeg or webp, at most 256 KB>] [--twitter <url>] [--telegram <url>] [--website <url>]
 //        [--vibe "<short hint>"] [--identity units|token]   (units: the GitHub account option, its fee in the plan)
+//        [--repo <github url>]   the repository (default keis/base58)
+//        [--swarm <n>] [--seat-model <provider/id>]   one coin, n agents (docs/plans/SWARMS.md): the Agents field of step
+//                               "The agent" is set to n (refused, nothing signed, when the site does not offer that size to
+//                               this wallet), agents 2 and up on --seat-model when given, credits Core's minimum once per agent
 //   bun scripts/mainnet/live-launch.ts --phase watch        # read only, repeatable
 //
 // The launcher key is a throwaway file outside the repository (mode 600); it never leaves this process
@@ -97,13 +101,16 @@ async function main() {
     name: arg("name", "Basalt")!,
     symbol: arg("symbol", "BSLT")!,
     desc: arg("desc", "Basalt makes base58 encoding and decoding cheaper, one measured step at a time.")!,
-    repo: "https://github.com/keis/base58",
+    repo: arg("repo", "https://github.com/keis/base58")!,
     image: arg("image") ?? null,
     links: { l_twitter: arg("twitter") ?? "", l_telegram: arg("telegram") ?? "", l_website: arg("website") ?? "" } as Record<string, string>,
     vibe: arg("vibe") ?? "",
     identity: arg("identity", "token")! as "units" | "token",
   };
   if (SEED.identity !== "units" && SEED.identity !== "token") throw new Error("--identity is units or token");
+  const SWARM = Number(arg("swarm", "1"));
+  const SEAT_MODEL = arg("seat-model") ?? null;
+  if (!Number.isInteger(SWARM) || SWARM < 1 || SWARM > 16) throw new Error("--swarm is a number of agents from 1 to 16");
   mkdirSync(OUT, { recursive: true });
   const STATE_FILE = join(OUT, "LIVE-LAUNCH.json");
   const T0 = Date.now();
@@ -366,6 +373,27 @@ async function main() {
       S.model_choice = await page.locator('[name="l_model"]:checked, select[name="l_model"]').first().inputValue().catch(() => "the default (nothing picked)");
       S.runtime_choice = await page.locator('input[name="l_hosted"]:checked').inputValue().catch(() => null);
       check("wizard, Agent: the default model and the hosted runtime are selected", S.runtime_choice === "hosted", `model ${S.model_choice}, runtime ${S.runtime_choice}`);
+      if (SWARM > 1) {
+        // one coin, several agents: offered only where Core has swarms on, at this size, for this wallet (swarm.launchers)
+        await page.locator(`.lz-swarm [name="l_sw_size"][value="${SWARM}"]`).waitFor({ state: "attached", timeout: 20_000 }).catch(() => {});
+        const sizes = await page.locator('.lz-swarm [name="l_sw_size"]').evaluateAll((els: HTMLInputElement[]) => els.map((e) => e.value));
+        check(`wizard, Agent: the Agents field is offered to this wallet, up to at least ${SWARM}`, sizes.includes(String(SWARM)), sizes.length ? `sizes offered ${sizes.join(", ")}` : "no Agents field: swarms are off on this site, or not open to this wallet");
+        if (!sizes.includes(String(SWARM))) throw new Error(`the site does not offer ${SWARM} agents to this wallet (Core's features.swarms, swarm.max_members, swarm.launchers, free screens); nothing was signed`);
+        await page.locator(`.lz-swarm label.seg-b:has([name="l_sw_size"][value="${SWARM}"])`).click();
+        await page.locator(".lz-swarm .lz-seat").nth(SWARM - 1).waitFor({ timeout: 20_000 });
+        if (SEAT_MODEL) for (let k = 2; k <= SWARM; k++) await page.selectOption(`select[name="l_sw_model_${k}"]`, SEAT_MODEL);
+        const seats = (await page.locator(".lz-swarm .lz-seat").evaluateAll((els: HTMLElement[]) => els.map((e, i) => ({
+          seat: i + 1,
+          name: (e.querySelector('input[name^="l_sw_name_"]') as HTMLInputElement | null)?.value || (e.querySelector('input[name^="l_sw_name_"]') as HTMLInputElement | null)?.placeholder || "",
+          model: (e.querySelector('select[name^="l_sw_model_"]') as HTMLSelectElement | null)?.value ?? "the model picked above",
+          role: (e.querySelector('select[name^="l_sw_role_"]') as HTMLSelectElement | null)?.value ?? "",
+        })))) as { seat: number; name: string; model: string; role: string }[];
+        S.swarm = { size: SWARM, seats, view: (await text(".lz-swarm")).slice(0, 1500) };
+        save();
+        check(`wizard, Agent: ${SWARM} agents, each with a name and a model, exactly one lead`, seats.length === SWARM && seats.every((x) => x.name && x.model) && seats.filter((x) => x.role === "lead").length === 1 && (!SEAT_MODEL || seats.slice(1).every((x) => x.model === SEAT_MODEL)),
+          seats.map((x) => `${x.seat} ${x.name} ${x.role} ${x.model}`).join("; "));
+        await page.waitForSelector(".wl-soul .wl-hash", { timeout: 300_000 });
+      }
       await shot("3-agent");
       await page.click('[data-act="lz-next"]');
       await page.locator("#w-id-price").waitFor({ state: "attached", timeout: 30_000 });
@@ -387,12 +415,17 @@ async function main() {
       await page.click('[data-act="lz-next"]');
       const dep = page.locator('[name="l_deposit"]');
       S.credits_usd = await dep.inputValue().catch(() => null);
-      if (S.credits_usd !== "10") await dep.fill("10");
+      // Core's credits minimum, once per agent of a swarm (10 USD on both mainnet deployments)
+      const perAgent = SWARM > 1 ? Number((await j("/v1/config")).body?.network?.prepay?.min_usd) : 10;
+      if (!(perAgent > 0)) throw new Error("Core's credits minimum could not be read; nothing was signed");
+      const CREDITS = String(perAgent * SWARM);
+      if (SWARM > 1) check(`wizard, Funding: the credits field came filled with Core's minimum once per agent (${CREDITS} USD for ${SWARM})`, S.credits_usd === CREDITS, `the field held ${S.credits_usd}`);
+      if (S.credits_usd !== CREDITS) await dep.fill(CREDITS);
       await page.waitForFunction(() => /SOL/.test((document.querySelector("[data-fronting-sol]") as HTMLElement | null)?.innerText ?? ""), null, { timeout: 180_000 });
       S.funding_total_ms = Date.now() - tFunding;
       S.funding_view = (await text('[data-step="4"]')).slice(0, 1500);
       check("wizard, Funding: the total is there within 3 s of opening the step, with no simulation wording", S.funding_total_ms < 3_000 && !/simulat/i.test(S.funding_view), `${S.funding_total_ms} ms`);
-      check("wizard, Funding: 10 USD of credits (the minimum), a total in US dollars with the SOL beside it", (await dep.inputValue()) === "10" && /\$/.test(await text("[data-fronting-total]")), `${await text("[data-fronting-total]")} / ${await text("[data-fronting-sol]")}`);
+      check(`wizard, Funding: ${CREDITS} USD of credits (the minimum), a total in US dollars with the SOL beside it`, (await dep.inputValue()) === CREDITS && /\$/.test(await text("[data-fronting-total]")), `${await text("[data-fronting-total]")} / ${await text("[data-fronting-sol]")}`);
       await shot("5-funding");
       await page.click('[data-act="lz-next"]');
       await page.locator('#w-launch-out [data-act="launch-sign"], #w-launch-out [data-err]').first().waitFor({ timeout: 90_000 });
@@ -420,6 +453,7 @@ async function main() {
       const pageTotal = ((await page.locator("#w-launch-out .lz-tech").evaluate((e: HTMLElement) => e.dataset.launchTotal ?? null).catch(() => null)) as string | null);
       const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9, unitsAccount: SEED.identity === "units" });
       check("wizard, Review: the launch is built with its cost lines (nothing simulated) and the plan is within the limits (2 transactions, each within a packet, total under --max-sol)", !problem, problem ?? `${plan.txs.length} transactions of ${plan.txs.map((t) => t.bytes).join(" and ")} bytes; total ${plan.total_sol} SOL = ${plan.total_usd} USD; limit ${MAX_SOL} SOL`);
+      if (SWARM > 1) check(`wizard, Review: the Swarm row names ${SWARM} agents, one coin and one vault, before the one signature`, new RegExp(`${SWARM} agents, one coin and one vault`).test(review) && /One signature, as for one agent/.test(review), (/Swarm.{0,400}/.exec(review) ?? ["no Swarm row"])[0].slice(0, 400));
       const disabled = await page.locator('[data-act="launch-sign"]').isDisabled();
       check("wizard, Review: Launch is enabled (the wallet covers the total)", !disabled, await text("#w-launch-out [data-fronting-short], #w-launch-out .lz-fronting .wl-fine"));
       if (!SEND) {

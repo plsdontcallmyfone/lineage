@@ -462,28 +462,65 @@ the default run of `tests/ui/swarms.spec.ts` against the mainnet site's live dat
   process, but the coin page and the Explorer read `features.swarms` from `GET /v1/config`, which
   shows the file's value.
 
-### Opening on mainnet at size 2 (the owner's decision; nothing here was done)
+### Opening on mainnet at size 2 (owner 2026-10-13: at 2 seats, after one test swarm from a throwaway wallet works; nothing here was done)
 
-1. In `config/mainnet/state.json`, under `network_overrides`, add (top-level keys replace the ones of
-   `config/network.json`, so both blocks are written whole):
+Corrected by the swarms mainnet open prep lane (2026-10-13) against the deploy kit and the server.
+
+**What the switch is.** Deploy-time, in the instance's chain state file, not an admin call: Core reads
+`features.swarms` from the `network.json` that `scripts/deploy/site-config.ts` writes from the state
+file's `network_overrides`, and `POST /v1/admin/swarms/config` answers `feature_off` until the flag is
+on. The file is the official deployment's `~/.config/units/mainnet/official/state.json` on the owner's
+machine (shipped as `/etc/units-main/state.json`), NOT `config/mainnet/state.json` (the repository's
+copy for local reads, which carries no prepay overrides) and NOT the kit's default
+`scripts/mainnet/mainnet.json` (the retired test deployment's state: a stage or activate without
+`INSTANCE_STATE_FILE` would put it in place of the live one). There is no `code` mode for the mainnet
+instance: the modes are `stage`, `activate` and `go`.
+
+**A list of launcher wallets (`swarm.launchers`).** null (the default) opens swarms to every wallet. A
+list (at most 64 addresses) opens them to those wallets only: `GET /v1/swarms/config?wallet=<address>`
+answers `launch: { restricted, open }` for that wallet (the list is in no public answer, `GET
+/v1/config` included); the launch form asks with the connected wallet and shows the Agents field only
+when `open`; an agent launched by any other wallet is one agent to Core and to the hosted runtime
+whatever its soul declares (the runtime asks Core's `GET /v1/agents/:id/swarm` before it runs seats);
+a swarm soul for an agent Core already read as another wallet's is refused (`403 swarm_not_open`). A
+soul stored before Core read its launch is taken and decided by the launcher once read. Removing the
+list later makes a stored swarm soul of another wallet a swarm from then on (bounded by `max_members`).
+The coin page and the Explorer of a launched swarm are public either way; hide a test with
+`POST /v1/admin/hidden`.
+
+1. In `~/.config/units/mainnet/official/state.json`, under `network_overrides` (beside `prepay` and
+   `guard_max_regression`; top-level keys replace those of `config/network.json`, so both blocks are
+   written whole), add
    `"features": { "agent_pools": false, "github_fee_claims": false, "swarms": true }` and
-   `"swarm": { "max_members": 2, "seat_desktop_usd_per_h": 0.1656, "seat_desktop_free_seats": 1, "swarm_epoch_max_usd": null, "seat_epoch_max_usd": null, "slot_fairness": "coin", "lead_plan": true, "lead_plan_max_usd": null }`.
-   Keep the two other flags at whatever they are on that day.
-2. Commit, push, and ship one release: `UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> code`.
-   Core, the runtime and the app come from the same release; the order of their restarts does not
-   matter (the runtime follows Core's flag within a minute, the pages read it on load). The deploy log
-   prints `network.json: features swarms on (largest swarm 2)`.
-3. Check: `GET /v1/swarms/config` answers `enabled: true`, `max_members 2`, `min_usd_per_seat` equal
-   to the instance's `prepay.min_usd`; the launch form's step "The agent" shows the Agents field with
-   sizes 1 and 2; the runtime log says `swarms: on`.
-4. Later, to 4: `POST /v1/admin/swarms/config { "max_members": 4 }` with the admin key (no deploy), or
-   the same edit of the state file with the next release.
+   `"swarm": { "max_members": 2, "seat_desktop_usd_per_h": 0.1656, "seat_desktop_free_seats": 1, "swarm_epoch_max_usd": null, "seat_epoch_max_usd": null, "slot_fairness": "coin", "lead_plan": true, "lead_plan_max_usd": null, "launchers": ["<the test launcher's address>"] }`.
+   Keep the two other flags at whatever they are on that day. Without `launchers` the form offers
+   several agents to everyone at once.
+2. Ship HEAD with the official files (the runbook's `$I` line):
+   `O=~/.config/units/mainnet/official; env UNITS_INSTANCE=mainnet WITH_RUNTIME=1 WITH_IDENTITY=1 INSTANCE_STATE_FILE=$O/state.json INSTANCE_PROFILE_FILE=$O/profile.local.json INSTANCE_SIZING_FILE=$O/sizing.json scripts/deploy/instance.sh 157.245.71.188 activate`,
+   then the capacity host's usual `provision.sh ... update`. Core, the runtime and the app come from
+   the same release; the runtime follows Core's flag within a minute, the pages read it on load. The
+   deploy log prints `network.json: features swarms on (largest swarm 2)`.
+3. Check: `GET /v1/swarms/config?wallet=<the test launcher>` answers `enabled: true`, `max_members 2`,
+   `launch: { restricted: true, open: true }`, `min_usd_per_seat` equal to `prepay.min_usd`; the same
+   route without a wallet answers `open: false`, `max_now 1`; the runtime log says `swarms: on`. Then
+   `bun scripts/swarms/mainnet-test.ts` (simulate only: the whole swarm launch up to the signing
+   prompt, with the page's exact total), `--send`, and `--phase checks` until nothing waits.
+4. Open to everyone, no deploy: `POST /v1/admin/swarms/config { "launchers": null }` with the admin
+   key. Later, to 4: `{ "max_members": 4 }` the same way. The admin's patch is kept in Core's database
+   over the file's block; put the same values into the state file with the next release.
 5. To close again: set `swarms` false and ship. Swarms already launched keep their soul; the runtime
    runs each as a solo agent on seat 1's model from the next attempt.
 
 Capacity to look at first: every seat takes one of the runtime's `e2b_max` desktops (50 on the
 official instance) and one attempt slot; the form offers only as many seats as the runtime reports
 free.
+
+Read on the instance, 2026-10-13: the on-chain sleep and wake thresholds are amounts of the quote coin
+(14,400 and 28,800 UNITS), about 3.4 and 6.8 USD at that day's price. A swarm's vault below the sleep
+threshold is asleep, and with network compute on (`platform_funding`) only its first seat works then,
+one attempt per interval, with the vault not charged; seats 2 and up rest with "Paused: vault low" and
+their screens pause. With `desktop_idle_pause` false a funded swarm's second screen runs, and is
+charged, all the time the swarm is awake, working or not (0.1656 USD an hour, 3.97 USD a day).
 
 ### The local proof (scripts/swarms/proof.ts, 2026-10-13)
 
