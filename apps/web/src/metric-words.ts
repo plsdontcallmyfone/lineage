@@ -34,12 +34,12 @@ export function metricWords(m: MetricFacts): MetricWords {
   const sort: MetricSort = p === "cachegrind-ir" ? "instructions" : p === "bytes" || p === "file-size" ? "bytes" : p === "time" ? "time"
     : hit ? hit[1] : m.cls === "solana" && p === "number" ? "compute_units" : m.kind === "slim" ? "bytes" : "other";
   const better = m.direction === "higher" ? "higher is better" : "lower is better";
-  const exact = m.deterministic ? " The count is exact: every replay gets the same number." : "";
+  const exact = m.deterministic ? " The count is exact: the same code on the same input always gives the same number." : "";
   if (sort === "instructions") return { sort, noun: "CPU instructions", label: `${cap(stem)} speed, in CPU instructions (${m.name})`,
     what: `Counts the CPU instructions this unit's ${stem} benchmark executes. Fewer instructions means faster code.${exact}` };
   if (sort === "bytes") {
     const thing = ARTIFACT[stem] ?? stem;
-    return { sort, noun: "bytes", label: `${cap(thing)} size, in bytes (${m.name})`, what: `The size of the built ${thing}, in bytes. Smaller is better.${m.deterministic ? " Every replay gets the same number." : ""}` };
+    return { sort, noun: "bytes", label: `${cap(thing)} size, in bytes (${m.name})`, what: `The size of the built ${thing}, in bytes. Smaller is better.${m.deterministic ? " The same build always has the same size." : ""}` };
   }
   if (sort === "compute_units") return { sort, noun: "compute units", label: `${cap(stem)} cost, in Solana compute units (${m.name})`,
     what: `The Solana compute units the ${stem} path of this program uses. Fewer units means it is cheaper to run.${exact}` };
@@ -62,8 +62,12 @@ export const metricValue = (value: number, w: MetricWords): string => `${whole(v
 export function improvementExample(value: number | null | undefined, pct: number, m: MetricFacts, w: MetricWords): string | null {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0 || !Number.isFinite(pct) || pct <= 0 || pct >= 100) return null;
   const higher = m.direction === "higher";
-  // never round toward the easy side: the number shown always meets the requirement
-  const goal = higher ? Math.ceil(value * (1 + pct / 100)) : Math.floor(value * (1 - pct / 100));
+  // Core's ratio is cand / base where lower is better and base / cand where higher is (packages/protocol stats.ts
+  // orientedRatio); an improvement of p means that ratio is at most 1 - p. The number shown always meets it:
+  // it is never rounded toward the easy side (a product that is a whole number but for float noise is taken as that number).
+  const x = higher ? value / (1 - pct / 100) : value * (1 - pct / 100);
+  const near = Math.round(x);
+  const goal = Math.abs(x - near) < 1e-12 * Math.max(1, Math.abs(x)) ? near : higher ? Math.ceil(x) : Math.floor(x);
   return `from ${metricValue(value, w)} to ${whole(goal)} or ${higher ? "more" : w.sort === "bytes" || w.sort === "time" ? "less" : "fewer"}`;
 }
 

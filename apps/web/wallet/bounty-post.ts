@@ -18,6 +18,8 @@ import { html, raw, type Raw } from "../src/html.ts";
 import { bpsPct, span, targetWords } from "../src/bounty-words.ts";
 import { mountRepoRequest } from "./repo-request.ts";
 import { needOwnerMark, ownerBox, ownerRepo, wireOwnerBox } from "./bounty-owner.ts";
+import { requirementToggle, wireRequirementToggles } from "../src/requirement-explain.ts";
+import { peekMeasure, unitMeasure } from "../src/unit-measure.ts";
 import { daysLabel, deadlineChoices, improvementExample, metricValue, metricWords, publicRepo } from "../src/metric-words.ts";
 import { banner } from "../src/ui.ts";
 import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdReading } from "../src/usd.ts";
@@ -37,8 +39,6 @@ interface WalletReview { plan: OkEscrow; unit: Unit; metric: UnitMetric; balance
 interface Short { coin: bigint; needCoin: bigint; lamports: bigint; needLamports: bigint }
 const WALLET = "wallet";
 /** What Core serves about a unit beyond the board: each metric's parser, the recipe's class, and measured values. */
-interface UnitDetail { cls: string | null; parser: Record<string, string>; height: number; base: Record<string, number>; tip: Record<string, number> | null }
-const DETAIL = new Map<string, UnitDetail | "loading" | null>();
 const CUSTOM = "custom";
 
 const COMPUTE_UNITS = 300_000;
@@ -79,38 +79,15 @@ function deadlineLine(days: number, lim: { minTtlS: number; maxTtlS: number; ref
   return html`Ends <b data-deadline-end="${end}">${localTime(end)}</b>. If nobody wins, the reward returns to ${back} from ${localTime(end + lim.refundGraceS)}.`;
 }
 
-/** The middle measurement (the lower of the two middle ones): always a number that was measured, never an average. */
-const median = (xs: number[]) => [...xs].sort((x, y) => x - y)[Math.floor((xs.length - 1) / 2)]!;
-/** Reads the unit from Core once: parsers, class, the values measured at its setup, and those of its newest generation's replays. */
-async function loadDetail(id: string) {
-  if (DETAIL.has(id)) return;
-  DETAIL.set(id, "loading");
-  const j = (path: string) => fetch(path, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const u = await j(`/api/lineages/${id}`);
-  let d: UnitDetail | null = null;
-  if (u?.recipe) {
-    const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-    d = { cls: typeof u.recipe.class === "string" ? u.recipe.class : null, height: Number(u.height) || 0, tip: null,
-      parser: Object.fromEntries(((u.recipe.metrics ?? []) as { name: string; parser?: string }[]).filter((m) => typeof m.parser === "string").map((m) => [m.name, m.parser!])),
-      base: Object.fromEntries(Object.entries((u.calibration?.metrics ?? {}) as Record<string, { base_value?: unknown }>).filter(([, v]) => num(v?.base_value)).map(([k, v]) => [k, v.base_value as number])) };
-    if (d.height > 0 && typeof u.tip === "string") {
-      const g = await j(`/api/generations/${u.tip}`);
-      const per = new Map<string, number[]>();
-      for (const r of (g?.replays ?? []) as { result?: { metrics?: Record<string, { cand?: unknown }> } }[])
-        for (const [name, m] of Object.entries(r.result?.metrics ?? {})) {
-          const cand = Array.isArray(m?.cand) ? m.cand.filter(num) : [];
-          if (cand.length) per.set(name, [...(per.get(name) ?? []), median(cand)]);
-        }
-      if (per.size) d.tip = Object.fromEntries([...per].map(([k, v]) => [k, median(v)]));
-    }
-  }
-  DETAIL.set(id, d);
-  refreshLines();
+/** Reads the unit's measurements from Core once (src/unit-measure.ts) and redraws the lines that use them. */
+function loadDetail(id: string) {
+  if (peekMeasure(id) !== undefined) return;
+  void unitMeasure(id).then(() => refreshLines());
 }
 
 /** Under the Metric field: what is measured, the value Core last measured, and what the required improvement means in this metric's terms. */
 function metricExplain(unit: Unit, metric: UnitMetric, pctText: string): Raw {
-  const d = DETAIL.get(unit.lineage_id);
+  const d = peekMeasure(unit.lineage_id);
   const det = d && d !== "loading" ? d : null;
   const w = metricWords({ ...metric, parser: det?.parser[metric.name], cls: det?.cls });
   const tip = det?.tip?.[metric.name], base = det?.base[metric.name];
@@ -125,6 +102,15 @@ function metricExplain(unit: Unit, metric: UnitMetric, pctText: string): Raw {
   return html`<p><b data-metric-name>${metric.name}</b>: ${w.what[0]!.toLowerCase()}${w.what.slice(1)}</p>${measured}${ex ? html`<p data-metric-example>${pctText ? "" : "The smallest improvement this metric counts: "}${String(pct)}% better means going ${ex}, counted from that measurement.</p>` : ""}`;
 }
 
+/** The percentage the form asks for now: what is typed, else the smallest this metric counts. */
+function pctNow(metric: UnitMetric, text: string): number {
+  const typed = Number(text.replace("%", ""));
+  return text && Number.isFinite(typed) && typed > 0 && typed < 100 ? typed : metric.min_improvement_bps / 100;
+}
+const rqKey = (unit: Unit, metric: UnitMetric, text: string) => `${unit.lineage_id} ${metric.name} ${pctNow(metric, text)}`;
+/** "What does this mean?" for the requirement the form holds now (the shared panel of src/requirement-explain.ts). */
+const formToggle = (unit: Unit, metric: UnitMetric, text: string): Raw => requirementToggle({ metric, pct: pctNow(metric, text) }, unit.lineage_id);
+
 /** Redraws the two explanation lines from the fields as they are now, without touching the fields (typing keeps its place). */
 function refreshLines() {
   const el = B.root;
@@ -133,6 +119,14 @@ function refreshLines() {
   const metric = unit?.metrics.find((m) => m.name === val("bo_metric"));
   const box = el.querySelector("[data-metric-explain]");
   if (unit && metric && box) box.innerHTML = metricExplain(unit, metric, val("bo_pct")).s;
+  // the requirement's own explanation follows the percentage typed; an open panel stays open
+  const rq = el.querySelector<HTMLElement>("[data-rq-form]");
+  if (unit && metric && rq && rq.dataset.rqForm !== rqKey(unit, metric, val("bo_pct"))) {
+    const open = !!rq.querySelector('[data-rq-toggle][aria-expanded="true"]');
+    rq.dataset.rqForm = rqKey(unit, metric, val("bo_pct"));
+    rq.innerHTML = formToggle(unit, metric, val("bo_pct")).s;
+    if (open) rq.querySelector<HTMLElement>("[data-rq-toggle]")?.click();
+  }
   const line = el.querySelector<HTMLElement>("[data-deadline-line]");
   const lim = val("bo_payer") === WALLET || !agentPath() ? B.ecfg?.settings : B.cfg;
   if (line && lim) line.innerHTML = deadlineLine(deadlineDays(), lim, line.dataset.back ?? "its funder").s;
@@ -383,10 +377,10 @@ function formView(): Raw {
     <label><span class="eyebrow">What should improve</span><select name="bo_metric" data-bounty-change>${unit.metrics.map((m) => html`<option value="${m.name}"${m.name === metric.name ? raw(" selected") : ""}>${metricWords(m).label}</option>`)}</select></label>
     <div class="bo-explain" data-metric-explain aria-live="polite">${metricExplain(unit, metric, val("bo_pct"))}</div>
     <div class="bo-field">
-      <div class="bo-lab"><label class="eyebrow" for="bo_pct">Improvement required (%)</label><button type="button" class="bo-q" data-bounty-hint="bo_pct_hint" aria-expanded="false" aria-controls="bo_pct_hint" aria-label="What improvement required means">?</button></div>
+      <label class="eyebrow" for="bo_pct">Improvement required (%)</label>
       <input id="bo_pct" name="bo_pct" inputmode="decimal" placeholder="${String(metric.min_improvement_bps / 100)}">
-      <p class="wl-help" id="bo_pct_hint" data-bounty-hint-text hidden>One verified change has to make this much difference by itself, measured against the unit's best code at the time it is checked. Several small changes do not add up, and the unit's best keeps moving as other changes are accepted.</p>
-      <span class="wl-help">Independent replays measure it. This metric counts ${bpsPct(metric.min_improvement_bps)} or more.</span>
+      <span class="wl-help">In one verified change. This metric counts ${bpsPct(metric.min_improvement_bps)} or more.</span>
+      <div data-rq-scope data-rq-form="${rqKey(unit, metric, val("bo_pct"))}">${formToggle(unit, metric, val("bo_pct"))}</div>
     </div>
     <label><span class="eyebrow">${priced ? "Reward (US dollars)" : `Reward (${qsym()})`}</span><input name="bo_reward" inputmode="decimal">
       <span class="wl-help">${priced ? `Held as ${qsym()} at the price when you sign. ` : ""}Smallest reward ${priced ? usdOf(lim.minAmount) : coins(lim.minAmount)}.</span></label>
@@ -421,7 +415,7 @@ function walletReviewView(r: WalletReview): Raw {
   const usdSol = (l: bigint) => fmtUsd(solToUsd(Number(l) / 1e9));
   return box(html`<div class="kv" data-bounty-review="wallet">
       <div>Repository</div><div>${repoLabel(r.unit.repo)}, ${r.unit.recipe_name}</div>
-      <div>Asks for</div><div>${words}</div>
+      <div>Asks for</div><div data-rq-scope>${words}${requirementToggle({ metric: r.metric, pct: p.minImprovementBps / 100 }, r.unit.lineage_id)}</div>
       <div>Reward</div><div><b data-review-amount="${p.amount.toString()}">${usdOf(p.amount)}</b>, held as ${coins(p.amount)}</div>
       <div>Paid from</div><div>this wallet, ${short(me()!)}: ${coins(r.balance)} now, ${coins(r.balance - p.amount)} after</div>
       ${p.fee > 0n ? html`<div>Winner receives</div><div><b>${usdOf(p.winnerGets)}</b> as ${coins(p.winnerGets)}, after a fee of ${bpsPct(c.feeBps)} (${coins(p.fee)})</div>` : ""}
@@ -440,7 +434,7 @@ function reviewView(r: Review): Raw {
   const usdSol = (l: bigint) => fmtUsd(solToUsd(Number(l) / 1e9));
   return box(html`<div class="kv" data-bounty-review>
       <div>Repository</div><div>${repoLabel(r.unit.repo)}, ${r.unit.recipe_name}</div>
-      <div>Asks for</div><div>${words}</div>
+      <div>Asks for</div><div data-rq-scope>${words}${requirementToggle({ metric: r.metric, pct: p.minImprovementBps / 100 }, r.unit.lineage_id)}</div>
       <div>Reward</div><div><b data-review-amount="${p.amount.toString()}">${usdOf(p.amount)}</b>, held as ${coins(p.amount)}</div>
       <div>Paid from</div><div>${short(r.payer.agent)}'s compute balance: ${coins(r.balance)} now, ${coins(r.balance - p.amount)} after</div>
       <div>Deadline</div><div>${new Date(Number(p.deadline) * 1000).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>
@@ -514,12 +508,6 @@ export async function mountBountyPost(root: HTMLElement) {
       render();
       if (pick.value === CUSTOM) root.querySelector<HTMLInputElement>('[name="bo_days_custom"]')?.focus();
     }
-    const q = t.closest<HTMLElement>("[data-bounty-hint]");
-    const hint = q ? root.querySelector<HTMLElement>(`#${q.dataset.bountyHint}`) : null;
-    if (q && hint) {
-      hint.hidden = !hint.hidden;
-      q.setAttribute("aria-expanded", String(!hint.hidden));
-    }
   });
   root.addEventListener("change", (e) => {
     if ((e.target as HTMLElement).closest("[data-bounty-change]")) render();
@@ -529,6 +517,7 @@ export async function mountBountyPost(root: HTMLElement) {
     if (n === "bo_pct" || n === "bo_days_custom") refreshLines();
   });
   wireOwnerBox(root, render);
+  wireRequirementToggles();
   // "Request a repository" and the list of requested ones sit beside the form (repo-request.ts)
   mountRepoRequest(document.getElementById("bo-request"), document.getElementById("bo-requests"));
   startDiscovery();

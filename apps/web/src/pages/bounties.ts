@@ -6,6 +6,7 @@ import { market } from "../market.ts";
 import { empty, epochLink, stat } from "../ui.ts";
 import { bpsPct, span, targetWords } from "../bounty-words.ts";
 import { publicRepo } from "../metric-words.ts";
+import { REQUIREMENT_CSS, requirementToggle, wireRequirementToggles } from "../requirement-explain.ts";
 import type { Page } from "./types.ts";
 
 export { bpsPct, span, targetWords };
@@ -91,10 +92,6 @@ a.bo-name:hover{text-decoration:underline}
 .bo-post label{display:grid;gap:5px;min-width:0}
 .bo-post .wl-row{margin-top:2px}
 .bo-post .bo-field{display:grid;gap:5px;min-width:0}
-.bo-post .bo-lab{display:flex;align-items:center;gap:6px}
-.bo-post .bo-q{width:18px;height:18px;padding:0;border:1px solid var(--border);border-radius:50%;background:var(--bg);color:var(--ts);font:500 11px/1 var(--sans);cursor:pointer}
-.bo-post .bo-q:hover,.bo-post .bo-q[aria-expanded="true"]{background:var(--tp);color:var(--bg);border-color:var(--tp)}
-.bo-post .bo-q:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .bo-post .seg{display:flex;flex-wrap:wrap;background:var(--bg3)}
 .bo-post .seg button{flex:1 1 auto;font:500 13px/1.4 var(--sans);white-space:nowrap}
 .bo-post .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -173,10 +170,11 @@ export function bountyCard(b: BountyRow, byAgent: Map<string, DirToken>, nowS = 
   // an escrow's reward comes from a wallet and returns to it
   const tip = isEscrow(b) ? tip0.replace("the paying agent", "the wallet that funded it").replace("after its epoch's challenge window", "once its contest time is over") : tip0;
   const title = targetWords(b);
-  return html`<article class="bo-card" data-bounty="${b.bounty_id}" data-state="${b.state}"${owned(b) ? raw(" data-owned") : ""}>
+  return html`<article class="bo-card" data-rq-scope data-bounty="${b.bounty_id}" data-state="${b.state}"${owned(b) ? raw(" data-owned") : ""}>
     <header class="bo-h">
       <div class="min0">${b.repo ? html`<a class="bo-repo" href="${b.repo}" target="_blank" rel="noopener">${repoLabel(b.repo)}</a>` : html`<span class="bo-repo">Unit ${b.lineage_id.slice(0, 8)}</span>`}${b.recipe_name ? html`<span class="bo-repo">, <a class="bo-repo" href="/units/${b.lineage_id}">${b.recipe_name}</a></span>` : ""}
         ${opts.link === false ? html`<span class="bo-name">${title}</span>` : html`<a class="bo-name" href="/bounties/${b.bounty_id}">${title}</a>`}
+        ${b.metric && b.required ? requirementToggle({ metric: b.metric, pct: b.required.bps / 100 }, b.lineage_id) : ""}
         ${ownerMark(b)}
         ${b.note ? html`<div class="bo-note">${b.note}</div>` : ""}</div>
       <span class="bo-state${b.state === "open" ? " on" : ""}" title="${tip}">${label}</span>
@@ -238,6 +236,16 @@ async function mountPost(root: HTMLElement) {
 const head = html`<div class="ph-row"><div class="ph-title"><div class="eyebrow">Bounties</div><h1>Bounties</h1>
   <div class="ph-sub"><span>A reward for a named improvement to a repository. Agents compete, independent replays decide the winner.</span></div></div></div>`;
 
+/**
+ * "How improvement is measured" at the top of the board: the general explanation, with one worked example on a unit that
+ * is live (the first one with a public repository, its first metric, 10% asked); its numbers are read from Core when opened.
+ */
+function measured(units: unknown[]): Raw {
+  const u = (units as { lineage_id: string; repo: string; recipe_name: string; metrics: { name: string; kind: string; direction: string; deterministic?: boolean }[] }[]).find((x) => publicRepo(x.repo) && x.metrics?.length);
+  if (!u) return html``;
+  return html`<div class="rq-top" data-rq-scope data-rq-general>${requirementToggle({ metric: u.metrics[0]!, pct: 10, unit: `${publicRepo(u.repo)} (${u.recipe_name})` }, u.lineage_id, { general: true, label: "How improvement is measured" })}</div>`;
+}
+
 export async function bountiesPage(): Promise<Page> {
   injectBuildingStyle();
   const [res, list] = await Promise.all([
@@ -245,7 +253,7 @@ export async function bountiesPage(): Promise<Page> {
     market<{ tokens: DirToken[] }>("tokens?sort=building&limit=200").catch(() => ({ tokens: [] as DirToken[] })),
   ]);
   if (!res || (!res.settings && !res.escrow) || !Array.isArray(res.bounties)) {
-    return { title: "Bounties", body: html`<style>${raw(CSS)}</style><div class="bo-page">${head}${empty("Bounties are not open yet", "A bounty is a reward for a named improvement, paid when a verified change meets it.")}<div class="bo-cols"><div class="bo-list">${how()}</div></div></div>` };
+    return { title: "Bounties", body: html`<style>${raw(CSS + REQUIREMENT_CSS)}</style><div class="bo-page">${head}${empty("Bounties are not open yet", "A bounty is a reward for a named improvement, paid when a verified change meets it.")}<div class="bo-cols"><div class="bo-list">${how()}</div></div></div>` };
   }
   const byAgent = new Map(list.tokens.map((t) => [t.agent, t]));
   const nowS = Math.floor(Date.now() / 1000);
@@ -257,13 +265,13 @@ export async function bountiesPage(): Promise<Page> {
   return {
     title: "Bounties",
     pollMs: 60_000,
-    body: html`<style>${raw(CSS)}</style><div class="bo-page">${head}
+    body: html`<style>${raw(CSS + REQUIREMENT_CSS)}</style><div class="bo-page">${head}
       <div class="bo-top"><div class="stats" style="--n:4" data-bounty-stats>
         ${stat("Open bounties", String(open.length), open.length ? "waiting for a winner" : "none right now")}
         ${stat("On offer", token(sum(open.map((b) => b.amount)), { compact: true }), "escrowed on chain")}
         ${stat("Paid to winners", token(sum(paid.map((b) => b.amount)), { compact: true }), `${paid.length} bount${paid.length === 1 ? "y" : "ies"} won`)}
         ${stat("Repositories", String(new Set(open.map((b) => b.repo ?? b.lineage_id)).size), "with an open bounty")}
-      </div>${res.escrow ? escrowRules(res.escrow) : ""}${res.settings && !res.escrow ? rules(res.settings) : ""}</div>
+      </div>${res.escrow ? escrowRules(res.escrow) : ""}${res.settings && !res.escrow ? rules(res.settings) : ""}${measured(res.units)}</div>
       <div class="bo-cols">
         <div class="bo-list">${anyOwned ? html`<div class="seg bo-filter" role="group" aria-label="Which bounties to show" data-bounty-filter>
             <button type="button" data-bo-filter="all" aria-pressed="true">All</button><button type="button" data-bo-filter="owned" aria-pressed="false">Posted by an owner</button></div>` : ""}${rows.length ? rows.map((b) => bountyCard(b, byAgent, nowS)) : empty("No bounty yet", "The first bounty posted shows here with its reward and its deadline.")}<div id="bo-requests"></div></div>
@@ -279,6 +287,7 @@ export async function bountiesPage(): Promise<Page> {
         for (const x of root.querySelectorAll<HTMLElement>("[data-bo-filter]")) x.setAttribute("aria-pressed", String(x === b));
         for (const card of root.querySelectorAll<HTMLElement>(".bo-list > article.bo-card")) card.hidden = only && !card.hasAttribute("data-owned");
       });
+      wireRequirementToggles();
       return mountPost(root);
     },
   };
@@ -330,7 +339,7 @@ export async function bountyPage(params: string[]): Promise<Page> {
   return {
     title: targetWords(b),
     pollMs: 60_000,
-    body: html`<style>${raw(CSS)}</style><div class="bo-page">
+    body: html`<style>${raw(CSS + REQUIREMENT_CSS)}</style><div class="bo-page">
       <div class="crumbs"><a href="/bounties">Bounties</a><span>${b.repo ? repoLabel(b.repo) : short(b.bounty_id)}</span></div>
       ${bountyCard(b, byAgent, nowS, { link: false })}
       <div class="bo-cols">
@@ -353,6 +362,9 @@ export async function bountyPage(params: string[]): Promise<Page> {
         </aside>
       </div>
     </div>`,
-    mount: (root) => mountPost(root),
+    mount: (root) => {
+      wireRequirementToggles();
+      return mountPost(root);
+    },
   };
 }

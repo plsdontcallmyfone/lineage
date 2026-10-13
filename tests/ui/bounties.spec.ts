@@ -103,12 +103,17 @@ test("any wallet posts a bounty: the form, what a short wallet needs, the exact 
   await form.locator('[name="bo_pct"]').fill("5");
   await expect(explain.locator("[data-metric-example]")).toContainText("5% better means going from");
   const goal = Number((await explain.locator("[data-metric-example]").innerText()).match(/ to ([\d,]+) or /)![1]!.replace(/,/g, ""));
-  expect(goal).toBe(first.metrics[0].direction === "higher" ? Math.ceil(shown * 1.05) : Math.floor(shown * 0.95));
-  const q = page.locator('[data-bounty-hint="bo_pct_hint"]');
-  await expect(page.locator("#bo_pct_hint")).toBeHidden();
-  await q.click();
-  await expect(page.locator("#bo_pct_hint")).toContainText("One verified change");
-  await q.click();
+  expect(goal).toBe(first.metrics[0].direction === "higher" ? Math.ceil(shown / 0.95) : Math.floor(shown * 0.95));
+  // "What does this mean?" under the percentage: closed until asked, in this metric's own numbers, and it follows what is typed
+  const rq = form.locator("[data-rq-form]");
+  const rqPanel = rq.locator(".rq-panel");
+  await expect(rqPanel).toBeHidden();
+  await rq.locator("[data-rq-toggle]").click();
+  await expect(rqPanel.locator('[data-rq-line="win"]')).toContainText(`to ${goal.toLocaleString("en-US")} or `, { timeout: 60_000 });
+  await expect(rqPanel.locator('[data-rq-line="win"]')).toContainText("which is 5% better");
+  await expect(rqPanel.locator('[data-rq-line="one"]')).toContainText("It is one change, measured against the unit's best code at the moment that change is verified");
+  await rq.locator("[data-rq-toggle]").click();
+  await expect(rq.locator(".rq-panel")).toBeHidden();
   // the deadline: the site's segmented buttons inside the on-chain limits, a week first, the end in local time and when the reward returns
   const dl = page.locator("[data-bounty-deadline]");
   const days = [1, 3, 7, 14, 30].filter((d) => d * 86_400 >= board.escrow.min_ttl_s && d * 86_400 <= board.escrow.max_ttl_s);
@@ -152,6 +157,11 @@ test("any wallet posts a bounty: the form, what a short wallet needs, the exact 
   expect(BigInt((await review.locator("[data-review-amount]").getAttribute("data-review-amount"))!)).toBeGreaterThanOrEqual(min);
   expect(BigInt((await review.locator("[data-review-rent]").getAttribute("data-review-rent"))!)).toBeGreaterThan(0n);
   await expect(review).toContainText("Network fee");
+  // the requirement is explained in the review too, by the same toggle
+  await expect(review.locator("[data-rq-toggle]")).toHaveCount(1);
+  await review.locator("[data-rq-toggle]").click();
+  await expect(review.locator('.rq-panel [data-rq-line="one"]')).toContainText("It is one change");
+  await review.locator("[data-rq-toggle]").click();
   await expect(review).toContainText("returns to it when the bounty closes");
   await expect(page.locator("[data-bounty-post]")).toContainText("to no other wallet");
   await expect(page.locator('[data-bounty-act="sign"]')).toBeEnabled();
@@ -254,4 +264,39 @@ test("Request a repository: the box, a repository that already has units, and th
   }
   expect(await monoChrome(page), "monospace on UI chrome").toEqual([]);
   await cleanPage(page);
+});
+
+// "What does this mean?" beside a requirement and "How improvement is measured" on the board (owner
+// 2026-10-13): closed by default, one open at a time, and every figure in the panel is one Core serves.
+test("the board explains how improvement is measured, with a live unit's own numbers", async ({ page, request }) => {
+  const board = await (await request.get("/api/bounties/board")).json().catch(() => null);
+  test.skip(!board || (!board.settings && !board.escrow), "the board is not open on this site");
+  const unit = (board.units as any[]).find((u) => /^https?:\/\//.test(u.repo) && u.metrics.length);
+  test.skip(!unit, "this site has no unit a bounty can name");
+  await page.goto("/bounties");
+  const top = page.locator("[data-rq-general]");
+  await top.waitFor({ timeout: 60_000 });
+  const btn = top.locator("[data-rq-toggle]");
+  await expect(btn).toHaveText("How improvement is measured");
+  await expect(btn).toHaveAttribute("aria-expanded", "false");
+  await expect(top.locator(".rq-panel")).toBeHidden();
+  await btn.click();
+  await expect(btn).toHaveAttribute("aria-expanded", "true");
+  const panel = top.locator(".rq-panel");
+  await expect(panel.locator('[data-rq-line="example"]')).toContainText(unit.metrics[0].name);
+  await expect(panel.locator('[data-rq-line="now"]')).toBeVisible({ timeout: 60_000 });
+  // the value in the panel is one Core serves for that unit and metric
+  const u = await (await request.get(`/api/lineages/${unit.lineage_id}`)).json();
+  const g = u.height > 0 ? await (await request.get(`/api/generations/${u.tip}`)).json() : null;
+  const served = [u.calibration.metrics[unit.metrics[0].name]?.base_value, ...((g?.replays ?? []) as any[]).flatMap((r) => r.result?.metrics?.[unit.metrics[0].name]?.cand ?? [])].filter((x) => typeof x === "number");
+  const now = await panel.locator('[data-rq-line="now"]').innerText();
+  expect(served.some((v: number) => now.includes(Math.round(v).toLocaleString("en-US"))), `a served value in: ${now}`).toBe(true);
+  await expect(panel.locator('[data-rq-line="moving"]')).toContainText("the unit's best moves");
+  expect(await monoChrome(page), "monospace on UI chrome").toEqual([]);
+  await cleanPage(page);
+  await page.keyboard.press("Escape");
+  await expect(btn).toHaveAttribute("aria-expanded", "false");
+  // every card with a requirement carries its own toggle
+  const withAsk = (board.bounties as any[]).filter((b) => b.metric && b.required && (!b.repo || /^https?:\/\//.test(b.repo))).length;
+  await expect(page.locator("article.bo-card [data-rq-toggle]")).toHaveCount(withAsk);
 });

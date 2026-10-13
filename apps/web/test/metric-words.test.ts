@@ -18,7 +18,7 @@ test("a metric nothing can be derived for keeps its raw name with its kind", () 
   expect(w).toMatchObject({ sort: "other", noun: "", label: "score (perf, higher is better)" });
 });
 test("what is measured: instructions are exact only when the metric is deterministic", () => {
-  expect(metricWords(perf("decode_ir")).what).toContain("every replay gets the same number");
+  expect(metricWords(perf("decode_ir")).what).toContain("the same code on the same input always gives the same number");
   expect(metricWords({ ...perf("decode_ir"), deterministic: false }).what).not.toContain("exact");
 });
 test("an improvement in the metric's own terms never rounds toward the easy side", () => {
@@ -26,7 +26,10 @@ test("an improvement in the metric's own terms never rounds toward the easy side
   expect(metricValue(149_988_301, w)).toBe("149,988,301 CPU instructions");
   expect(improvementExample(149_988_301, 5, m, w)).toBe("from 149,988,301 CPU instructions to 142,488,885 or fewer");
   const up = { name: "score", kind: "perf", direction: "higher" };
-  expect(improvementExample(1000, 2.55, up, metricWords(up))).toBe("from 1,000 to 1,026 or more");
+  // higher is better: the ratio base / cand has to be at most 1 - p, so 1,000 has to reach 1,000 / 0.9745
+  expect(improvementExample(1000, 2.55, up, metricWords(up))).toBe("from 1,000 to 1,027 or more");
+  expect(improvementExample(180, 10, up, metricWords(up))).toBe("from 180 to 200 or more");
+  expect(improvementExample(200, 10, m, w)).toBe("from 200 CPU instructions to 180 or fewer");
   const b = { name: "so_bytes", kind: "slim", direction: "lower" };
   expect(improvementExample(24_720, 0.5, b, metricWords(b))).toBe("from 24,720 bytes to 24,596 or less");
   for (const bad of [null, undefined, 0, Number.NaN]) expect(improvementExample(bad as number, 5, m, w)).toBeNull();

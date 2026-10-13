@@ -457,3 +457,36 @@ the setting on changes only the page's sentence, so it must stay off.
   a new repository only after the reading; readings bounded and stored per head commit as in
   repo-check.ts; the list capped at 200 rows.
 - Text: the note is the only free text; it is cleaned on the way in and escaped on the way out.
+
+## 11. What the percentage means (owner, 2026-10-13: "explain what the 10% really means")
+
+Beside every requirement a visitor reads (a board card, the bounty's page, the post form under
+"Improvement required", and the review before signing) there is a "What does this mean?" button. It
+opens a panel in place, is closed by default, closes with Escape, and one is open at a time within a
+card. The board has one "How improvement is measured" above the list with the general version and a
+worked example on a unit that is live. One component draws all of them
+(apps/web/src/requirement-explain.ts); the unit's measurements are read from Core when a panel is
+first opened (apps/web/src/unit-measure.ts).
+
+**The rule the panel states**, as Core and the escrow program apply it:
+
+- The percentage is the improvement of ONE accepted change over its parent: the unit's best code at
+  the moment that change is verified. It comes from that change's replay verdict
+  (`improvement_bps = floor((1 - ci_high) x 10,000)`, records.ts `improvementBps`; `ci_high` is the
+  least favourable reading where runs differ, and the ratio itself on an exact metric). The ratio is
+  candidate over parent where lower is better and parent over candidate where higher is better.
+- It is not a total over several changes, not measured against the repository as it was when the
+  bounty was posted, and not recomputed when the claim is sent: the program checks the figure in the
+  result leaf Core wrote when the change was accepted.
+- The target moves with the unit's best. A change still waiting when another is accepted is
+  verified again on top of the new best (core.ts: a candidate whose parent is no longer the tip is
+  rebased and replayed), so its percentage is counted from there.
+- Only a change accepted after the bounty was posted (`accepted_at >= created_at`, in an epoch from
+  `min_epoch` on) and in an epoch posted by the deadline counts.
+
+**The figures** are Core's: the value measured in the replays of the unit's newest generation (the
+middle measurement, never an average) with that generation's number and date, or the value of the
+unit's setup when nothing was accepted yet; the winning number is that value times one less the
+percentage, never rounded toward the easy side. A sentence whose figure Core did not serve is left
+out. The wording follows the metric's kind (CPU instructions, bytes, compute units, time), from the
+same derivation as the form's labels.
