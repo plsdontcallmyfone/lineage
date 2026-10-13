@@ -1,0 +1,14 @@
+{
+  "_note": "units_bounty on mainnet (docs/MAINNET-RUNBOOK.md 'Bounty escrow program'; scripts/mainnet/bounty-init.ts). Public values only. NOT deployed, NOT initialized. Every value under `settings` is an admin-editable onchain setting; the ones filled in are a PROPOSAL of the bounty escrow lane (the values the devnet deployment runs with), not owner decisions. `admin` is the wallet or multisig vault that administers the program after init; `min_amount_units` is the smallest reward in whole $UNITS. Both are null until the owner names them, and `bounty-init.ts send` refuses while any value is null or `owner_confirmed` is false. refund_grace_s must be above the registry's challenge window (3,600 s on mainnet, read 2026-10-13 from GET /v1/challenges/config), or a generation in an epoch posted at the deadline could not be claimed before the refund opens; the script refuses otherwise.",
+  "owner_confirmed": false,
+  "admin": null,
+  "settings": {
+    "min_amount_units": null,
+    "min_ttl_s": 3600,
+    "max_ttl_s": 2592000,
+    "refund_grace_s": 86400,
+    "contest_s": 3600,
+    "fee_bps": 0,
+    "paused": false
+  }
+}

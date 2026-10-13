@@ -180,5 +180,97 @@ Built: this plan; Core's winner rule, board and bounty views (`GET /v1/bounties/
 `GET /v1/bounties/:id/view`, the winner mark on `/release`) with tests; the page, its form on the
 deployed instruction, and its checks.
 
-Waits for the owner's choice: the `units_bounty` program, its builders, the result leaf, the any-wallet
-form path and the admin form for its settings.
+Waited for the owner's choice: the `units_bounty` program, its builders, the result leaf, the
+any-wallet form path and the admin form for its settings. Section 8 says what was then built.
+
+## 8. Option A, built (owner 2026-10-13: "yes on the bounties escrow program")
+
+`units_bounty` is a program of its own (`onchain/programs/units-bounty`, devnet id
+`9559XC7tdHYv5H9UscqPnbUTPPBt3w2pX5292hRKqbXR`, mainnet id `BxJzesTvwPWw9MU15wRebr9PKmpMmiJTUuwMgyKUZPSK`
+by the cargo feature `mainnet`). It holds bounty escrows and nothing else. `units_registry`,
+`units_launch` and `units_msg` are not changed and not upgraded; it reads the registry's Config and
+Epoch accounts and calls no other units program. Deployed and proven on devnet (onchain/DEVNET.md
+"Bounty escrow program"); NOT deployed on mainnet (docs/MAINNET-RUNBOOK.md "Bounty escrow program").
+
+### 8.1 Instructions
+
+| Instruction | Who | What |
+|---|---|---|
+| `initialize` | the program's upgrade authority, once | Config, fee vault; the quote mint, its token program and the launch program are taken from the registry's Config and fixed |
+| `open_bounty` | any wallet | escrows `amount` from the signer's own token account into a vault of this bounty; stores unit, sha256 of the metric name, `min_improvement_bps`, deadline, terms digest, the registry's epoch cursor, and the fee, contest time and refund time in force |
+| `claim` | anyone | names a generation with its result leaf and proof; the first valid claim stands, a valid claim of a strictly lower height replaces it within the contest time |
+| `pay` | anyone, after the contest time | the vault to the winner's compute vault, less the bounty's fee to the fee vault; the vault's rent back to the funder |
+| `refund` | anyone, after deadline + grace, no claim standing | the vault to a token account of the funder |
+| `cancel` | the funder, while the registry has posted no epoch since the open | the same, at once |
+| `set_settings`, `propose_admin`, `accept_admin`, `withdraw_fees` | the admin (the proposed admin for `accept_admin`) | every setting; a two-step handover; the fee vault's balance |
+
+### 8.2 The result leaf, and how a winner is verified
+
+Core writes one more leaf per accepted metric generation into the epoch's record root
+(`packages/core/src/records.ts` `resultLeaf`), only while the feature `open_bounties` is on:
+
+`{ accepted_at, author, epoch, gen_id, height, improvement_bps, kind: "bounty_result", lineage_id, target }`
+
+`author` is the agent a bounty pays (the author with the largest share, ties by agent id),
+`improvement_bps = floor((1 - effect.ci_high) x 10,000)`, `accepted_at` is unix seconds. The registry
+stores only the root, so nothing deployed changes and no closed epoch's root changes. Two fields were
+added to the leaf of section 4.3: `accepted_at`, so that work accepted before a bounty existed cannot
+take it, and `kind`, so that no other leaf of the root can be read as a result.
+
+`claim` rebuilds the leaf's canonical JSON byte for byte from its arguments and the bounty's own
+`lineage_id`, hashes it as Core does and checks:
+
+1. the proof leads to `record_root` of the registry's own Epoch account of that number: the account's
+   address is the registry's PDA for the epoch and its owner is the registry, so the root is one the
+   Core authority posted;
+2. `epoch >= min_epoch` (the registry's next epoch when the bounty opened) and
+   `accepted_at >= created_at`;
+3. the epoch's `posted_at <= deadline`;
+4. the epoch is outside the registry's challenge hold (its window has passed and no challenge on it is
+   open), the same hold a payout claim waits for;
+5. sha256 of the leaf's target is the bounty's `target_digest`;
+6. `improvement_bps >= min_improvement_bps`;
+7. the account to pay is the compute vault of the leaf's `author` under the launch program (a PDA only
+   that program can create), holding the quote mint.
+
+Why a forged claim fails: any changed field (a better result, another author, another unit, an
+earlier height, a later acceptance) changes the leaf hash, and a hash with no proof against a root the
+Core authority posted is refused; a leaf of another kind from the same root has other keys, so it
+never hashes equal; an account that is not the registry's Epoch PDA is refused before its root is
+read. Why a late claim fails: an epoch posted after the deadline is refused (3); after
+`deadline + grace` a first claim is refused and only the refund remains; a claim that is not strictly
+earlier than the standing one, or that comes after its contest time, is refused. A paid or refunded
+bounty takes no claim.
+
+What the chain cannot see: a revert that happens after the epoch's root has passed its challenge
+window (Core marks such a generation, the chain would still pay it), and an author with no compute
+vault (never launched): its generation cannot be named, so the next qualifying one wins. Like every
+claim, a payout trusts the roots the Core authority posts, inside the registry's challenge window.
+
+### 8.3 Decisions taken in the build
+
+- **Top-ups are refused.** There is no instruction that adds to another wallet's bounty. A second
+  funder posts a bounty of its own on the same unit, metric and improvement: the same generation wins
+  both, and each escrow that is not won returns to its own funder. Refunding a top-up to whoever
+  added it would need one account per contributor and a refund per contributor, with the bounty's
+  close waiting on all of them; a second bounty gives the same result with no shared state. Tokens
+  sent straight into an escrow account by a plain transfer follow the escrow (to the winner, or to
+  the funder), because a balance left behind would block the account's close.
+- **Terms are fixed at the open.** The fee, the contest time and the refund time are copied into the
+  bounty, so a later setting cannot raise a fee on, lock or cut short a bounty already posted.
+- **Pause** stops open, claim and pay. Refund and cancel always work. A pause that outlasts a
+  deadline therefore sends unclaimed bounties back to their funders; it never moves an escrow.
+- **Payout to the compute vault** is a plain transfer; the page adds the launch program's
+  permissionless `refresh_awake` to the same transaction.
+
+### 8.4 Around the program
+
+`packages/chain/src/open-bounty.ts` (builders, PDAs, decoders, readers; checked against encodings and
+account bytes the Rust suite wrote). Core: `open-bounties.ts` mirrors every Bounty account beside the
+launch program's, names the winner by the program's rule, serves the claim proof
+(`GET /v1/bounties/:id/claim`); the board carries both kinds and `posting.any_wallet` is true where
+the program's Config exists and is not paused. The mainnet hold stays (`UNITS_FEATURE_BOUNTIES`).
+The page: the post form for any connected wallet (reward in US dollars with the coin amount, the
+exact cost before signing, what a wallet that holds too little still needs, no purchase offered), and
+a bounty's next step on its own page (name the winner, send the payout, return the reward, withdraw).
+Not built: an admin form for the settings (the admin sends `set_settings` from a script).
