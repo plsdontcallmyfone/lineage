@@ -53,9 +53,9 @@ export interface BindHost {
 }
 
 /** Co-signs a checked wire with `key`, simulates and sends it; the transaction signature. */
-export type CosignSend = (key: AgentKey, txBase64: string, agent: string) => Promise<{ signature: string }>;
-/** Co-signs a checked wire with `key` and returns it (base64), unsent. */
-export type CosignOnly = (key: AgentKey, txBase64: string, agent: string) => Promise<{ tx: string; signature: string }>;
+export type CosignSend = (key: AgentKey, txBase64: string, agent: string, nonce?: string | null) => Promise<{ signature: string }>;
+/** Co-signs a checked wire with `key` and returns it (base64), unsent. `nonce`: the key's own nonce account, when it has one (a durable rotation advances it first). */
+export type CosignOnly = (key: AgentKey, txBase64: string, agent: string, nonce?: string | null) => Promise<{ tx: string; signature: string }>;
 
 /** What reserving needs beyond the bind host: the reservations and one chain read. */
 export interface ReserveHost {
@@ -95,12 +95,18 @@ const ROTATE = ixDisc("rotate_agent_key");
 
 const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
 
-/** Refuses a wire that is not exactly a rotation of `agent` to `key` (plus compute budget). */
-export function checkBindTx(wire: Uint8Array, key: string, agent: string): string[] {
-  const plan = inspectForCosign(wire, key, { expectAgent: agent });
+/**
+ * Refuses a wire that is not exactly a rotation of `agent` to `key` (plus compute budget). With `nonce`
+ * (the key's own nonce account, docs/plans/SEAMLESS-BIND.md section 10) the rotation may be a durable
+ * one: AdvanceNonceAccount of exactly that account as instruction 0, and nothing else added.
+ */
+export function checkBindTx(wire: Uint8Array, key: string, agent: string, nonce?: string | null): string[] {
+  const plan = inspectForCosign(wire, key, { expectAgent: agent, nonce: nonce ?? undefined });
   let rotations = 0;
   for (const ix of plan.message.instructions) {
     if (ix.programId === COMPUTE_BUDGET_PROGRAM) continue;
+    // the advance of the key's own nonce account, instruction 0 only (inspectForCosign refused every other System instruction)
+    if (plan.durable && ix === plan.message.instructions[0]) continue;
     // a wallet's own guard (Phantom adds Lighthouse assertions): it only checks state and can fail the transaction, it moves nothing
     if (ix.programId === LIGHTHOUSE_PROGRAM) continue;
     if (ix.programId !== REGISTRY_PROGRAM_ID || ix.data.length < 8 || !ROTATE.every((b, i) => b === ix.data[i])) throw new Error("refusing to co-sign: only rotate_agent_key binds a hosted agent");
@@ -120,8 +126,12 @@ export interface BindHooks {
   /** GET /runtime/bind/health */
   health?: () => Promise<{ ok: boolean } & Record<string, unknown>>;
   count?: (what: "reservations" | "cosigns") => void;
-  /** a wallet-signed rotation that was just co-signed for its launcher to send: kept, and sent from here when the launch is on chain without it */
-  cosigned?: (agent: string, keyId: string, walletSignedTx: string) => void;
+  /** a wallet-signed rotation that was just co-signed for its launcher to send: kept, and sent from here when the launch is on chain without it. `nonce`: it is a durable one over this nonce account */
+  cosigned?: (agent: string, keyId: string, walletSignedTx: string, nonce: string | null) => void | Promise<void>;
+  /** the key's own nonce account, when it has one (a key from the pool) */
+  nonceFor?: (agent: string, keyId: string) => string | null;
+  /** what a reservation's answer carries beyond the key: the nonce account and its stored value for the backup signature */
+  reserved?: (agent: string, keyId: string) => Promise<Record<string, unknown>>;
 }
 
 export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: ReserveHost; waiting?: WaitingOf; log?: (m: string) => void; hooks?: BindHooks }) {
@@ -181,7 +191,8 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
       const r = o.reserve.reservations.reserve(agent, callerOf(req));
       if (r.ok && fresh) o.hooks?.count?.("reservations");
       if (!r.ok) return json(429, { error: r.why === "full" ? "reservations_full" : "too_many_reservations", message: "the hosted runtime is holding as many unlaunched agents as it takes; the launch still works and binds right after it" });
-      return json(200, { agent, new_key: r.key.id, status: "reserved", expires_at: r.expires_at });
+      const extra = (await o.hooks?.reserved?.(agent, r.key.id).catch(() => ({}))) ?? {};
+      return json(200, { agent, new_key: r.key.id, status: "reserved", expires_at: r.expires_at, ...extra });
     }
     // not on chain yet: a reserved agent's rotation is co-signed for its launcher to send with the launch, never sent from here
     const reserved = !t && signOnly ? (o.reserve?.reservations.get(agent) ?? null) : null;
@@ -191,8 +202,11 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
     const key = reserved ? o.reserve!.reservations.keyOf(agent) : o.host.keyOf(agent);
     if (!key || key.id !== t.new_key) return json(500, { error: "no_key" });
     let summary: string[];
+    const nonce = o.hooks?.nonceFor?.(agent, key.id) ?? null;
+    let durable = false;
     try {
-      summary = checkBindTx(new Uint8Array(Buffer.from(tx, "base64")), key.id, agent);
+      summary = checkBindTx(new Uint8Array(Buffer.from(tx, "base64")), key.id, agent, nonce);
+      durable = summary[0]?.startsWith("durable nonce") ?? false;
     } catch (e) {
       return json(400, { error: "refused", message: (e as Error).message });
     }
@@ -200,9 +214,10 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
       if (!o.reserve) return json(404, { error: "not_supported", message: "this runtime sends the bind itself" });
       if (reserved && !o.reserve.reservations.takeSign(agent)) return json(429, { error: "too_many_signs", message: "this reservation was co-signed as often as it may be; the bind follows the launch" });
       try {
-        const r = await o.reserve.sign(key, tx, agent);
+        const r = await o.reserve.sign(key, tx, agent, nonce);
         o.hooks?.count?.("cosigns");
-        o.hooks?.cosigned?.(agent, key.id, tx);
+        // kept before the answer leaves: once the page has the co-signature it may send the launch and be gone
+        await o.hooks?.cosigned?.(agent, key.id, tx, durable ? nonce : null);
         log(`co-signed the bind of ${reserved ? "reserved" : "hosted"} agent ${agent} to runtime key ${key.id} for its launcher to send (${r.signature}); ${summary.join("; ")}`);
         return json(200, { agent, new_key: key.id, tx: r.tx, signature: r.signature });
       } catch (e) {
@@ -214,7 +229,7 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
     if (busy.has(agent)) return json(409, { error: "busy", message: "a bind for this agent is being sent" });
     busy.add(agent);
     try {
-      const r = await o.send(key, tx, agent);
+      const r = await o.send(key, tx, agent, nonce);
       log(`bound hosted agent ${agent} to runtime key ${key.id} (owner-signed rotation co-signed and sent: ${r.signature}); ${summary.join("; ")}`);
       return json(200, { agent, new_key: key.id, signature: r.signature });
     } catch (e) {
@@ -229,17 +244,17 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
 
 /** The production sender: lineage-chain's devnet co-sign path (checks again, simulates, sends, confirms). */
 export function chainCosign(rpcUrl: string, log: (m: string) => void, genesis?: string): CosignSend {
-  return async (key, tx, agent) => {
+  return async (key, tx, agent, nonce) => {
     const { cosignCommand } = await import("../../chain/src/cosign.ts");
-    const r = await cosignCommand({ key, tx, rpcUrl, expectAgent: agent, log: (m) => log(`  ${m}`), genesis });
+    const r = await cosignCommand({ key, tx, rpcUrl, expectAgent: agent, log: (m) => log(`  ${m}`), genesis, nonce: nonce ?? undefined });
     return { signature: r.signature };
   };
 }
 
 /** The production co-signer for `sign_only`: the same checks as the sender (cosign.ts cosignWire), nothing simulated or sent. */
-export const chainCosignOnly: CosignOnly = async (key, tx, agent) => {
+export const chainCosignOnly: CosignOnly = async (key, tx, agent, nonce) => {
   const { cosignWire } = await import("../../chain/src/cosign.ts");
-  const r = await cosignWire({ key, tx, expectAgent: agent });
+  const r = await cosignWire({ key, tx, expectAgent: agent, nonce: nonce ?? undefined });
   return { tx: Buffer.from(r.wire).toString("base64"), signature: r.signature };
 };
 

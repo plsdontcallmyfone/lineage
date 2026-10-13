@@ -5,6 +5,7 @@ import { MSG_PROGRAM_ID, LAUNCH_PROGRAM_ID, REGISTRY_PROGRAM_ID } from "./progra
 import { PUMP } from "./pump.ts";
 import { registryPdas } from "./registry.ts";
 import { COMPUTE_BUDGET_PROGRAM } from "./tx.ts";
+import { isAdvanceOf, withdrawOf } from "./nonce.ts";
 import { ALT_PROGRAM } from "./v0.ts";
 
 // The transaction firewall's policy (docs/plans/AGENT-WALLET-SAFETY.md section 3.3): a pure function
@@ -26,10 +27,17 @@ export interface FirewallContext {
   agent: Address | null;
   /** frozen, live lookup tables read from chain by the firewall: address -> its addresses */
   tables: Map<Address, Address[]>;
+  /**
+   * The key's own nonce account and the platform payer that funded it (docs/plans/SEAMLESS-BIND.md
+   * section 10), from the runtime's key pool, never from a transaction. With it the key may also sign:
+   * its agent's rotation with AdvanceNonceAccount of this account as instruction 0, and the withdrawal
+   * of this account's balance back to that payer and nowhere else.
+   */
+  nonce?: { account: Address; payer: Address } | null;
 }
 
 export type Verdict =
-  | { ok: true; kind: "message" | "registry"; summary: string }
+  | { ok: true; kind: "message" | "registry" | "nonce_close"; summary: string }
   | { ok: false; rule: string; detail: string };
 
 const refuse = (rule: string, detail: string): Verdict => ({ ok: false, rule, detail });
@@ -235,6 +243,26 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   if (at < 0 || at >= m.numSigners) return refuse("not_a_signer", "the key is not a signer of this message");
   const isPayer = at === 0;
   const readonlySigner = at >= m.numSigners - m.numReadonlySigned;
+
+  // The key's own nonce account. A System instruction is looked at only here, and only in two exact shapes;
+  // any other System instruction, or one of these anywhere else, falls through to "program not allowed".
+  let advanced = false;
+  let instructions = m.instructions;
+  const body = instructions.filter((ix) => ix.programId !== COMPUTE_BUDGET_PROGRAM);
+  const lamports = c.nonce && body[0] ? withdrawOf(body[0], c.nonce.account, c.nonce.payer, c.key) : null;
+  if (c.nonce && lamports !== null) {
+    // closing: the rent goes back to the payer that funded it, in a transaction that does nothing else
+    if (body.length !== 1) return refuse("nonce_close", "a nonce withdrawal with other instructions beside it");
+    if (isPayer) return refuse("key_pays", "the key is the fee payer of its nonce withdrawal (the platform payer pays)");
+    if (!readonlySigner) return refuse("key_writable", "the key is a writable account of its nonce withdrawal");
+    for (const ix of instructions) if (ix.programId === COMPUTE_BUDGET_PROGRAM && ix.accounts.length) return refuse("compute_budget", "a compute budget instruction with accounts");
+    return { ok: true, kind: "nonce_close", summary: `nonce_close: ${lamports} lamports of ${c.nonce.account} back to the payer ${c.nonce.payer}; the key signs read-only and pays nothing` };
+  }
+  if (c.nonce && instructions[0]?.programId === SYSTEM_PROGRAM) {
+    if (!isAdvanceOf(instructions[0]!, c.nonce.account, c.key)) return refuse("nonce", "a System instruction that is neither the advance nor the withdrawal of this key's own nonce account");
+    advanced = true;
+    instructions = instructions.slice(1);
+  }
   if (!c.agent) return refuse("unknown_agent", "this key belongs to no agent the runtime knows");
 
   // every program must be on the list; nothing else is looked at before this holds
@@ -242,13 +270,13 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   // A wallet's own guard (Phantom adds Lighthouse assertions to what its owner signs, as on the bind): passed
   // over when it does not name the guarded key. The key still has to be a read-only signer that pays nothing.
   const guard = (ix: ParsedIx) => ix.programId === LIGHTHOUSE_PROGRAM && ix.accounts.every((a) => a.pubkey !== c.key);
-  for (const ix of m.instructions) if (!allowed.has(ix.programId) && !guard(ix)) return refuse("program_not_allowed", `instruction for ${nameOf(ix.programId)} (${ix.programId})`);
+  for (const ix of instructions) if (!allowed.has(ix.programId) && !guard(ix)) return refuse("program_not_allowed", `instruction for ${nameOf(ix.programId)} (${ix.programId})`);
 
   // compute budget
   let cuLimit: number | null = null;
   let cuPrice: bigint | null = null;
   const rest: ParsedIx[] = [];
-  for (const ix of m.instructions) {
+  for (const ix of instructions) {
     if (guard(ix)) continue;
     if (ix.programId !== COMPUTE_BUDGET_PROGRAM) {
       rest.push(ix);
@@ -266,6 +294,8 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   const kinds = new Set(rest.map((ix) => (ix.programId === MSG_PROGRAM_ID ? "message" : "registry")));
   if (kinds.size !== 1) return refuse("mixed_kinds", `one transaction is a message or a registry call, never ${[...kinds].join(" and ")}`);
   const kind = [...kinds][0]! as "message" | "registry";
+  // a transaction over the key's nonce is its agent's bind and nothing else: one rotate_agent_key
+  if (advanced && (kind !== "registry" || rest.length !== 1 || !starts(rest[0]!.data, DISC.rotate))) return refuse("nonce", "a transaction that advances the key's nonce holds exactly one rotate_agent_key");
 
   // the key never pays and never holds: someone else (the runtime authority or the owner's wallet) is the fee payer
   if (isPayer) return refuse("key_pays", `the key is the fee payer of a ${kind} transaction (the runtime authority or the owner's wallet pays)`);

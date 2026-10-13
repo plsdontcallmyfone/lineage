@@ -44,6 +44,12 @@ export interface ReservationsOptions {
   max?: number;
   perAddress?: number;
   maxSigns?: number;
+  /**
+   * An expired reservation whose agent never launched and whose key never signed anything: true when the
+   * caller took the key back (a pool key returns to the pool with its nonce account); the key file is then
+   * left to the caller.
+   */
+  release?(agent: string, keyId: string): boolean;
   log?: (m: string) => void;
 }
 
@@ -51,7 +57,8 @@ export const RESERVE_TTL_S = 15 * 60;
 // 1,000 since the bind became required for a hosted launch (docs/plans/SEAMLESS-BIND.md 9.6): a full list now refuses launches
 export const RESERVE_MAX = 1000;
 export const RESERVE_PER_ADDRESS = 6;
-export const RESERVE_MAX_SIGNS = 8;
+// 16: one launch try takes two (the bind in the bundle and the backup signature)
+export const RESERVE_MAX_SIGNS = 16;
 
 export type ReserveResult = { ok: true; key: AgentKey; expires_at: number } | { ok: false; why: "full" | "address_full" };
 
@@ -186,6 +193,10 @@ export class Reservations {
       try {
         const file = this.o.keyFile(agent);
         if (!existsSync(file)) continue;
+        if (r.signs === 0 && this.o.release?.(agent, r.key_id)) {
+          this.log(`reservation for ${agent} expired (no hosted launch on chain); its key ${r.key_id} never signed and went back to the pool`);
+          continue;
+        }
         if (r.signs > 0) {
           const dir = join(this.o.dir, "expired-keys");
           mkdirSync(dir, { recursive: true, mode: 0o700 });

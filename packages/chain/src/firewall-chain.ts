@@ -17,8 +17,10 @@ import { ALT_PROGRAM, decodeLookupTable } from "./v0.ts";
 // key may sign moves value.
 
 export interface FirewallIdentity {
-  /** the agent this treasury key signs for */
-  agent: Address;
+  /** the agent this treasury key signs for (null: a pool or retired key, which may only close its own nonce account) */
+  agent: Address | null;
+  /** the key's own nonce account and the payer that funded it, from the runtime's key pool (firewall.ts FirewallContext.nonce) */
+  nonce?: { account: Address; payer: Address } | null;
 }
 
 export interface AgentFirewallOptions {
@@ -105,7 +107,7 @@ export class AgentFirewall {
       const a = await this.table(t);
       if (a) tables.set(t, a);
     }
-    return { key, agent: id?.agent ?? null, tables };
+    return { key, agent: id?.agent ?? null, tables, nonce: id?.nonce ?? null };
   }
 
   /**

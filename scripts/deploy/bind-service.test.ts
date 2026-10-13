@@ -46,7 +46,7 @@ describe("units-bind.service", () => {
 
   test("the bind command itself loads no authority key and no model key (packages/runtime/src/main.ts)", () => {
     const main = readFileSync(join(DIR, "../../packages/runtime/src/main.ts"), "utf8");
-    const block = main.slice(main.indexOf('case "bind": {'), main.indexOf('case "bind-request": {'));
+    const block = main.slice(main.indexOf('case "bind": {'), main.indexOf('case "pool": {'));
     expect(block.length).toBeGreaterThan(200);
     expect(block).not.toMatch(/loadKey\(|runtime_key|loadModelEnv|loadProviderKeys|backendFor\(/);
     expect(block).toContain("installAgentFirewall(");

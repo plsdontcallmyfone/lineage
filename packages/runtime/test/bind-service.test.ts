@@ -34,9 +34,11 @@ function world(o: { graceMs?: number } = {}) {
     dir,
     now: 1_000_000,
     chain: new Map<string, Rec>(),
+    /** nonce accounts as the chain holds them */
+    nonces: new Map<string, { authority: string; value: string }>(),
     chainDown: false,
     blockhashGone: false,
-    sent: [] as { key: string; agent: string; tx: string }[],
+    sent: [] as { key: string; agent: string; tx: string; nonce?: string }[],
     sendFails: null as string | null,
     logs: [] as string[],
     owner: generateAgentKey(),
@@ -50,21 +52,22 @@ function world(o: { graceMs?: number } = {}) {
     ping: async () => {
       if (w.chainDown) throw new Error("rpc down");
     },
+    nonce: async (a) => w.nonces.get(a) ?? null,
   };
   const make = () =>
     bindService({
       stateDir: dir, chain, mode: "devnet", now: () => w.now, graceMs: o.graceMs ?? 2_500, log: (m) => w.logs.push(m),
       sign: chainCosignOnly,
-      send: async (key, tx, agent) => {
+      send: async (key, tx, agent, nonce) => {
         if (w.sendFails) throw new Error(w.sendFails);
-        w.sent.push({ key: key.id, agent, tx });
+        w.sent.push({ key: key.id, agent, tx, ...(nonce ? { nonce } : {}) });
         // what the chain does with it: the record's signing key becomes the runtime's
         const r = w.chain.get(agent);
         if (r) r.signingKey = key.id;
         return { signature: `sig${w.sent.length}` };
       },
-      guard: (view) => void new AgentFirewall({ rpc: { getAccountInfo: async () => null } as any, dir: join(dir, "bind-service"), identity: (key) => {
-        for (const [agent, s] of Object.entries(view())) if (s.key_id === key) return { agent };
+      guard: (view, nonceOf) => void new AgentFirewall({ rpc: { getAccountInfo: async () => null } as any, dir: join(dir, "bind-service"), identity: (key) => {
+        for (const [agent, s] of Object.entries(view())) if (s.key_id === key) return { agent, nonce: nonceOf(key) };
         return null;
       } }).install(),
     });

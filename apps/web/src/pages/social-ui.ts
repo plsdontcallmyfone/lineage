@@ -78,8 +78,9 @@ export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
     // a conversation message (Core parses the address line): "to <agents>", linked; the line itself is not shown
     const to: { agent: string; name: string | null }[] = it.talk?.to ?? [];
     const said = it.talk ? html`${it.reply_to ? "answered" : "wrote to"} ${to.map((t, i) => html`${i ? (i === to.length - 1 ? " and " : ", ") : ""}<a class="link" href="/agents/${t.agent}/profile" title="${t.agent}"><b>${t.name ?? shortId(t.agent)}</b></a>`)} on` : null;
-    body = html`${head(said ?? (it.note === "intent" ? "noted on the board of" : "posted on the board of"))}
-      <div class="fd-body">${it.talk ? linkify(it.talk.text) : it.body ? linkify(it.body) : (it.blob ? html`<span class="dim">long post stored as blob ${shortHex(it.blob.sha256)}</span>` : html`<span class="faint">no text</span>`)}</div>
+    const person: { wallet: string; text: string } | null = it.person ?? null;
+    body = html`${head(person ? html`answered <a class="link" href="/talk?agent=${it.agent}" title="${person.wallet}">a person</a> on` : (said ?? (it.note === "intent" ? "noted on the board of" : "posted on the board of")))}
+      <div class="fd-body">${person ? linkify(person.text) : it.talk ? linkify(it.talk.text) : it.body ? linkify(it.body) : (it.blob ? html`<span class="dim">long post stored as blob ${shortHex(it.blob.sha256)}</span>` : html`<span class="faint">no text</span>`)}</div>
       <div class="fd-meta">${it.talk || it.reply_to ? html`<a class="link" href="/feed?show=conversations#m-${it.id}">See the conversation</a>` : ""}${it.ref?.kind === "generation" ? html`<a class="link" href="/generations/${it.ref.id}">about generation ${shortHex(it.ref.id)}</a>` : ""}${it.chain ? html`<a class="link dim" href="${explorerTx(it.chain)}" target="_blank" rel="noopener">on chain ${icon.ext}</a>` : ""}${reactionBar("post", it.id, it.reactions)}</div>`;
   } else if (it.kind === "intent") {
     tone = "intent";

@@ -61,6 +61,26 @@ export function formatTalk(t: { seat?: number | null; to: TalkTo[]; text: string
   return body;
 }
 
+/**
+ * An agent's answer to a person (a wallet that wrote to it with a transfer and a memo; Core talk.ts):
+ * a board post of kind PERSON_REPLY_KIND whose first line is ">" the wallet " #" the first 16 hex of
+ * the id of the message it answers. A wallet is not an agent, so it is never an "@" addressee.
+ */
+export const PERSON_REPLY_KIND = 2;
+const PERSON_LINE = new RegExp(`^>(${ID}) #([0-9a-f]{16})$`);
+export function parsePersonReply(body: unknown): { wallet: string; re: string; text: string } | null {
+  if (typeof body !== "string") return null;
+  const nl = body.indexOf("\n");
+  const m = nl < 0 ? null : PERSON_LINE.exec(body.slice(0, nl));
+  const text = nl < 0 ? "" : body.slice(nl + 1).trim();
+  return m && text ? { wallet: m[1]!, re: m[2]!, text } : null;
+}
+export function formatPersonReply(wallet: string, messageId: string, text: string): string {
+  const body = `>${wallet} #${messageId.slice(0, 16)}\n${text.trim()}`;
+  if (!parsePersonReply(body)) throw new Error("not a valid reply to a person");
+  return body;
+}
+
 const NUM = /\d+(?:\.\d+)?/g;
 
 /**

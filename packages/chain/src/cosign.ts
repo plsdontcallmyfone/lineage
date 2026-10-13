@@ -14,6 +14,8 @@ import { COMPUTE_BUDGET_PROGRAM, signBytes, type Signer } from "./tx.ts";
 import { authorizeSigners } from "./guard.ts";
 import { assertCluster, assertDevnet, DEVNET_GENESIS, sendWire } from "./browser/client.ts";
 import { decodeMessage, parseWire, placeSignature, type DecodedMessage } from "./browser/wire.ts";
+import { isAdvanceOf } from "./nonce.ts";
+import { SYSTEM_PROGRAM } from "./pda.ts";
 
 const SPKI = Buffer.from("302a300506032b6570032100", "hex");
 const verifyEd = (signer: Address, msg: Uint8Array, sig: Uint8Array) =>
@@ -26,6 +28,8 @@ export interface CosignPlan {
   message: DecodedMessage;
   payer: Address;
   summary: string[];
+  /** the transaction is signed over this key's nonce account (its first instruction advances it): it does not expire with a blockhash */
+  durable: boolean;
 }
 
 /** Most compute units and micro-lamports per unit a co-signed transaction may ask for (audit A2 OFF-C1). */
@@ -36,8 +40,14 @@ export const COSIGN_MAX_CU_PRICE = 1_000_000n;
  * Refuses anything but a registry `register` naming this agent key, or a `rotate_agent_key` to this
  * key, already signed by every other signer. The key is never the fee payer or writable; with
  * `expectAgent`, a rotation must target that agent's record.
+ *
+ * `nonce` (the backup bind signature, docs/plans/SEAMLESS-BIND.md section 10): the key's own nonce
+ * account. Exactly one more instruction is then accepted, and only as instruction 0: the System
+ * program's AdvanceNonceAccount on that account with this key as its authority. A System instruction
+ * anywhere else, any other System instruction, another nonce account or another authority is refused,
+ * and such a transaction may hold nothing but compute budget and one rotate_agent_key besides.
  */
-export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expectAgent?: Address } = {}): CosignPlan {
+export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expectAgent?: Address; nonce?: Address } = {}): CosignPlan {
   const { signatures, message } = parseWire(wire);
   const m = decodeMessage(message);
   // lookup-table accounts are not shown in the message itself: a legacy message, or a v0 message that
@@ -53,7 +63,16 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
   if (at < m.numSigners - m.numReadonlySigned) throw new Error("refusing to co-sign: this key is a writable account of the transaction");
   const summary: string[] = [];
   let found = false;
-  for (const ix of m.instructions) {
+  let durable = false;
+  for (const [index, ix] of m.instructions.entries()) {
+    // without a nonce account for this key a System instruction is refused below like any other program's
+    if (ix.programId === SYSTEM_PROGRAM && opts.nonce) {
+      if (index !== 0) throw new Error("refusing to co-sign: a System program instruction that is not the first instruction");
+      if (!isAdvanceOf(ix, opts.nonce, agent)) throw new Error(`refusing to co-sign: the first instruction is not AdvanceNonceAccount of this key's nonce account ${opts.nonce} with this key as authority`);
+      durable = true;
+      summary.push(`durable nonce: advances ${opts.nonce}`);
+      continue;
+    }
     if (ix.programId === COMPUTE_BUDGET_PROGRAM) {
       const d = ix.data;
       const u = (o: number, n: number) => d.subarray(o, o + n).reduceRight((acc, b) => acc * 256n + BigInt(b), 0n);
@@ -70,6 +89,7 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
     if (!name) throw new Error("refusing to co-sign: a units_registry instruction other than register or rotate_agent_key");
     const a = ix.accounts[COSIGNABLE[name]!]!.pubkey;
     if (a !== agent) throw new Error(`refusing to co-sign: ${name} names ${a}, not ${agent}`);
+    if (durable && (name !== "rotate_agent_key" || found)) throw new Error("refusing to co-sign: a durable transaction holds exactly one rotate_agent_key");
     // a rotation requested for agent A must rotate A's record, not another agent the owner holds (OFF-C2)
     if (name === "rotate_agent_key" && opts.expectAgent && ix.accounts[3]!.pubkey !== registryPdas.agent(opts.expectAgent))
       throw new Error(`refusing to co-sign: rotate_agent_key targets agent record ${ix.accounts[3]!.pubkey}, not the record of ${opts.expectAgent}`);
@@ -85,7 +105,7 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
     if (sig.every((x) => x === 0)) throw new Error(`signer ${s} has not signed yet: sign with the wallet first`);
     if (!verifyEd(s, message, sig)) throw new Error(`signature of ${s} does not verify`);
   });
-  return { message: m, payer: signers[0]!, summary };
+  return { message: m, payer: signers[0]!, summary, durable };
 }
 
 export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
@@ -98,23 +118,23 @@ export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
  * caller sends it. For the bind a launcher approves together with the launch
  * (docs/plans/SEAMLESS-BIND.md): the agent's record does not exist yet, so there is nothing to simulate.
  */
-export async function cosignWire(o: { key: Signer; tx: string; expectAgent: Address }): Promise<{ wire: Uint8Array; signature: string; summary: string[]; payer: Address }> {
+export async function cosignWire(o: { key: Signer; tx: string; expectAgent: Address; nonce?: Address }): Promise<{ wire: Uint8Array; signature: string; summary: string[]; payer: Address }> {
   const wire = new Uint8Array(Buffer.from(o.tx.trim(), "base64"));
-  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
+  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent, nonce: o.nonce });
   await authorizeSigners(parseWire(wire).message, [o.key.id]);
   const signed = cosign(wire, o.key);
   return { wire: signed, signature: base58Encode(parseWire(signed).signatures[0]!), summary: plan.summary, payer: plan.payer };
 }
 
 /** `units-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */
-export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void; genesis?: string }) {
+export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void; genesis?: string; nonce?: Address }) {
   const log = o.log ?? console.log;
   const rpc = Rpc.http(o.rpcUrl, "confirmed");
   // the network profile's cluster (SPEC 14.10); devnet when the caller names none, as before
   if (!o.genesis || o.genesis === DEVNET_GENESIS) await assertDevnet(rpc);
   else await assertCluster(rpc, o.genesis);
   const wire = new Uint8Array(Buffer.from(o.tx.trim(), "base64"));
-  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
+  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent, nonce: o.nonce });
   for (const s of plan.summary) log(`  ${s}`);
   log(`  fee payer (wallet) ${plan.payer}`);
   // the transaction firewall: a guarded agent key co-signs only what its policy allows (its own bind or profile)

@@ -11,6 +11,13 @@ import { AgentFirewall, guardKey, type Rpc } from "@units/chain";
 export interface FirewallAgents {
   /** the runtime's persisted agents: agent id -> its runtime key id */
   agents(): Record<string, { key_id: string }>;
+  /**
+   * The nonce account of a key from the key pool and the payer that funded it (pool.ts,
+   * docs/plans/SEAMLESS-BIND.md section 10); null for any other key. A pool key that belongs to no
+   * agent (still in the pool, or retired) gets this and no agent: it may close its nonce account and
+   * sign nothing else.
+   */
+  nonceOf?(key: string): { account: string; payer: string } | null;
 }
 
 /** Builds the runtime's firewall, guards every key the state already names and installs it for the process. */
@@ -20,8 +27,9 @@ export function installAgentFirewall(o: { rpc: Rpc; stateDir: string; view: Fire
     dir: o.stateDir,
     log: o.log,
     identity: (key) => {
-      for (const [agent, s] of Object.entries(o.view.agents())) if (s.key_id === key) return { agent };
-      return null;
+      const nonce = o.view.nonceOf?.(key) ?? null;
+      for (const [agent, s] of Object.entries(o.view.agents())) if (s.key_id === key) return { agent, nonce };
+      return nonce ? { agent: null, nonce } : null;
     },
   }).install();
   for (const s of Object.values(o.view.agents())) guardKey(s.key_id);

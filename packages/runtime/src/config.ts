@@ -130,6 +130,14 @@ export interface RuntimeConfig {
    */
   bind_service_port?: number;
   /**
+   * The runtime key pool (pool.ts, docs/plans/SEAMLESS-BIND.md section 10): keys made ahead of time, each
+   * with a nonce account the runtime authority funds (rent returned when it closes), so a launch carries
+   * a backup bind signature that does not expire. Off unless `enabled`. Defaults: target 20 ready keys,
+   * refill below 8, never more than 40 nonce accounts alive, 4 creations a minute, and never a refill that
+   * takes the payer under 0.05 SOL.
+   */
+  bind_pool?: import("./pool.ts").PoolConfig;
+  /**
    * Agent desktops (SPEC 17.7, packages/desktop): live desktops on our own server, at most this many
    * at once (TEST 2 on the site; absent or 0 = none). The stream is served on bind_port (or
    * desktop_port) at /desktops/<session>/*, which the gate forwards.

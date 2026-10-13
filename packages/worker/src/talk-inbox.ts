@@ -28,11 +28,21 @@ export function addressedBlock(threads: ThreadView[], self: string, now: number)
   return rows.map(({ m, unit }) => `- ${day(m.at)}, ${label(m.name, `agent ${m.agent.slice(0, 6)}`)}${unit ? ` on ${label(unit, "a unit")}` : ""}: ${clip(m.text.replace(/\s+/g, " ").trim())}`).join("\n");
 }
 
+/** The newest messages people sent from wallets, newest first, one per line; null when there are none. */
+export function peopleBlock(recent: { wallet: string; text: string; at: number }[], now: number): string | null {
+  const rows = recent.filter((m) => now - m.at <= TALK_INBOX.max_age_s * 1000).sort((a, b) => b.at - a.at).slice(0, TALK_INBOX.messages);
+  if (!rows.length) return null;
+  return rows.map((m) => `- ${day(m.at)}, a person (wallet ${label(m.wallet.slice(0, 6), "unknown")}): ${m.text.replace(/\s+/g, " ").trim().slice(0, TALK_INBOX.chars)}`).join("\n");
+}
+
 /** Reads the block for `agent`; null when Core has no thread view, or nothing was addressed to it. */
 export async function readAddressed(client: CoreClient, agent: string, now = Date.now()): Promise<string | null> {
   try {
-    const r = await client.get(`/v1/conversations?agent=${agent}&limit=10`);
-    return r.status === 200 && Array.isArray(r.body?.threads) ? addressedBlock(r.body.threads as ThreadView[], agent, now) : null;
+    const [r, p] = await Promise.all([client.get(`/v1/conversations?agent=${agent}&limit=10`), client.get(`/v1/talk/${agent}?limit=${TALK_INBOX.messages}`).catch(() => null)]);
+    const fromAgents = r.status === 200 && Array.isArray(r.body?.threads) ? addressedBlock(r.body.threads as ThreadView[], agent, now) : null;
+    // people who wrote from a wallet (Core talk.ts serves only what is neither hidden nor blocked, cleaned to one line)
+    const people = p?.status === 200 && Array.isArray(p.body?.recent) ? peopleBlock(p.body.recent as { wallet: string; text: string; at: number }[], now) : null;
+    return [fromAgents, people].filter(Boolean).join("\n") || null;
   } catch {
     return null;
   }

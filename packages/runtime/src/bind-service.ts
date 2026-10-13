@@ -24,11 +24,12 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateAgentKey, type AgentKey } from "@units/protocol";
-import { compileMessage, registry } from "@units/chain";
+import { compileMessage, decodeNonceAccount, registry } from "@units/chain";
 import { cosign as placeOwnSignature } from "../../chain/src/cosign.ts";
 import { decodeMessage, parseWire, unsignedWire } from "../../chain/src/browser/wire.ts";
 import { bindHandler, checkBindTx, serveBind, waitingOf, type BindHost, type CosignOnly, type CosignSend } from "./bind.ts";
 import { keyFileIn, keyIfAny, keyOnce, keyStoreWritable } from "./keystore.ts";
+import { poolNonceOf, poolStatus, readyPoolKeys, returnPoolKey, takePoolKey } from "./pool.ts";
 import { Reservations, RESERVE_MAX } from "./reserve.ts";
 import { isAgentId } from "./state.ts";
 
@@ -40,6 +41,8 @@ export interface BindChain {
   blockhashValid(blockhash: string): Promise<boolean>;
   /** any cheap read, for the health answer */
   ping(): Promise<void>;
+  /** an initialized nonce account's authority and stored value; null when there is none at that address */
+  nonce(account: string): Promise<{ authority: string; value: string } | null>;
 }
 
 export interface BindCounters {
@@ -55,8 +58,12 @@ export interface BindCounters {
   sent_by_service: number;
   /** hosted launches seen on chain without their bind when nothing more could be sent for them (they wait for their owner's signature) */
   launches_unbound: number;
+  /** backup signatures kept (a rotation over the reserved key's nonce account: it does not expire with a blockhash) */
+  backups_kept: number;
+  /** agents bound by a backup signature sent from here, after the ordinary bind could no longer land */
+  bound_by_backup: number;
 }
-const ZERO: BindCounters = { reservations: 0, cosigns: 0, bound_with_launch: 0, bound_after: 0, sent_by_service: 0, launches_unbound: 0 };
+const ZERO: BindCounters = { reservations: 0, cosigns: 0, bound_with_launch: 0, bound_after: 0, sent_by_service: 0, launches_unbound: 0, backups_kept: 0, bound_by_backup: 0 };
 
 export interface PendingBind {
   agent: string;
@@ -69,6 +76,10 @@ export interface PendingBind {
   seen_unbound_at: number | null;
   sends: number;
   last_error: string | null;
+  /** a backup signature: the rotation is signed over this nonce account's value at that time, so it lands at any later time, once */
+  durable?: { account: string; value: string } | null;
+  /** when it may be sent next (a backup signature is retried with growing gaps, for days if need be) */
+  next_at?: number;
 }
 
 export const PENDING_MAX = RESERVE_MAX;
@@ -78,6 +89,11 @@ export const PENDING_MAX_AGE_MS = 5 * 60_000;
 export const SEND_GRACE_MS = 2_500;
 /** a blockhash is asked about only after this (a node may not know a fresh one yet) */
 const BLOCKHASH_CHECK_AFTER_MS = 30_000;
+/** a backup signature whose launch never appeared is dropped after this (the launch shares no blockhash with it, but it had only its own) */
+export const BACKUP_NO_LAUNCH_MS = 15 * 60_000;
+/** a backup signature is kept this long for a launch that is on chain without its bind */
+export const BACKUP_MAX_AGE_MS = 7 * 24 * 3600_000;
+const idOf = (agent: string, durable: boolean) => (durable ? `${agent}|backup` : agent);
 
 const writeAtomic = (file: string, body: unknown) => {
   const tmp = `${file}.tmp-${process.pid}`;
@@ -110,7 +126,7 @@ export class PendingBinds {
     this.file = join(o.dir, "pending.json");
     this.now = o.now ?? Date.now;
     this.log = o.log ?? (() => {});
-    for (const p of readJson<PendingBind[]>(this.file) ?? []) if (p && isAgentId(p.agent) && typeof p.tx === "string" && typeof p.key_id === "string") this.list.set(p.agent, p);
+    for (const p of readJson<PendingBind[]>(this.file) ?? []) if (p && isAgentId(p.agent) && typeof p.tx === "string" && typeof p.key_id === "string") this.list.set(idOf(p.agent, !!p.durable), p);
   }
 
   private save() {
@@ -128,24 +144,32 @@ export class PendingBinds {
   get(agent: string): PendingBind | null {
     return this.list.get(agent) ?? null;
   }
+  /** the backup signature kept for `agent`, when there is one */
+  backup(agent: string): PendingBind | null {
+    return this.list.get(idOf(agent, true)) ?? null;
+  }
 
   /** Keeps a wallet-signed rotation of `agent` to `keyId` (checked by the caller). The newest one replaces an older one. */
-  keep(agent: string, keyId: string, tx: string): boolean {
-    if (!this.list.has(agent) && this.list.size >= PENDING_MAX) return false;
+  keep(agent: string, keyId: string, tx: string, durable: { account: string; value: string } | null = null): boolean {
+    const id = idOf(agent, !!durable);
+    if (!this.list.has(id) && this.list.size >= PENDING_MAX * 2) return false;
     let blockhash: string;
     try {
       blockhash = decodeMessage(parseWire(new Uint8Array(Buffer.from(tx, "base64"))).message).blockhash;
     } catch {
       return false;
     }
-    this.list.set(agent, { agent, key_id: keyId, tx, blockhash, added_at: this.now(), seen_unbound_at: null, sends: 0, last_error: null });
+    // a backup signature is signed over the nonce value, which the caller read from chain: anything else is not one
+    if (durable && durable.value !== blockhash) return false;
+    this.list.set(id, { agent, key_id: keyId, tx, blockhash, added_at: this.now(), seen_unbound_at: null, sends: 0, last_error: null, durable });
     this.unbound.delete(agent);
     this.save();
     return true;
   }
 
   private drop(p: PendingBind) {
-    if (this.list.get(p.agent) === p) this.list.delete(p.agent);
+    const id = idOf(p.agent, !!p.durable);
+    if (this.list.get(id) === p) this.list.delete(id);
     this.save();
   }
 
@@ -164,7 +188,59 @@ export class PendingBinds {
     }
   }
 
+  /** A backup signature: sent only when the ordinary bind can no longer land, then again with growing gaps until the agent is bound or the nonce has moved. */
+  private async backupOne(p: PendingBind): Promise<void> {
+    const c = this.o.counters;
+    const rec = await this.o.chain.record(p.agent);
+    const age = this.now() - p.added_at;
+    if (rec?.signingKey === p.key_id) {
+      if (p.sends) {
+        c.bound_by_backup++;
+        this.log(`agent ${p.agent} is bound to ${p.key_id} by its backup signature, ${Math.round(age / 1000)} s after it was signed`);
+      }
+      return this.drop(p);
+    }
+    if (rec && !rec.hosted) return this.drop(p);
+    if (!rec) {
+      if (age > BACKUP_NO_LAUNCH_MS) this.drop(p);
+      return;
+    }
+    if (p.seen_unbound_at === null) {
+      p.seen_unbound_at = this.now();
+      this.save();
+    }
+    // the ordinary bind goes first while it still can
+    if (this.list.has(p.agent)) return;
+    if (this.now() - p.seen_unbound_at < (this.o.graceMs ?? SEND_GRACE_MS) || this.now() < (p.next_at ?? 0)) return;
+    const dead = async (why: string) => {
+      c.launches_unbound++;
+      this.unbound.set(p.agent, { key_id: p.key_id, mint: rec.mint });
+      this.log(`agent ${p.agent} was launched and is NOT bound: its backup signature can no longer land (${why}). It waits for its owner's signature.`);
+      this.drop(p);
+    };
+    if (age > BACKUP_MAX_AGE_MS) return dead("kept for the longest time a backup is kept");
+    const n = await this.o.chain.nonce(p.durable!.account);
+    if (!n || n.value !== p.durable!.value) return dead(n ? "its nonce account has moved on" : "its nonce account is gone");
+    const key = this.o.keyOf(p.agent);
+    if (!key || key.id !== p.key_id) {
+      p.last_error = "the runtime key for this agent is not in the key store";
+      return;
+    }
+    p.sends++;
+    p.next_at = this.now() + Math.min(60_000, 2_000 * 2 ** Math.min(p.sends, 5));
+    try {
+      const r = await this.o.send(key, p.tx, p.agent, p.durable!.account);
+      c.sent_by_service++;
+      p.last_error = null;
+      this.log(`sent the backup signature of ${p.agent} to ${p.key_id} (${r.signature}); its launch was on chain without its bind`);
+    } catch (e) {
+      p.last_error = String((e as Error).message).split("\n")[0]!.slice(0, 200);
+    }
+    this.save();
+  }
+
   private async one(p: PendingBind): Promise<void> {
+    if (p.durable) return this.backupOne(p);
     const c = this.o.counters;
     const rec = await this.o.chain.record(p.agent);
     const age = this.now() - p.added_at;
@@ -190,6 +266,11 @@ export class PendingBinds {
       // read once more: a bind that landed in the last block before the blockhash went is found here
       const again = await this.o.chain.record(p.agent);
       if (again?.signingKey === p.key_id) return;
+      // a backup signature is kept for this agent: it takes over from here, and nothing is lost yet
+      if (this.backup(p.agent)) {
+        this.log(`agent ${p.agent}: the bind signed with the launch ran out of time (${p.sends} send(s)); its backup signature takes over`);
+        return this.drop(p);
+      }
       c.launches_unbound++;
       this.unbound.set(p.agent, { key_id: p.key_id, mint: rec.mint });
       this.log(`agent ${p.agent} was launched and is NOT bound: the rotation its launcher signed ran out of time (${p.sends} send(s)${p.last_error ? `, last: ${p.last_error}` : ""}). It waits for its owner's signature.`);
@@ -248,8 +329,8 @@ export interface BindServiceOptions {
   chain: BindChain;
   send: CosignSend;
   sign: CosignOnly;
-  /** the firewall's view is handed this: agent -> key id of every key this process may sign with */
-  guard(view: () => Record<string, { key_id: string }>): void;
+  /** the firewall's view is handed this: agent -> key id of every key this process may sign with, and a pool key's own nonce account */
+  guard(view: () => Record<string, { key_id: string }>, nonceOf: (key: string) => { account: string; payer: string } | null): void;
   mode: string;
   log?: (m: string) => void;
   now?: () => number;
@@ -275,6 +356,7 @@ export function bindService(o: BindServiceOptions) {
       return r;
     },
     blockhashValid: (b) => o.chain.blockhashValid(b),
+    nonce: (a) => o.chain.nonce(a),
     ping: async () => {
       await o.chain.ping();
       chainOkAt = now();
@@ -298,8 +380,11 @@ export function bindService(o: BindServiceOptions) {
   const unboundCounted = new Set<string>();
   const reservations = new Reservations({
     dir: o.stateDir,
-    keyFor: (a) => keyOnce(keyFile(a)),
+    // a key from the pool when one is ready (it has a nonce account for the backup signature), else a key made now
+    keyFor: (a) => takePoolKey(o.stateDir, a) ?? keyOnce(keyFile(a)),
     keyFile,
+    // never signed and never launched: a pool key goes back to the pool with its nonce account untouched
+    release: (a, keyId) => returnPoolKey(o.stateDir, a, keyId),
     adopted: (a) => known.has(a),
     adopt: async (a) => {
       const t = await host.bindTarget(a);
@@ -314,7 +399,14 @@ export function bindService(o: BindServiceOptions) {
     now: () => Math.floor(now() / 1000),
     log,
   });
-  o.guard(() => ({ ...reservations.agents(), ...Object.fromEntries(known), ...(selfTest ? { [selfTest.agent]: { key_id: selfTest.key_id } } : {}) }));
+  o.guard(() => ({ ...reservations.agents(), ...Object.fromEntries(known), ...(selfTest ? { [selfTest.agent]: { key_id: selfTest.key_id } } : {}) }), (key) => poolNonceOf(o.stateDir, key));
+  /** The nonce account of a pool key as the chain holds it now: null when the key has none, or it is not this key's any more. */
+  const liveNonce = async (keyId: string): Promise<{ account: string; value: string } | null> => {
+    const n = poolNonceOf(o.stateDir, keyId);
+    if (!n) return null;
+    const st = await chain.nonce(n.account);
+    return st && st.authority === keyId ? { account: n.account, value: st.value } : null;
+  };
 
   let saveQueued = false;
   function saveStatus() {
@@ -382,6 +474,12 @@ export function bindService(o: BindServiceOptions) {
       key_store: { ok: store },
       cosigner: { ok: cosigner },
       chain: { ok: chainOk, last_read_s: chainOkAt ? Math.round((now() - chainOkAt) / 1000) : null },
+      // the backup signature (section 10): without a ready key a launch still binds in its bundle, so this never makes `ok` false
+      backup: (() => {
+        const ps = poolStatus(o.stateDir);
+        const ready = readyPoolKeys(o.stateDir).length;
+        return { ok: ready > 0, ready, alive: ps?.alive ?? null, cap: ps?.cap ?? null, locked_lamports: ps?.locked_lamports ?? null, payer_lamports: ps?.payer_lamports ?? null, why: ready > 0 ? null : (ps?.why ?? (ps ? "no key is ready" : "this instance has no key pool")), pool_seen_s: ps ? Math.round((now() - ps.at) / 1000) : null };
+      })(),
       kept: pending.size,
       counters: { ...counters },
     };
@@ -417,8 +515,24 @@ export function bindService(o: BindServiceOptions) {
         counters[what]++;
         saveStatus();
       },
-      cosigned: (agent, keyId, tx) => {
-        if (!pending.keep(agent, keyId, tx)) log(`rotation of ${agent} co-signed but not kept (${pending.size} kept already)`);
+      nonceFor: (_agent, keyId) => poolNonceOf(o.stateDir, keyId)?.account ?? null,
+      reserved: async (_agent, keyId) => {
+        const n = await liveNonce(keyId);
+        return n ? { nonce: n } : {};
+      },
+      cosigned: (agent, keyId, tx, nonceAccount) => {
+        if (!nonceAccount) {
+          if (!pending.keep(agent, keyId, tx)) log(`rotation of ${agent} co-signed but not kept (${pending.size} kept already)`);
+          return;
+        }
+        // a backup signature: kept with the nonce value it was signed over (read now; a value that is not the transaction's is not kept)
+        return liveNonce(keyId).then((n) => {
+          if (n && n.account === nonceAccount && pending.keep(agent, keyId, tx, n)) {
+            counters.backups_kept++;
+            saveStatus();
+            log(`backup signature of ${agent} to ${keyId} kept (nonce account ${n.account})`);
+          } else log(`backup signature of ${agent} co-signed but not kept: it is not signed over the current value of ${nonceAccount}`);
+        }).catch((e) => log(`backup signature of ${agent} not kept: ${(e as Error).message}`));
       },
     },
     log,
@@ -428,7 +542,7 @@ export function bindService(o: BindServiceOptions) {
 }
 
 /** `BindChain` over the registry reader (the same reads the runtime's backend makes for a hosted agent). */
-export function readerChain(reader: { agent(a: string): Promise<{ kind: string; hosted: boolean; signingKey?: string | null; mint: string } | null>; agentLaunch(mint: string): Promise<{ agent: string; hosted: boolean; mint: string; launcher: string } | null> }, rpc: { call<T>(method: string, params: unknown[]): Promise<T>; getBlockHeight(): Promise<number> }): BindChain {
+export function readerChain(reader: { agent(a: string): Promise<{ kind: string; hosted: boolean; signingKey?: string | null; mint: string } | null>; agentLaunch(mint: string): Promise<{ agent: string; hosted: boolean; mint: string; launcher: string } | null> }, rpc: { call<T>(method: string, params: unknown[]): Promise<T>; getBlockHeight(): Promise<number>; getAccountInfo(a: string): Promise<{ data: Uint8Array; owner: string } | null> }): BindChain {
   return {
     async record(agent) {
       const rec = await reader.agent(agent);
@@ -440,6 +554,10 @@ export function readerChain(reader: { agent(a: string): Promise<{ kind: string; 
     },
     blockhashValid: async (b) => (await rpc.call<{ value: boolean }>("isBlockhashValid", [b, { commitment: "processed" }])).value,
     ping: async () => void (await rpc.getBlockHeight()),
+    nonce: async (account) => {
+      const a = await rpc.getAccountInfo(account);
+      return a ? decodeNonceAccount(a.data, a.owner) : null;
+    },
   };
 }
 

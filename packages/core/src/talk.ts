@@ -1,8 +1,8 @@
-import { base58Decode, sha256Hex } from "@units/protocol";
+import { base58Decode, parsePersonReply, sha256Hex } from "@units/protocol";
 import type { Rpc } from "@units/chain";
 import type { Core } from "./core.ts";
 import { conversationsOf } from "./conversations.ts";
-import { bad, notFound } from "./errors.ts";
+import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { hiddenOf } from "./hidden.ts";
 import { socialOf } from "./social.ts";
 
@@ -140,7 +140,8 @@ export class Talk {
 
   private settings() {
     const s = conversationsOf(this.core).settings() as Record<string, unknown>;
-    return { people: s.people === true, min_lamports: s.people_min_lamports as number, max_bytes: s.people_max_bytes as number, reply: s.people_reply === true, blocked: new Set((s.people_blocked as string[]) ?? []) };
+    return { people: s.people === true, min_lamports: s.people_min_lamports as number, max_bytes: s.people_max_bytes as number, reply: s.people_reply === true, blocked: new Set((s.people_blocked as string[]) ?? []),
+      window_s: s.people_reply_window_s as number, per_day: s.people_replies_per_day as number, lookback_s: s.lookback_s as number };
   }
 
   private treasury(agent: string): string | null {
@@ -199,8 +200,59 @@ export class Talk {
       wallet: this.treasury(agent),
       recent: recent.reverse().map(this.out),
       mine: mine.reverse().map(this.out),
-      replies: [] as { id: string; to: string; text: string; at: number; chain: string | null }[],
+      replies: q.wallet ? this.repliesOf(agent, 0).filter((x) => x.to === q.wallet).slice(-limit) : [],
     };
+  }
+
+  /** The agent's answers to people (board posts with the reply line, packages/protocol talk.ts), oldest first; hidden posts left out. */
+  repliesOf(agent: string, since: number): { id: string; to: string; re: string; text: string; at: number; chain: string | null }[] {
+    const hidden = socialOf(this.core).hiddenSet("post");
+    const out: { id: string; to: string; re: string; text: string; at: number; chain: string | null }[] = [];
+    for (const r of this.db.query<{ msg_id: string; envelope: string; received_at: number }, [string, number]>("SELECT msg_id, envelope, received_at FROM messages WHERE from_agent = ? AND board IS NOT NULL AND received_at >= ? ORDER BY received_at DESC LIMIT 500").all(agent, since)) {
+      const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string } };
+      const p = parsePersonReply(env.body ?? null);
+      if (p && !hidden.has(r.msg_id)) out.push({ id: r.msg_id, to: p.wallet, re: p.re, text: p.text, at: r.received_at, chain: env.chain?.signature ?? null });
+    }
+    return out.reverse();
+  }
+
+  /** Why `agent` may not answer `wallet` now, or null (the settings: replies on, one per sender per window, a daily count). */
+  replyStop(agent: string, wallet: string): string | null {
+    const s = this.settings();
+    if (!s.reply) return "agents do not answer people (people_reply is off)";
+    if (s.blocked.has(wallet)) return "this wallet is blocked";
+    const now = this.core.now();
+    const day = this.repliesOf(agent, now - 86_400_000);
+    if (day.length >= s.per_day) return `${s.per_day} replies to people a day per agent`;
+    if (day.some((x) => x.to === wallet && x.at > now - s.window_s * 1000)) return `one reply per sender per ${s.window_s} s`;
+    return null;
+  }
+
+  /**
+   * The messages from people `agent` could answer now, newest first: recent, visible, not answered,
+   * one per sender (its newest), and only while the settings allow a reply to that sender.
+   */
+  pending(agent: string): Row[] {
+    const s = this.settings();
+    if (!s.reply) return [];
+    const answered = new Set(this.repliesOf(agent, 0).map((x) => x.re));
+    const seen = new Set<string>();
+    return this.forAgent(agent, this.core.now() - s.lookback_s * 1000, 50).filter((m) => {
+      if (answered.has(m.id.slice(0, 16)) || seen.has(m.wallet)) return false;
+      seen.add(m.wallet);
+      return this.replyStop(agent, m.wallet) === null;
+    });
+  }
+
+  /** Core's check of an answer to a person before it is stored or preflighted (messages.ts sendInner); throws the refusal. */
+  gate(agent: string, body: string | null): void {
+    const p = parsePersonReply(body);
+    if (!p) return;
+    const why = this.replyStop(agent, p.wallet);
+    if (why) throw (why.includes("off") || why.includes("blocked") ? forbidden("people_reply_off", why) : new ApiError(429, "people_reply_rate", why));
+    const m = this.db.query<{ id: string }, [string, string, string]>("SELECT id FROM talk_messages WHERE agent = ? AND wallet = ? AND substr(id, 1, 16) = ?").get(agent, p.wallet, p.re);
+    if (!m || !this.visible([{ id: m.id, wallet: p.wallet } as Row]).length) throw bad("no_such_message", "an answer names a message this wallet sent the agent");
+    if (this.repliesOf(agent, 0).some((x) => x.re === p.re)) throw new ApiError(409, "answered", "this message was already answered");
   }
 
   /** Messages an agent may read (never a hidden one, never one from a blocked wallet), newest first. */

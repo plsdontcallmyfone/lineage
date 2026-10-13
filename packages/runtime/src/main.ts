@@ -6,6 +6,8 @@
 //   bind     --config <file> [--port <n>]             the bind service (bind-service.ts): the bind surface as its own
 //                                                     process, up while `run` drains or restarts. Port: --port, else
 //                                                     the config's bind_service_port. Loads no authority or model key.
+//   pool     --config <file> [--fill]                 the key pool (pool.ts): prints its status; --fill runs one pass
+//                                                     now (makes keys up to the limits, closes finished nonce accounts)
 //   bind-request --config <file> --agent <id>         what the owner needs to bind the agent to this runtime's key
 //   cosign   --config <file> --agent <id> --tx <base64> [--dry-run]
 //                                                     devnet: co-sign, as the agent's new runtime key, a
@@ -37,6 +39,7 @@ import type { ModelClient } from "../../souls/src/generator.ts";
 import { routedModelClient } from "../../souls/src/routed-client.ts";
 import { desktopPool, startRecordingPublisher, withDesktops } from "./desktops.ts";
 import { installAgentFirewall } from "./firewall.ts";
+import { PoolKeeper, poolNonceOf, poolStatus, type PoolChain } from "./pool.ts";
 import { guardKey, Rpc } from "@units/chain";
 
 function args(argv: string[]) {
@@ -138,6 +141,33 @@ export function postClient(keys: Record<string, string>, reg: RegistrySource, pr
   });
 }
 
+/** The pool's chain access: the runtime authority pays and signs creations; a pool key signs only its own nonce account's close. */
+function poolChain(rpc: Rpc, payer: ReturnType<typeof loadKey>, log: (m: string) => void): PoolChain {
+  return {
+    rent: async () => BigInt(await rpc.call<number>("getMinimumBalanceForRentExemption", [80])),
+    balance: (a) => rpc.getBalance(a),
+    accounts: async (list) => (list.length ? (await rpc.getMultipleAccounts(list)).map((a) => (a ? { data: a.data, lamports: BigInt(a.lamports), owner: a.owner } : null)) : []),
+    send: async (ixs, extra) => {
+      const { sendAndConfirm } = await import("@units/chain");
+      return (await sendAndConfirm(rpc, payer, ixs, { signers: extra, log: (m) => log(`  ${m}`) })).signature;
+    },
+    signingKey: async (agent) => {
+      const { ChainReader } = await import("@units/chain");
+      return (await new ChainReader(rpc).agent(agent))?.signingKey ?? null;
+    },
+  };
+}
+/** Live reservations as the bind service wrote them (read only): their keys are in use and are never closed. */
+function reservedKeys(stateDir: string): Record<string, { key_id: string }> {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const list = JSON.parse(readFileSync(join(stateDir, "reservations.json"), "utf8")) as Record<string, { key_id: string; expires_at: number }>;
+    return Object.fromEntries(Object.entries(list).filter(([, r]) => r.expires_at > now).map(([a, r]) => [a, { key_id: r.key_id }]));
+  } catch {
+    return {};
+  }
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const a = args(rest);
@@ -164,7 +194,7 @@ async function main() {
       // the transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md 3): installed before any agent key is used
       // on chain; agent keys sign nothing it does not allow, and it allows no swap (agents do not trade)
       let fwAgents: () => Record<string, { key_id: string }> = () => ({});
-      if (backend instanceof ChainBackend) installAgentFirewall({ rpc: backend.rpc, stateDir: cfg.state_dir, view: { agents: () => fwAgents() }, log });
+      if (backend instanceof ChainBackend) installAgentFirewall({ rpc: backend.rpc, stateDir: cfg.state_dir, view: { agents: () => fwAgents(), nonceOf: (k) => poolNonceOf(cfg.state_dir, k) }, log });
       // agent desktops (SPEC 17.7): our server's slots first, then E2B within its day cap
       const desktops = desktopPool(cfg, log);
       // plan MODELS-AND-SELF-FUNDING: routes per agent, OpenRouter's balance, the quote price, the spend report
@@ -206,6 +236,10 @@ async function main() {
             ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
             : null;
       const stopPublisher = desktops ? startRecordingPublisher(desktops, cfg.core, (a) => rt.keyOf(a), log) : () => {};
+      // the key pool for backup bind signatures (pool.ts): filled and cleaned up here, where the payer is; a pass a minute
+      const stopPool = cfg.bind_pool?.enabled && backend instanceof ChainBackend
+        ? new PoolKeeper({ stateDir: cfg.state_dir, payer: loadKey(cfg.runtime_key).id, chain: poolChain(backend.rpc, loadKey(cfg.runtime_key), log), owners: { agents: () => rt.state.agents, reserved: () => reservedKeys(cfg.state_dir) }, config: cfg.bind_pool, log }).start()
+        : () => {};
       let signals = 0;
       const onSignal = () => {
         if (++signals > 1) process.exit(130); // state is persisted after every step; a second signal leaves now
@@ -213,6 +247,7 @@ async function main() {
         stopMonitor();
         stopKeys();
         stopPublisher();
+        stopPool();
         // the listener stays up while the attempts drain (up to TimeoutStopSec): a runtime that serves the
         // bind surface itself keeps answering reservations and co-signs until the process leaves
         void rt.stop().then(() => (bindServer?.stop(true), process.exit(0)));
@@ -235,6 +270,7 @@ async function main() {
       // the bind service's counters (bind-service.ts): reservations, co-signs, binds landed with the launch and after, launches seen unbound
       const bs = join(cfg.state_dir, "bind-service", "status.json");
       s.bind = existsSync(bs) ? JSON.parse(readFileSync(bs, "utf8")) : null;
+      s.bind_pool = poolStatus(cfg.state_dir);
       console.log(JSON.stringify(s, null, 2));
       return;
     }
@@ -264,7 +300,7 @@ async function main() {
         chain: readerChain(new ChainReader(rpc) as any, rpc),
         send: chainCosign(rpcUrl, blog, profile.genesis), sign: chainCosignOnly,
         // the transaction firewall, as in `run`: every key this process reads is guarded, each for its own agent only
-        guard: (view) => void installAgentFirewall({ rpc, stateDir: join(cfg.state_dir, "bind-service"), view: { agents: view }, log: blog }),
+        guard: (view, nonceOf) => void installAgentFirewall({ rpc, stateDir: join(cfg.state_dir, "bind-service"), view: { agents: view, nonceOf }, log: blog }),
       });
       let leaving = false;
       const leave = () => {
@@ -275,6 +311,25 @@ async function main() {
       process.on("SIGINT", leave);
       process.on("SIGTERM", leave);
       await new Promise(() => {});
+      return;
+    }
+    case "pool": {
+      if (cfg.mode === "sim") throw new Error("the key pool is for chain mode");
+      if (a.fill === "true") {
+        // one pass by hand (for example while `run` drains): the same limits; the agents come from the persisted state
+        const rpc = Rpc.http(cfg.rpc_url ?? chainRpc(), "confirmed");
+        const payer = loadKey(cfg.runtime_key);
+        const agents = (): Record<string, { key_id: string }> => {
+          try {
+            return (JSON.parse(readFileSync(join(cfg.state_dir, "state.json"), "utf8")) as { agents: Record<string, { key_id: string }> }).agents;
+          } catch {
+            return {};
+          }
+        };
+        installAgentFirewall({ rpc, stateDir: cfg.state_dir, view: { agents, nonceOf: (k) => poolNonceOf(cfg.state_dir, k) }, log });
+        await new PoolKeeper({ stateDir: cfg.state_dir, payer: payer.id, chain: poolChain(rpc, payer, log), owners: { agents, reserved: () => reservedKeys(cfg.state_dir) }, config: cfg.bind_pool, log }).pass();
+      }
+      console.log(JSON.stringify(poolStatus(cfg.state_dir), null, 2));
       return;
     }
     case "bind-request": {
@@ -296,7 +351,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-runtime run|bind|status|bind-request|cosign --config <file> (see the header of src/main.ts)");
+      console.error("usage: lineage-runtime run|bind|pool|status|bind-request|cosign --config <file> (see the header of src/main.ts)");
       process.exit(2);
   }
 }

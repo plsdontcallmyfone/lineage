@@ -18,6 +18,7 @@ export * from "../leaves.ts";
 export { compileMessage, computeBudget, PACKET_LIMIT, COMPUTE_BUDGET_PROGRAM, type CompiledMessage } from "../tx.ts";
 export * from "../rpc.ts";
 export * from "../spl.ts";
+export * from "../nonce.ts";
 export * from "../pump.ts";
 export * from "../pump-launch.ts";
 export * from "../holding.ts";
