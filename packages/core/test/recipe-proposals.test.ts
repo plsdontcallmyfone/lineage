@@ -88,6 +88,20 @@ describe("agent-proposed recipes (SPEC 6.2)", () => {
       expect(m.calibration.metrics.ns!.enabled).toBe(false); // a noise split disables the noisy metric
       expect(m.calibration.runs).toBe(6);
     }
+    // a deterministic metric the replays split on is switched off and the unit stands on the one both hold;
+    // a recipe whose only deterministic metric splits is refused
+    const off = { enabled: false, cv: 0.01, reason: "varies run to run" };
+    const two = mergeCalibrations(r, id, s, [a, { ...b, calibration: calib(r, s, { metrics: { ...calib(r, s).metrics, ir: off } }) }], 0.001);
+    expect(two.ok).toBe(true);
+    if (two.ok) {
+      expect(two.calibration.metrics.ir).toMatchObject({ enabled: false, reason: "calibration replays split on whether it is deterministic" });
+      expect(two.calibration.metrics.size).toMatchObject({ enabled: true, base_value: 99 });
+    }
+    const r1 = proposed({ metrics: r.metrics.filter((x) => x.name !== "size") });
+    const c1 = (ir: unknown) => { const c = calib(r1, s); return { ...c, metrics: { ir, ns: c.metrics.ns } } as Calibration; };
+    const lone = mergeCalibrations(r1, recipeId(r1), s, [{ replayer: "a", deps_digest: "d", calibration: c1({ enabled: true, cv: 0, base_value: 5000 }) }, { replayer: "b", deps_digest: "d", calibration: c1(off) }], 0.001);
+    expect(lone.ok).toBe(false);
+    if (!lone.ok) expect(lone.reason).toContain("replays disagree on whether ir is deterministic");
     expect(mergeCalibrations(r, id, s, [a, { ...b, calibration: calib(r, s, { stable: ["a"] }) }], 0.001)).toMatchObject({ ok: false, reason: "stable test sets differ" });
     expect(mergeCalibrations(r, id, s, [a, { ...b, deps_digest: "e" }], 0.001)).toMatchObject({ ok: false });
     expect(mergeCalibrations(r, id, s, [a, { ...b, calibration: calib(r, s, { metrics: { ...calib(r, s).metrics, ir: { enabled: true, cv: 0, base_value: 6000 } } }) }], 0.001)).toMatchObject({ ok: false });

@@ -191,6 +191,7 @@ export function checkProposedRecipe(r: Recipe): void {
 /**
  * Pure: do these calibration replays agree (SPEC 6.2)? Returns the merged calibration or the first
  * disagreement. Noisy metrics may differ in whether they resolve their effect; a split disables them.
+ * A deterministic metric the replays split on is disabled too, as long as another deterministic metric stands.
  */
 export function mergeCalibrations(recipe: Recipe, recipe_id: string, seed: string, reveals: Revealed[], tol: number): { ok: true; calibration: Calibration; deps_digest: string } | { ok: false; reason: string } {
   if (!reveals.length) return { ok: false, reason: "no calibration replays" };
@@ -204,12 +205,20 @@ export function mergeCalibrations(recipe: Recipe, recipe_id: string, seed: strin
   }
   if (first.calibration.stable.length === 0) return { ok: false, reason: "empty stable set" };
   const metrics: Calibration["metrics"] = {};
+  const split: string[] = [];
   for (const m of recipe.metrics) {
     const vals = reveals.map((r) => r.calibration.metrics[m.name]);
     if (vals.some((v) => !isObj(v))) return { ok: false, reason: `metric ${m.name} missing from a calibration` };
     if (m.deterministic) {
       const enabled = vals.map((v) => !!v!.enabled);
-      if (enabled.some((e) => e !== enabled[0])) return { ok: false, reason: `replays disagree on whether ${m.name} is deterministic` };
+      if (enabled.some((e) => e !== enabled[0])) {
+        // one verifier's machine saw run to run variation and another's did not: the metric cannot be
+        // replayed everywhere, so it is switched off like one every replay disabled. The unit stands
+        // on the deterministic metrics every replay agrees on (checked below); with none left it is refused.
+        split.push(m.name);
+        metrics[m.name] = { enabled: false, cv: Math.max(...vals.map((v) => v!.cv)), reason: "calibration replays split on whether it is deterministic" };
+        continue;
+      }
       if (!enabled[0]) {
         metrics[m.name] = { enabled: false, cv: Math.max(...vals.map((v) => v!.cv)), reason: vals[0]!.reason ?? "disabled by every calibration replay" };
         continue;
@@ -232,6 +241,8 @@ export function mergeCalibrations(recipe: Recipe, recipe_id: string, seed: strin
         : { enabled: false, cv: Math.max(...vals.map((v) => v!.cv)), reason: "calibration replays split on whether the noise resolves min_effect" };
     }
   }
+  if (split.length && !recipe.metrics.some((m) => m.deterministic && metrics[m.name]!.enabled))
+    return { ok: false, reason: `replays disagree on whether ${split.join(", ")} is deterministic, and no other deterministic metric is left` };
   const quarantined = [...new Set(reveals.flatMap((r) => r.calibration.quarantined))].sort();
   return {
     ok: true,
