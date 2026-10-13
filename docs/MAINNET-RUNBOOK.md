@@ -382,11 +382,36 @@ pump.fun; they reach the agent's compute vault only when someone sends the crank
 collect, then `crank_pump_fees`, which splits them by the chain's fee split). The crank is
 permissionless, and `scripts/mainnet/crank-fees.ts` sends it for every launched agent:
 
-    bun scripts/mainnet/crank-fees.ts --core <site> --key <payer keypair.json> [--agent <id>] [--min-usd 0.25] [--send]
+    bun scripts/mainnet/crank-fees.ts --core <site> --key <payer keypair.json> [--agent <id>] [--min-usd 0.25] [--table <address>] [--send]
 
 It is a dry run without `--send`. Each crank is simulated first; one is sent only when its simulation
-succeeds and at least `--min-usd` of fees wait. The payer pays the network fee and, once per agent, the
-rent of one token account. Nothing is cranked without a fresh quote price from the site.
+succeeds and at least `--min-usd` of fees wait (fees still inside the curve or the pool count: pump.fun's
+sweep in the same transaction moves them out). The payer pays the network fee and the rent of one token
+account on an agent's first crank and of one more on the first crank after its coin graduated (170
+bytes each, 1,513,840 lamports at mainnet rent). Nothing is cranked without a fresh quote price from the
+site.
+
+One path builds every crank (`packages/chain/src/crank-tx.ts`): the transaction is built as it will be
+sent, priority fee instruction included, and its size decides the form. A legacy transaction when that
+fits the 1,232-byte packet; a version 0 transaction that loads six fixed accounts from the launch
+lookup table when it does not. Each log line says which form and how many bytes, and the last line of a
+run counts both. Sizes as sent on mainnet (computed, and each one landed on the fork):
+
+    agent                                  on its curve    graduated
+    no route                               860 legacy      1,126 legacy
+    fee route                              959 legacy      1,225 legacy
+    pool member                            992 legacy      1,258 as legacy: sent as v0, 1,108
+    fee route and pool member              1,091 legacy    1,357 as legacy: sent as v0, 1,207
+
+The table is the launch lookup table the launches use (`launch_lookup_table` in the state file, mainnet
+`6dj2UbcMsYY4BHQNnQmXkkcNs5b4sa7h3C8q6Gj3Fkrc`): 24 addresses, frozen at the launch setup, so nobody can
+extend it and nothing has to. The keeper only reads it, once per run; it creates no table, pays no rent
+for one and keeps no state between runs. `--table` names another table for a network whose state file
+has none. If the table cannot be used (missing, deactivated, extended in the current slot) the first
+line of the run says why, cranks that fit a legacy transaction go on as before, and one that does not is
+not sent: its line states both sizes and its fees wait at pump.fun for the next run. A coin whose curve
+is complete and not migrated yet is cranked on its curve; its pool joins the crank once pump.fun's
+migration made it.
 
 On the server it runs every 10 minutes as `units-main-fee-crank.timer`, as the instance's own account,
 paid by the hosted runtime's authority key. The units are written and enabled by one command on the
@@ -398,8 +423,26 @@ A deploy leaves the units in place. Watch the payer's SOL: `journalctl -u units-
 shows the last runs, and a crank that cannot pay its fee shows there as a failed simulation. An agent
 with a fee route or a pool membership gets its route accounts after the crank's eight while the chain's
 feature bit is on (since the launch upgrade rehearsal, 2026-10-13: the script before it skipped such an
-agent; "Launch program upgrade: pools and claims" below). Not sent: a routed agent whose coin has also
-graduated (the crank no longer fits a legacy transaction).
+agent; "Launch program upgrade: pools and claims" below).
+
+A routed agent whose coin has also graduated (2026-10-13, `scripts/mainnet/crank-v0-fork.ts`, results in
+`scripts/mainnet/CRANK-V0-FORK-LAST.json`): on a fork of mainnet with the live program, the live
+accounts and the frozen table, a live pool member's coin was graduated (completion, `migrate_v2`,
+`record_pump_graduation`) and traded on its PumpSwap pool, and the keeper script sent its crank as a
+version 0 transaction, as a pool member (1,108 bytes) and with a fee route on top (1,207 bytes). 31 of
+31 checks; 14 cranks by the script (9 legacy, 5 version 0) over the eight kinds of agent above, each
+amount (compute, protocol, repository owners, pool, and inside the pool the member's cross holding,
+which took every pool share of this run) exact to the base unit and equal to what the script said was
+waiting; a dry run, the `--min-usd` rule, a
+second run that finds nothing, and a run with an unusable table that sends nothing and loses nothing.
+The script as it was before sent neither of the two (the pool member's failed at 1,258 bytes once the
+priority fee instruction was added, a case its own size check did not see). Each crank cost the payer
+the base fee of 5,000 lamports plus the priority fee (1 or 2 lamports at the fork's floor price; on
+mainnet the recent price, capped by the profile, on the default compute limit of 200,000 units per
+instruction: four instructions on the curve, six once graduated; the cranks used 94,439 to 198,848
+units). Read only on mainnet the same day: the version 0 form with the table simulates for the three
+live agents that have fees waiting, the live pool member among them, with the keeper's payer address.
+Not proven: a version 0 crank landing on mainnet itself (no agent coin has graduated).
 
 ## Launch from a tweet
 
@@ -856,7 +899,8 @@ member's coin) and `max_buy_quote` 1,000 coins (the cap of one pool purchase). D
 - The dev wallet's own signature (a stand-in key signed on the fork).
 - A routed agent whose coin has ALSO graduated to PumpSwap: its crank is 1,313 bytes as a legacy
   transaction, over the limit, so the keeper script says so and does not send it. It needs a v0
-  transaction with the launch lookup table. No agent coin has graduated yet.
+  transaction with the launch lookup table. No agent coin has graduated yet. (Closed later the same
+  day: the keeper sends it as a version 0 transaction, "Agent fee crank keeper" above.)
 - The Launch page's compute limit for the launch transaction (421,000) against its own rule of 62.5%
   at most: the units vary with the keys, about 235,000 to 265,000 over this lane's launches on the
   fork, and three of eighteen went over 263,125. They landed (the limit itself is far away) and the upgrade adds 103
