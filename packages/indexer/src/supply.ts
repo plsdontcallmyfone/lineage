@@ -194,6 +194,8 @@ interface SigRow { signature: string; slot: number; err: unknown; blockTime?: nu
 interface Snapshot {
   mint: string; decimals: number; at: number; supply_raw: string; initial_raw: string | null; mint_authority: string | null;
   developer_wallet: string | null; keeper_burn_account: string | null;
+  /** the coin's own market accounts that can sign for its vaults: its pump.fun curve and its PumpSwap pool (pump.fun burns from the pool's vault with the pool's authority) */
+  market_authorities?: string[];
   /** null when the token accounts could not be listed: `breakdown_reason` says why */
   breakdown: { key: Category; accounts: number; amount_raw: string }[] | null;
   breakdown_reason: string | null;
@@ -218,7 +220,7 @@ export class SupplyIndexer {
   private readonly log: (m: string) => void;
   private readonly now: () => number;
   private readonly maxFetch: number;
-  private poolVault: { mint: string; vaults: string[] } | null = null;
+  private poolVault: { mint: string; vaults: string[]; authorities: string[] } | null = null;
   private gpaRefused: string | null = null;
 
   constructor(
@@ -299,20 +301,23 @@ export class SupplyIndexer {
     const curve = curveA && curveA.owner === PUMP.program ? decodeBondingCurve(curveA.data) : null;
     // the coin side of its market: the curve's own account, and the PumpSwap pool's vault once it migrated (kept once found: the address never changes)
     let liquidity = this.poolVault?.mint === q.mint ? this.poolVault.vaults : null;
+    let marketAuthorities = this.poolVault?.mint === q.mint ? this.poolVault.authorities : [curveAddr];
     if (!liquidity) {
       liquidity = [ata(curveAddr, q.mint, q.tokenProgram)];
       if (curve && curveMigrated(curve)) {
-        const [poolA] = await this.accounts([pumpPdas.pool(q.mint, curveQuoteMint(curve))]);
+        const poolAddr = pumpPdas.pool(q.mint, curveQuoteMint(curve));
+        const [poolA] = await this.accounts([poolAddr]);
         if (poolA && poolA.owner === PUMP.amm) {
           liquidity.push(decodePumpPool(poolA.data).poolBaseTokenAccount);
-          this.poolVault = { mint: q.mint, vaults: liquidity };
+          marketAuthorities = [curveAddr, poolAddr];
+          this.poolVault = { mint: q.mint, vaults: liquidity, authorities: marketAuthorities };
         }
       }
     }
     const dev = this.opts.devWallet ?? null;
     const keeperBurn = dev ? seededAddress(dev, KEEPER_BURN_SEED, q.tokenProgram) : null;
     const snap: Snapshot = { mint: q.mint, decimals: mint.decimals, at: this.now(), supply_raw: mint.supply.toString(), initial_raw: curve ? curve.tokenTotalSupply.toString() : null,
-      mint_authority: mint.mintAuthority, developer_wallet: dev, keeper_burn_account: keeperBurn, breakdown: null, breakdown_reason: null, drift_raw: null, token_accounts: null,
+      mint_authority: mint.mintAuthority, developer_wallet: dev, keeper_burn_account: keeperBurn, market_authorities: marketAuthorities, breakdown: null, breakdown_reason: null, drift_raw: null, token_accounts: null,
       holders: null, entities: [], dev_accounts: [] };
     const devAccounts = new Set<string>(dev ? [ata(dev, q.mint, q.tokenProgram), keeperBurn!] : []);
     // an RPC that refuses to list a mint's token accounts (public devnet for Token-2022): the supply and the burns are still read
@@ -583,7 +588,9 @@ export function supplyApi(db: Database, opts: SupplyApiOpts) {
     } catch {
       /* a database without the events table */
     }
-    return (b: { authority: string; account: string }): { kind: "developer" | "fee_keeper" | "agent_pool" | "address"; label: string; address: string } => {
+    return (b: { authority: string; account: string }): { kind: "developer" | "fee_keeper" | "agent_pool" | "liquidity_pool" | "address"; label: string; address: string } => {
+      // pump.fun burning from the coin's own pool or curve: the authority is that pool or curve
+      if (s?.market_authorities?.includes(b.authority)) return { kind: "liquidity_pool", label: "Liquidity pool (pump.fun)", address: b.authority };
       if (s?.keeper_burn_account && b.account === s.keeper_burn_account) return { kind: "fee_keeper", label: "Fee keeper", address: b.authority };
       if (s?.developer_wallet && b.authority === s.developer_wallet) return { kind: "developer", label: "Developer wallet", address: b.authority };
       const p = pools.get(b.authority);
@@ -689,7 +696,7 @@ export function supplyApi(db: Database, opts: SupplyApiOpts) {
     const all = burnsOf(mint).map((r) => ({ r, w: who(r) }));
     const signer = q.get("signer");
     const picked = all.filter(({ w }) => !signer || signer === "all" || (signer === "developer" ? w.kind === "developer" : signer === "fee_keeper" ? w.kind === "fee_keeper" : signer === "agent_pool" ? w.kind === "agent_pool"
-      : signer === "other" ? w.kind === "address" : w.address === signer));
+      : signer === "liquidity_pool" ? w.kind === "liquidity_pool" : signer === "other" ? w.kind === "address" : w.address === signer));
     // dollars exist for the quote coin only: an agent coin's burn has no stored dollar price of its own time
     const at = own ? lookup(picked.map((x) => x.r)) : () => null;
     const day = (t: number) => Math.floor(t / 86400) * 86400;
@@ -723,7 +730,7 @@ export function supplyApi(db: Database, opts: SupplyApiOpts) {
       usd_at_burn: own ? sumAt(picked.map((x) => ({ time: x.r.time, amount: ui(x.r.amount_raw, d)! })), at) : null,
       // how many of all the coin's burns each filter holds
       signers: { all: all.length, developer: all.filter((x) => x.w.kind === "developer").length, fee_keeper: all.filter((x) => x.w.kind === "fee_keeper").length,
-        agent_pool: all.filter((x) => x.w.kind === "agent_pool").length, other: all.filter((x) => x.w.kind === "address").length },
+        agent_pool: all.filter((x) => x.w.kind === "agent_pool").length, liquidity_pool: all.filter((x) => x.w.kind === "liquidity_pool").length, other: all.filter((x) => x.w.kind === "address").length },
       days: list, events: events.reverse().slice(0, limit) };
   }
 

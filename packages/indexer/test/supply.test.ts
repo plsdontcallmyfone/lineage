@@ -415,7 +415,7 @@ describe("the developer wallet", () => {
     c.clock.t = t0 + 2 * 86_400 + 5;
     await c.make().pass();
     const all = await c.get("supply/burns");
-    expect(all.signers).toEqual({ all: 4, developer: 1, fee_keeper: 1, agent_pool: 0, other: 2 });
+    expect(all.signers).toEqual({ all: 4, developer: 1, fee_keeper: 1, agent_pool: 0, liquidity_pool: 0, other: 2 });
     const by = Object.fromEntries(all.events.map((e: any) => [e.signature, e]));
     expect(by[s1]).toMatchObject({ amount: 10, usd: 0.01, usd_basis: "at_time", signer: { kind: "developer", label: "Developer wallet", address: DEV }, via: null });
     expect(by[s2]).toMatchObject({ amount: 4, usd: 0.012, signer: { kind: "fee_keeper", label: "Fee keeper" } });
@@ -435,6 +435,18 @@ describe("the developer wallet", () => {
     expect(o.burned.by_signer.map((g: any) => [g.kind, g.label, g.raw])).toEqual([["developer", "Developer wallet", "10000000"], ["fee_keeper", "Fee keeper", "4000000"], ["address", "Other wallets", "1500000"]]);
     expect(o.developer.burned).toMatchObject({ events: 1, amount: 10, usd_at_burn: 0.01 });
     expect(o.burned.usd_at_burn).toBeNull();
+  });
+
+  test("pump.fun burning from the coin's own pool is named as the liquidity pool, not as a wallet", async () => {
+    const c = chain();
+    const pool = pumpPdas.pool(MINT, PUMP.wsol);
+    const sig = c.burn(POOL_VAULT, pool, 2_000_000n, { via: PUMP.amm });
+    c.burn(key(210), ALICE, 1_000_000n);
+    await c.make().pass();
+    const b = await c.get("supply/burns?signer=liquidity_pool");
+    expect(b.events).toMatchObject([{ signature: sig, amount: 2, signer: { kind: "liquidity_pool", label: "Liquidity pool (pump.fun)", address: pool }, via: PUMP.amm, via_label: "pump.fun" }]);
+    expect(b.signers).toMatchObject({ all: 2, liquidity_pool: 1, other: 1 });
+    expect((await c.get("supply")).burned.by_signer.map((g: any) => [g.kind, g.label, g.raw])).toEqual([["liquidity_pool", "Liquidity pool (pump.fun)", "2000000"], ["address", "Other wallets", "1000000"]]);
   });
 
   test("its balance after each transaction and what it did, from its token accounts' own lists", async () => {
