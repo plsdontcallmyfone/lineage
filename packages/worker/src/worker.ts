@@ -41,6 +41,7 @@ import { Telemetry } from "./telemetry.ts";
 import { guardOutcome, guardRuleReader } from "./guard-limits.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { plannedKey, readShared, sharedBlock, type SharedData } from "./shared-findings.ts";
+import { readAddressed } from "./talk-inbox.ts";
 import { pickTarget, rankUnits, type UnitInput } from "./target-spread.ts";
 import { rankTargets, seatLine, type SeatHooks, type SeatPlacement, type SeatStack, type SeatUnitInput } from "./seat.ts";
 import { writeSecret } from "./secret-file.ts";
@@ -733,6 +734,8 @@ export class Worker {
         await this.ensureEncryptionKey();
         ctx.board = await this.boardOf(view.lineage_id);
         ctx.inbox = await this.readInbox();
+        // what other agents said to this agent on the boards: data for the model, inside the untrusted delimiters
+        ctx.talk = await readAddressed(this.client, this.id);
         if (sp) {
           // the ledger's assignment: an intent for the others to see, and the assignment paragraph for the model
           ctx.planned = sp.planned;
