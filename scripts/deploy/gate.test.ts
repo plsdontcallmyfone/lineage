@@ -254,12 +254,15 @@ describe("social writes", () => {
 describe("hosted runtime bind", () => {
   const agent = "6C8N2z5L4dQ1yWn3bSPAsoGq2nXyWkJk6V3m4cLZb6dE";
   test("GET and POST /runtime/bind/:agent go to the runtime in their own class; POST is same origin", () => {
-    expect(classify("GET", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: false, cors: false });
-    expect(classify("POST", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    expect(classify("GET", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "bind", sameOrigin: false, cors: false });
+    expect(classify("POST", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "bind", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    // the bind service's health: a plain read, never a write
+    expect(classify("GET", "/runtime/bind/health")).toMatchObject({ klass: "api", upstream: "bind", sameOrigin: false, cors: false });
+    expect(classify("POST", "/runtime/bind/health")).toEqual({ refuse: 405, why: "method" });
     for (const p of ["/runtime/bind/0OIl", "/runtime/health", "/runtime/bind/", `/runtime/bind/${agent}/x`]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
     expect(classify("PUT", `/runtime/bind/${agent}`)).toEqual({ refuse: 405, why: "method" });
     // the setup bar's read of a wallet's waiting agents: GET only, to the runtime, in the bind class
-    expect(classify("GET", `/runtime/unbound/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: false, cors: false });
+    expect(classify("GET", `/runtime/unbound/${agent}`)).toMatchObject({ klass: "bind", upstream: "bind", sameOrigin: false, cors: false });
     expect(classify("POST", `/runtime/unbound/${agent}`)).toEqual({ refuse: 405, why: "method" });
     expect(classify("GET", "/runtime/health")).toMatchObject({ klass: "page", upstream: "web" });
   });

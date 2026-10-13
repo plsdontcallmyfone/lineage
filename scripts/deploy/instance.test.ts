@@ -16,17 +16,17 @@ describe("instance layout", () => {
       const L = instanceLayout(n);
       expect(L).toMatchObject({ name: "", network: "devnet", prefix: "units", base: "/opt/units", state: "/var/lib/units", etc: "/etc/units", etcCore: "/etc/units-core", home: "/home/units",
         keysDir: "devnet", stateFile: "scripts/devnet/devnet.json", caddyFile: null, profileLocal: null });
-      expect(L.ports).toEqual({ core: 9660, web: 9661, gate: 9662, identity: 9665, bind: 9667, indexer: 9668 });
+      expect(L.ports).toEqual({ core: 9660, web: 9661, gate: 9662, identity: 9665, bindService: 9666, bind: 9667, indexer: 9668 });
     }
   });
   test("mainnet: its own names, directories, accounts and ports, none shared with the first instance", () => {
     const L = instanceLayout("mainnet"), D = instanceLayout("");
     expect(L).toMatchObject({ network: "mainnet", prefix: "units-main", base: "/opt/units-main", state: "/var/lib/units-main", etc: "/etc/units-main", etcCore: "/etc/units-main-core",
       home: "/home/units-main", keysDir: "mainnet", stateFile: "/etc/units-main/state.json", profileLocal: "/etc/units-main/profile.local.json", caddyFile: "/etc/caddy/sites.d/units-main.caddy" });
-    expect(L.ports).toEqual({ core: 9760, web: 9761, gate: 9762, identity: 9765, bind: 9767, indexer: 9768 });
+    expect(L.ports).toEqual({ core: 9760, web: 9761, gate: 9762, identity: 9765, bindService: 9766, bind: 9767, indexer: 9768 });
     expect(Object.values(L.ports).filter((p) => Object.values(D.ports).includes(p))).toEqual([]);
     expect(Object.values(L.users).filter((u) => Object.values(D.users).includes(u))).toEqual([]);
-    expect(L.units.public).toEqual(["units-main-core", "units-main-indexer", "units-main-web", "units-main-gate"]);
+    expect(L.units.public).toEqual(["units-main-core", "units-main-indexer", "units-main-web", "units-main-bind", "units-main-gate"]);
   });
   test("an unknown name is refused", () => {
     expect(() => instanceLayout("staging")).toThrow(/unknown UNITS_INSTANCE/);
@@ -48,7 +48,7 @@ describe("unit files", () => {
     }
   });
   test("names, accounts, paths and ports are the instance's; nothing of the first instance is left", () => {
-    expect(Object.keys(all).sort()).toEqual(["units-main-bootstrap.service", "units-main-core.service", "units-main-gate.service", "units-main-indexer.service", "units-main-reference.service",
+    expect(Object.keys(all).sort()).toEqual(["units-main-bind.service", "units-main-bootstrap.service", "units-main-core.service", "units-main-gate.service", "units-main-indexer.service", "units-main-reference.service",
       "units-main-runtime.service", "units-main-verifier@.service", "units-main-web.service"]);
     for (const [f, t] of Object.entries(all)) {
       expect(t).not.toMatch(/\b966\d\b/);
@@ -69,7 +69,7 @@ describe("unit files", () => {
     expect(core).toContain("InaccessiblePaths=-/home/units-main/.config -/home/units-main/.ssh");
     expect(all["units-main-web.service"]).toContain("--port 9761 --host 127.0.0.1 --core http://127.0.0.1:9760");
     expect(all["units-main-web.service"]).toContain("After=units-main-core.service");
-    expect(all["units-main-gate.service"]).toContain("--port 9762 --host 127.0.0.1 --web http://127.0.0.1:9761 --core http://127.0.0.1:9760 --indexer http://127.0.0.1:9768 --origin ${GATE_ORIGINS} --runtime http://127.0.0.1:9767");
+    expect(all["units-main-gate.service"]).toContain("--port 9762 --host 127.0.0.1 --web http://127.0.0.1:9761 --core http://127.0.0.1:9760 --indexer http://127.0.0.1:9768 --bind http://127.0.0.1:9766 --origin ${GATE_ORIGINS} --runtime http://127.0.0.1:9767");
     expect(all["units-main-indexer.service"]).toContain("--port 9768 --host 127.0.0.1 --db /var/lib/units-main/indexer/market.db --interval 15 --core http://127.0.0.1:9760");
     const rt = all["units-main-runtime.service"]!;
     expect(rt).toContain("User=units-main\n");
@@ -140,13 +140,13 @@ describe("identity service flag", () => {
     }
   });
 
-  test("the CLI: without --identity it writes the 8 unit files and the block without the route; with it, 11 and the route", () => {
+  test("the CLI: without --identity it writes the 9 unit files and the block without the route; with it, 12 and the route", () => {
     const out = mkdtempSync(join(tmpdir(), "units-instance-cli-"));
     try {
       const run = (...a: string[]) => spawnSync("bun", [join(import.meta.dir, "instance.ts"), ...a], { encoding: "utf8" });
-      expect(run("units", "mainnet", SYSTEMD, join(out, "off")).stdout).toContain("rendered 8 unit files");
+      expect(run("units", "mainnet", SYSTEMD, join(out, "off")).stdout).toContain("rendered 9 unit files");
       expect(readdirSync(join(out, "off")).filter((f) => f.includes("identity"))).toEqual([]);
-      expect(run("units", "mainnet", SYSTEMD, join(out, "on"), "--identity").stdout).toContain("rendered 11 unit files");
+      expect(run("units", "mainnet", SYSTEMD, join(out, "on"), "--identity").stdout).toContain("rendered 12 unit files");
       expect(readdirSync(join(out, "on")).filter((f) => f.includes("identity")).sort()).toEqual(["units-main-identity-cycle.service", "units-main-identity-cycle.timer", "units-main-identity.service"]);
       for (const f of readdirSync(join(out, "off"))) expect(readFileSync(join(out, "on", f), "utf8")).toBe(readFileSync(join(out, "off", f), "utf8"));
       const tmplPath = join(import.meta.dir, "caddy/Caddyfile.tmpl");
@@ -205,7 +205,7 @@ describe("identity service flag", () => {
 
   test("the shell side: the flag is read from site.env, written only when on, and no default mode ships a GitHub account", () => {
     expect(REMOTE).toContain('WITH_IDENTITY="${WITH_IDENTITY:-0}"');
-    expect(REMOTE).toContain('[ "$WITH_IDENTITY" = 1 ] && PUBLIC_UNITS=("$P-core" "$P-indexer" "$IDU" "$P-web" "$P-gate")');
+    expect(REMOTE).toContain('[ "$WITH_IDENTITY" = 1 ] && PUBLIC_UNITS=("$P-core" "$P-indexer" "$IDU" "$P-web" "$P-bind" "$P-gate")');
     expect(REMOTE).toContain('"$IDU") echo "http://127.0.0.1:$PORT_ID/identity/health" ;;');
     // the heredoc of site.env gains its line only with the flag on
     expect(LOCAL).toContain("WITH_RUNTIME=${with_rt:-0}${id_line:+$nl$id_line}$feat\nEOF");
@@ -542,7 +542,7 @@ ${call}`], { encoding: "utf8", env: { ...process.env, ACTIVE: active } });
     const order = ["go_precheck ", 'systemctl stop "$P-runtime"', 'systemctl stop "$P-indexer"', 'systemctl stop "$P-core"', 'backup_core "$GO_BACKUP_CORE"', 'set_aside_indexer "$GO_ARCHIVE_INDEXER"', "    promote_next\n", '\n  site_config "$REL"\n', "instance-preflight.ts", 'restart_checked "$u"', "finish_next"].map(at);
     expect(order).toEqual([...order].sort((x, y) => x - y));
     // the public units start Core first, then the indexer
-    expect(REMOTE).toContain('PUBLIC_UNITS=("$P-core" "$P-indexer" "$P-web" "$P-gate")');
+    expect(REMOTE).toContain('PUBLIC_UNITS=("$P-core" "$P-indexer" "$P-web" "$P-bind" "$P-gate")');
     const LOCAL = readFileSync(join(import.meta.dir, "instance.sh"), "utf8");
     expect(LOCAL).toContain("GO_SWITCH_RUNNING=${GO_SWITCH_RUNNING:-} GO_BACKUP_CORE=${GO_BACKUP_CORE:-} GO_ARCHIVE_INDEXER=${GO_ARCHIVE_INDEXER:-} $RI activate-staged");
     expect(LOCAL).toContain('ONLY="--only $5"');

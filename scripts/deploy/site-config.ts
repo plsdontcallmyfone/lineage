@@ -174,6 +174,8 @@ const runtimeCfg: Record<string, any> = {
   // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: L.ports.bind,
+  // the bind surface is the bind service's (units-bind, packages/runtime/src/bind-service.ts): up while this runtime drains or restarts
+  bind_service_port: L.ports.bindService,
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
   // (desktop_required: an attempt waits, short retry, until one is free). Desktop hosts first (the
   // hosts file that scripts/deploy/desktop-host/provision.sh fills; none until the owner creates one),

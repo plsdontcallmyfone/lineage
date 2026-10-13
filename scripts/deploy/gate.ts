@@ -48,7 +48,8 @@
 // Client address: the last X-Forwarded-For entry (Caddy sets it to the peer it saw), else the socket.
 // Limits key on clientKey(): an IPv6 address counts as its /64, an IPv4-mapped one as the IPv4.
 //   [--indexer http://127.0.0.1:9668]   the market indexer upstream for /market/*
-//   [--runtime http://127.0.0.1:9667]   the hosted runtime's bind endpoint for /runtime/bind/*
+//   [--runtime http://127.0.0.1:9667]   the hosted runtime (desktops, genesis proof; /runtime/bind/* too without --bind)
+//   [--bind http://127.0.0.1:9666]      the bind service for /runtime/bind/*, /runtime/unbound/* and /runtime/bind/health
 //   [--upstream-wait-ms 15000]  a refused upstream connection (a restart during a deploy) is retried this long
 
 export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop";
@@ -85,7 +86,7 @@ export const MAX_BUCKETS = 50_000;
 
 export interface Route {
   klass: Klass;
-  upstream: "web" | "core" | "indexer" | "runtime";
+  upstream: "web" | "core" | "indexer" | "runtime" | "bind";
   cors: boolean;
   stream: boolean;
   sameOrigin: boolean;
@@ -140,9 +141,11 @@ export class DesktopViewers {
 /** Decides what a request is, or the status to refuse it with. Pure; tested in gate.test.ts. */
 export function classify(method: string, path: string): Route | { refuse: number; why: string } {
   if (/^\/runtime\/bind\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && (method === "GET" || method === "POST"))
-    return { klass: "bind", upstream: "runtime", cors: false, stream: false, sameOrigin: method === "POST", maxBody: SOCIAL_MAX_BODY };
+    return { klass: "bind", upstream: "bind", cors: false, stream: false, sameOrigin: method === "POST", maxBody: SOCIAL_MAX_BODY };
+  // whether a hosted launch can be bound right now (the bind service's health; the launch form reads it once)
+  if (path === "/runtime/bind/health" && method === "GET") return { klass: "api", upstream: "bind", cors: false, stream: false, sameOrigin: false };
   // the "finish setting up" bar's one read: the hosted agents a wallet launched that still wait for their bind
-  if (/^\/runtime\/unbound\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && method === "GET") return { klass: "bind", upstream: "runtime", cors: false, stream: false, sameOrigin: false };
+  if (/^\/runtime\/unbound\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && method === "GET") return { klass: "bind", upstream: "bind", cors: false, stream: false, sameOrigin: false };
   const terms = /^\/(v1|api)\/bounties\/[1-9A-HJ-NP-Za-km-z]{32,44}\/terms$/.test(path);
   if (method === "PUT") return terms ? { klass: "terms", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false } : { refuse: 405, why: "method" };
   if (method === "POST") {
@@ -394,7 +397,11 @@ if (import.meta.main) {
     core: arg("core", "http://127.0.0.1:9660").replace(/\/+$/, ""),
     indexer: arg("indexer", "http://127.0.0.1:9668").replace(/\/+$/, ""),
     runtime: arg("runtime", "http://127.0.0.1:9667").replace(/\/+$/, ""),
+    bind: "",
   };
+  // the bind service (packages/runtime/src/bind-service.ts) answers /runtime/bind/* and /runtime/unbound/* while the
+  // runtime drains or restarts; without --bind they go to the runtime itself, as before
+  UP.bind = arg("bind", UP.runtime).replace(/\/+$/, "");
   const ORIGINS = arg("origin", "").split(",").map((s) => s.trim()).filter(Boolean);
   // how long a request waits for an upstream that refuses connections (restarting during a deploy)
   const UPSTREAM_WAIT_MS = Number(arg("upstream-wait-ms", "15000"));
