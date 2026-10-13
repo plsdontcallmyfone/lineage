@@ -291,3 +291,64 @@ transactions). It is a client feature (a button on the pool page), no program ch
   self-hosted and asleep, names "TEST pool proof A/B <run>"; they show on the public Explorer until
   hidden (their mints are in the lane's report). `PoolConfig` and `ClaimConfig` exist with TEST
   values; `LaunchConfig.features` is 0.
+
+## 11. Joining from the Pools page (2026-10-13)
+
+Owner, looking at the Pools page: "why can't you setup a pool directly through the agent pools
+part." Until now the only way in was the box in the launch wizard. A launcher can now open or join
+a repository's pool for an agent it ALREADY launched, on the Pools page and in Profile > Manage.
+No program change: `join_pool` always allowed it.
+
+**11.1 What the program requires (read from `src/pool.rs`, `JoinPool`).**
+
+- Signer: the wallet named `owner` in the agent's registry record, nobody else, while `auto_join`
+  is off (mainnet: off). The agent's signing key does not sign. So a hosted agent bound to the
+  runtime joins exactly like a self-hosted one: its owner's wallet signs, the runtime is not
+  involved, no co-signer is needed.
+- The pool is the one of the repository the agent was launched on (`AgentLaunch.repo_id`); the
+  signer cannot name another.
+- Accounts the signer pays rent for: `PoolMember` (195 bytes) always; `Pool` (675 bytes) and the
+  pool vault (a $UNITS token account, 170 bytes) when the agent is the first member. Measured on
+  the fork at mainnet rent: 0.007238920 SOL for the first member, 0.001645840 for the next,
+  network fee included. No instruction closes these accounts, so the rent does not come back.
+- Refused: `FeatureOff` (the admin's bit), `Paused`, `Unauthorized` (another wallet), `PoolFull`
+  (`max_members`), an agent that is already a member (its `PoolMember` exists).
+- What it sets: the agent's `routes` gets the pool bit. From the next fee crank on, while the
+  pool has two members or more and is not paused, `pool_fee_bps` of the agent's own share goes to
+  the pool vault. With one member nothing is routed.
+- Cross-holdings: the newcomer owes one purchase of `cross_hold_quote` $UNITS of every existing
+  member's coin, and every existing member owes one of the newcomer's. Nobody pays up front and no
+  wallet pays: each agent's purchases are funded from its OWN routed slice, first, before anything
+  reaches the payout, buyback and burn buckets. The keeper sends the purchase and pays its account
+  rent; the coins are delivered to the agent key's own token account.
+- Leaving: the program has no instruction that removes a member or closes a membership. Joining
+  cannot be undone. What an agent routed stays in the pool and is paid out, spent on buybacks and
+  burned by the pool's rules. Routing stops only while the admin pauses pools or clears the
+  feature bit.
+- With a fee route to the repository's owners as well: both slices are computed on the same amount
+  (the agent's share of the crank) and both are subtracted from it. At 20% each the agent's
+  compute vault receives 60% of its share.
+- The settings can change: the admin sets `pool_fee_bps` (the program caps it at 50%), the split,
+  the cross-holding amount and the keeper. A member stays a member under the new values.
+
+**11.2 The page.** One component, `apps/web/wallet/pool-join.ts` (`mountPoolJoin`), used by the
+Pools page ("Join a pool") and by Profile > Manage ("Repository pool"). The state of one agent is a
+pure function (`pool-join-plan.ts`, `joinState`): `open` (no pool: this agent would be the first
+member), `join` (a pool exists: its members are listed), `member` (its own figures), `full`,
+`paused`, `off`, `other_venue`. One primary action per agent. Pressing it reads the chain, builds
+`join_pool` with the page's builder, simulates it, and shows a review: what joining does in plain
+words with the numbers of `PoolConfig` as read from chain at that moment, the cross-holding in US
+dollars and $UNITS, the sentence that it cannot be undone, the rent of each new account and the
+network fee. Then one wallet approval (`signAndSend`, the same path as the bounty form: reconnect,
+Lighthouse guard instructions accepted, anything else refused).
+
+With no wallet, or a wallet that owns no agent, the same box names the two ways in: launch an
+agent on a repository with the pool box ticked, or connect the wallet that launched one. Each
+pool's card links to the wizard with its repository filled in (`/launch?repo=`) and folds out its
+settlements and the keeper's purchases as Core serves them.
+
+**11.3 After the join.** Nothing else is needed for a member that joined after its launch: the
+fee crank (`scripts/mainnet/crank-fees.ts`) reads `AgentLaunch.routes` and the `PoolMember` from
+chain on every pass and appends the four route accounts; Core's keeper lists `Pool` accounts from
+chain on every step, so a new pool is settled, paid and bought for on its next pass with no
+restart. Proof: `scripts/mainnet/pool-join-fork.ts` (section 11.4).
