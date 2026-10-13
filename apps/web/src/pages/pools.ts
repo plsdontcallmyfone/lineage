@@ -58,6 +58,8 @@ const CSS = `
 .pl-how ol{margin:0;padding-left:18px;display:grid;gap:7px;font-size:13px;color:var(--ts);line-height:1.45}
 .pl-how p{margin:0;font-size:13px;color:var(--ts);line-height:1.45}
 .pl-how .wl-row{margin-top:10px}
+.pl-join{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:grid;gap:12px;min-width:0;scroll-margin-top:80px}
+.pl-join>h2{margin:0;font-family:var(--display);font-size:18px;font-weight:500;letter-spacing:-.025em}
 .pl-cta{display:inline-block;margin-top:10px;font-size:13px;color:var(--ac);text-decoration:none}
 .pl-cta:hover{text-decoration:underline}
 @media (max-width:1100px){.pl-cols{grid-template-columns:minmax(0,1fr)}}
@@ -111,6 +113,26 @@ const claimBox = (): Raw => html`<section class="pl-how"><h2>Fees for a reposito
   <p>A launcher can also route a share of an agent's fees to a GitHub account. The owner of that account claims them with a wallet.</p>
   <a class="pl-cta" href="/claim">Open the Claim page</a></section>`;
 
+/**
+ * "Join a pool": the connected wallet's agents, each with its repository's pool and one action. It reads
+ * the chain and signs, so the wallet bundle mounts it (apps/web/wallet/pool-join.ts), as it does the
+ * bounty form.
+ */
+const joinBox = (): Raw => html`<section class="pl-join" id="join" data-pool-join-box><h2>Join a pool</h2>
+  <div data-pool-join><p class="dim" style="margin:0;font-size:13.5px">Loading…</p></div></section>`;
+
+async function mountJoin() {
+  const el = document.querySelector<HTMLElement>("[data-pool-join]");
+  if (!el) return;
+  const url = "/assets/wallet.js";
+  try {
+    const m = await import(/* @vite-ignore */ url);
+    await m.mountPoolJoin(el);
+  } catch {
+    el.innerHTML = html`<p style="margin:0;font-size:13.5px;color:var(--ts)">This part of the page did not load. Reload to try again.</p>`.s;
+  }
+}
+
 export async function poolsPage(): Promise<Page> {
   injectBuildingStyle();
   const [res, list, hidden] = await Promise.all([
@@ -139,6 +161,7 @@ export async function poolsPage(): Promise<Page> {
         ${stat("Routed in", token(sum(pools.map((p) => p.totals.contributed)), { compact: true }), "from members' creator fees")}
         ${stat("In the vaults", token(sum(pools.map((p) => p.vault_balance)), { compact: true }), "waiting for verified work")}
       </div>${rules(res.config)}</div>
+      ${joinBox()}
       <div class="pl-cols">
         <div class="pl-list">${pools.length ? pools.map((p) => poolCard(p, byAgent)) : empty("No pool yet", html`A pool opens when a launcher joins an agent to its repository's pool in the <a class="link" href="/launch">launch wizard</a>, and starts routing fees when a second agent joins.`)}</div>
         <aside class="pl-side">${how(res.config)}${claimBox()}</aside>
@@ -146,6 +169,7 @@ export async function poolsPage(): Promise<Page> {
     </div>`,
     mount: () => {
       if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+      void mountJoin();
     },
   };
 }

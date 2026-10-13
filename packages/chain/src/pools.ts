@@ -12,6 +12,13 @@ import { pump, pumpAmm, pumpPdas, PUMP } from "./pump.ts";
 export const POOL_BUY = { cross: 0, buyback: 1, burn: 2 } as const;
 export const POOL_VENUE = { curve: 0, amm: 1 } as const;
 export const MAX_POOL_MEMBERS = 16;
+/** Hard cap of the pool slice in the program (pool.rs MAX_POOL_FEE_BPS), whatever the admin sets. */
+export const MAX_POOL_FEE_BPS = 5_000;
+/** Account sizes `join_pool` creates (8 + the program's INIT_SPACE): the signer pays their rent. */
+export const POOL_ACCOUNT_LEN = 675;
+export const POOL_MEMBER_ACCOUNT_LEN = 195;
+/** The pool vault as `join_pool` creates it: an associated Token-2022 account (165 bytes, the account type, the immutable owner extension), measured on the fork of mainnet for the $UNITS mint. */
+export const POOL_VAULT_ACCOUNT_LEN = 170;
 
 const repoBytes = (repoId: string | Uint8Array) => (typeof repoId === "string" ? hexToBytes(repoId) : repoId);
 
