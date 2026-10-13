@@ -21,6 +21,10 @@
 //                                the launch transactions. Nothing can be simulated (the record does not
 //                                exist until the launch lands), and nothing else is different.
 //
+//   GET  /runtime/bind/health     { ok, reserve, key_store, cosigner, chain, counters }: whether a hosted launch can
+//                                get its key and its co-signature right now (the bind service, bind-service.ts);
+//                                200 when it can, 503 when it cannot. Read by the launch form and the site monitor.
+//
 //   GET  /runtime/unbound/<wallet>   { owner, agents: [{ agent, new_key, mint }] }: the hosted agents this
 //                                wallet launched that still wait for their bind (at most 20). What the
 //                                site's "finish setting up" bar asks on every page, so it is one cheap
@@ -111,7 +115,16 @@ const json = (status: number, body: unknown) => Response.json(body, { status, he
 /** The caller's address as the site gate forwarded it (the last entry is the gate's own; the first is whatever the client sent). */
 const callerOf = (req: Request): string | null => req.headers.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).pop() ?? null;
 
-export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: ReserveHost; waiting?: WaitingOf; log?: (m: string) => void }) {
+/** What the bind service adds to the handler (bind-service.ts): its health answer, its counters, and the rotations it keeps to finish a bind by itself. */
+export interface BindHooks {
+  /** GET /runtime/bind/health */
+  health?: () => Promise<{ ok: boolean } & Record<string, unknown>>;
+  count?: (what: "reservations" | "cosigns") => void;
+  /** a wallet-signed rotation that was just co-signed for its launcher to send: kept, and sent from here when the launch is on chain without it */
+  cosigned?: (agent: string, keyId: string, walletSignedTx: string) => void;
+}
+
+export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: ReserveHost; waiting?: WaitingOf; log?: (m: string) => void; hooks?: BindHooks }) {
   const log = o.log ?? (() => {});
   // one send per agent at a time (a double click must not race two co-signs)
   const busy = new Set<string>();
@@ -119,6 +132,12 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
     const url = new URL(req.url);
     const m = /^\/runtime\/bind\/([^/]+)$/.exec(url.pathname);
     if (url.pathname === "/runtime/health") return json(200, { ok: true });
+    if (url.pathname === "/runtime/bind/health") {
+      if (req.method !== "GET") return json(405, { error: "method_not_allowed" });
+      // a runtime that serves the bind surface itself (no bind service) answers the least: it is up
+      const h = o.hooks?.health ? await o.hooks.health().catch((e) => ({ ok: false, error: String((e as Error).message).slice(0, 200) })) : { ok: true };
+      return json(h.ok ? 200 : 503, h);
+    }
     const u = /^\/runtime\/unbound\/([^/]+)$/.exec(url.pathname);
     if (u) {
       if (req.method !== "GET") return json(405, { error: "method_not_allowed" });
@@ -158,7 +177,9 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
       if (exists === undefined) return json(503, { error: "chain_unavailable", message: "could not read the chain; try again" });
       // a record that is not a hosted launch (self-hosted, a verifier, a removed launch): never this runtime's
       if (exists) return json(404, { error: "not_hosted", message: "not a hosted launched agent" });
+      const fresh = !o.reserve.reservations.get(agent);
       const r = o.reserve.reservations.reserve(agent, callerOf(req));
+      if (r.ok && fresh) o.hooks?.count?.("reservations");
       if (!r.ok) return json(429, { error: r.why === "full" ? "reservations_full" : "too_many_reservations", message: "the hosted runtime is holding as many unlaunched agents as it takes; the launch still works and binds right after it" });
       return json(200, { agent, new_key: r.key.id, status: "reserved", expires_at: r.expires_at });
     }
@@ -180,6 +201,8 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; reserve?: Res
       if (reserved && !o.reserve.reservations.takeSign(agent)) return json(429, { error: "too_many_signs", message: "this reservation was co-signed as often as it may be; the bind follows the launch" });
       try {
         const r = await o.reserve.sign(key, tx, agent);
+        o.hooks?.count?.("cosigns");
+        o.hooks?.cosigned?.(agent, key.id, tx);
         log(`co-signed the bind of ${reserved ? "reserved" : "hosted"} agent ${agent} to runtime key ${key.id} for its launcher to send (${r.signature}); ${summary.join("; ")}`);
         return json(200, { agent, new_key: key.id, tx: r.tx, signature: r.signature });
       } catch (e) {

@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync,
 import { join } from "node:path";
 import { base58Decode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@units/protocol";
 import { guardKey } from "../../chain/src/guard.ts";
+import { keyOnce } from "./keystore.ts";
 
 /**
  * An agent id is a base58 ed25519 public key. Ids come from Core or the chain and become file names
@@ -157,13 +158,10 @@ export class StateStore {
 
   /** Generates (once) and stores the runtime's signing key for `agent`: its treasury, guarded by the transaction firewall. */
   keyFor(agent: string): AgentKey {
-    const file = this.keyFile(agent);
-    const k = existsSync(file) ? keyFromSolanaJson(JSON.parse(readFileSync(file, "utf8"))) : generateAgentKey();
     // an agent's treasury key: from the moment it is in memory it signs transactions only through the
-    // transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md section 3)
-    guardKey(k.id);
-    if (!existsSync(file)) writeFileSync(file, JSON.stringify(Array.from(k.secret)), { mode: 0o600, flag: "wx" });
-    return k;
+    // transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md section 3). Made once even when the bind
+    // service reserves the same agent at the same moment (keystore.ts: one writer wins, the other reads it)
+    return keyOnce(this.keyFile(agent));
   }
 
   keyFile(agent: string): string {
@@ -178,9 +176,9 @@ export class StateStore {
 export class Lock {
   readonly file: string;
   private held = false;
-  constructor(dir: string) {
+  constructor(dir: string, name = "runtime.lock") {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    this.file = join(dir, "runtime.lock");
+    this.file = join(dir, name);
   }
 
   /** Takes the lock, or throws naming the live process that holds it. A stale lock is taken over. */

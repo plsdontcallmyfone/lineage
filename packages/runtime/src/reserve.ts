@@ -48,7 +48,8 @@ export interface ReservationsOptions {
 }
 
 export const RESERVE_TTL_S = 15 * 60;
-export const RESERVE_MAX = 200;
+// 1,000 since the bind became required for a hosted launch (docs/plans/SEAMLESS-BIND.md 9.6): a full list now refuses launches
+export const RESERVE_MAX = 1000;
 export const RESERVE_PER_ADDRESS = 6;
 export const RESERVE_MAX_SIGNS = 8;
 

@@ -120,6 +120,13 @@ export interface RuntimeConfig {
   /** devnet: serve the bind endpoint (bind.ts) on 127.0.0.1 at this port, so hosted launches bind from the Wallet page; absent = off. */
   bind_port?: number;
   /**
+   * The bind surface runs as its own process (`lineage-runtime bind`, bind-service.ts; the deploy kit's
+   * units-bind unit) on this port, so it answers while this runtime drains or restarts. When set, this
+   * runtime serves no /runtime/bind or /runtime/unbound route and keeps no reservations (the service owns
+   * reservations.json); bind_port still serves the desktops and the genesis proof.
+   */
+  bind_service_port?: number;
+  /**
    * Agent desktops (SPEC 17.7, packages/desktop): live desktops on our own server, at most this many
    * at once (TEST 2 on the site; absent or 0 = none). The stream is served on bind_port (or
    * desktop_port) at /desktops/<session>/*, which the gate forwards.
@@ -261,6 +268,7 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   }
   if (c.attempt_gap_s !== undefined && !(typeof c.attempt_gap_s === "number" && c.attempt_gap_s >= 0 && c.attempt_gap_s <= 3600)) throw new Error("runtime config: attempt_gap_s is 0 to 3600 seconds");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
+  if (c.bind_service_port !== undefined && !(Number.isInteger(c.bind_service_port) && c.bind_service_port > 0 && c.bind_service_port < 65536 && c.bind_service_port !== c.bind_port)) throw new Error("runtime config: bind_service_port is a TCP port other than bind_port");
   if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");
   if (c.desktops_max !== undefined && !(Number.isInteger(c.desktops_max) && c.desktops_max >= 0 && c.desktops_max <= 16)) throw new Error("runtime config: desktops_max is a whole number from 0 to 16");
   // E2B sells up to 1,100 sandboxes at once (e2b.dev/pricing, read 2026-10-12)

@@ -4,8 +4,9 @@ Owner, 2026-10-13: "we want the binding of the agent to be seamless, there's alw
 and the same day: "add a popup on a button above the navbar that shows up if you launched a token but
 didn't bind them".
 
-Status: built. Proven on devnet with a local runtime bind endpoint (section 7). Not deployed; no
-mainnet transaction was sent for it.
+Status: sections 1 to 8 built and live. Section 9 (required bind): the bind service, its safety net,
+health and the deploy kit are built and tested; the launch form's part is specified, not built.
+Section 10 (a backup signature on a durable nonce): a devnet finding and a proposal.
 
 ## 1. The problem
 
@@ -160,3 +161,139 @@ of the altered transaction is kept. Real Phantom was not run for this work (sect
   the existing ordered sends take over, and the bind is optional there.
 - The full hosted runtime loop picking up an agent bound this way (only its bind surface ran in the
   devnet proof; `refreshAgents` marks an agent bound from the chain's signing key, as before).
+
+## 9. Required bind: a hosted launch can never end up unbound (owner, 2026-10-13)
+
+"we need bindings to be better and fixed ... so that launches aren't always fucked sometimes."
+
+What went wrong after section 3 shipped: the bind was optional. The hosted runtime closed its bind
+listener at SIGTERM and then drained for up to 25 minutes at every deploy (seen live on the mainnet
+instance, 2026-10-13: `units-main-runtime` in `deactivating (stop-sigterm)`, nothing listening on its
+bind port). A launch built in that window had no reservation, went out without the bind, and needed a
+second signature its launcher did not come back for.
+
+Status of this section: 9.1, 9.4 (server side), 9.5 and 9.7 are built and tested; 9.2 and 9.3 (the
+launch form) are specified here and NOT built yet; section 10 (the backup signature) is a finding and a
+proposal, not built.
+
+### 9.1 The bind service: the bind surface outlives the runtime
+
+The bind surface is a process of its own: `lineage-runtime bind --config <runtime.json> --port <n>`
+(`packages/runtime/src/bind-service.ts`), the deploy kit's `units-bind` unit. Chosen over keeping the
+runtime's own listener open while it drains, because that still leaves the gap between the old process
+leaving and the new one listening (the runtime's start reads Core, prices, providers and the chain
+first), and leaves no bind surface at all when the runtime is off or in a restart loop. The runtime
+keeps its listener up while draining anyway, for an instance that runs without the service.
+
+- It serves exactly the routes of section 4 with the same handler (`bind.ts`), the same co-signer
+  checks and its own installed transaction firewall, plus `GET /runtime/bind/health`.
+- Same user, same state directory. The key store is shared (`keystore.ts`): one file per agent in
+  `<state_dir>/keys`, mode 600 in a mode 700 directory, created by writing a private temporary file and
+  linking it to its name, so of two processes asking at the same moment one wins and the other reads
+  the winner's key. Nothing is overwritten. The runtime's `keyFor` goes through the same function.
+- It reads a key only for the agent a request names. It never loads the runtime authority key, a model
+  key or a provider key (the unit is given none of them), never takes the runtime's lock and never
+  writes `state.json` (it reads it for the waiting list). Its own files: `<state_dir>/bind-service/`
+  (lock, `status.json`, `pending.json`, its firewall log). `reservations.json` is this process's alone
+  while it runs; a runtime with `bind_service_port` in its config keeps no reservations and serves no
+  bind route (its port keeps the desktops and the genesis proof).
+- A hosted launch the service reads on chain gets the key file the runtime will use at discovery
+  (`keys/<agent>.json`), so the runtime adopts it with that key whenever it is back.
+- Not covered: Core's purge list. A purged launch that is still a hosted launch on chain can be bound
+  here; the runtime never works for it and removes its key as before.
+
+Measured on this machine (`bun scripts/launch-e2e/bind-restart.ts`, record in
+`scripts/launch-e2e/BIND-RESTART-LAST.json`; the real service and the real gate, the chain and the
+agent loop stood in): a launcher every 25 ms reserving a key and getting its co-signature. Across a
+restart of the agent loop (SIGTERM, 3 s drain, start): 153 of 153 answered directly and 77 of 77
+through the gate, longest answer 36 ms. Across the service's own restart: 4 ms to leave, 106 ms to
+start, 137 ms between its last answer before and its first after; directly 4 requests were refused,
+through the gate none (the gate retries a refused dial), longest answer 261 ms.
+
+### 9.2 The launch form: the bind is required (NOT BUILT YET)
+
+- Building a hosted launch asks for the reservation and keeps asking for about 40 s with the line
+  "Getting the agent's runtime key…". Still none: the launch is not built. One sentence, "The hosted
+  runtime did not give this agent its key, so the launch was not built. Nothing was signed or sent.",
+  and a Try again button.
+- Right before the wallet is asked, the reservation is asked for once more (it expires 15 minutes
+  after it was last asked for). No answer: nothing is signed. Another key than the one the review was
+  built with: the launch is built again by itself.
+- After the wallet signed, the co-signature is asked for up to 20 s. Still none: nothing is sent,
+  "The hosted runtime did not co-sign the agent's binding, so nothing was sent. Try again."
+- A launch on the launcher's own worker is untouched.
+- Escape hatch, off by default: `UNITS_BIND_OPTIONAL=1` in the web server's environment (it reaches
+  the page in `/chain/config`, which answers when the bind service does not). The form then behaves as
+  section 3.4: the bind is optional and follows the launch.
+- Before the form is filled, the page reads `/runtime/bind/health` once and shows a quiet line only
+  when it is down.
+
+### 9.3 On chain: together, or finished without the launcher (NOT BUILT YET on the page)
+
+- Mainnet bundle with room: the bind is in the bundle. Launch and bind land together or not at all.
+- Bundle already full (five transactions): the bind cannot be merged into a launch transaction (the
+  co-signer signs nothing that holds any instruction but the rotation, section 5, and that stays). It
+  is co-signed before anything is sent, sent by the page the moment the launch lands, and sent by the
+  bind service as well (9.4). The launched screen shows "binding" until the chain shows it.
+- Bundle refused, ordered sends: the bind is the last of them; if the page stops before it, 9.4.
+- A wallet that wants the transactions one by one: declining the bind sends nothing.
+- The launched screen ends at "bound" by itself, or shows "Finish setup: bind" as the primary button
+  with the reason.
+
+### 9.4 The safety net: the service finishes what the wallet approved
+
+Every rotation the service co-signs for a launcher to send is kept (the wallet-signed wire, never a
+key): the co-sign request the page already makes IS the hand-over, before the launch is sent. The
+service then reads that agent's record every 1.5 s:
+
+| What the chain shows | What the service does |
+|---|---|
+| no record, blockhash alive | waits |
+| no record, blockhash gone | drops it: the launch never landed and cannot any more |
+| bound to the runtime's key | drops it; counted as bound with the launch, or after it when it had been seen unbound |
+| a hosted launch, not bound, for 2.5 s | co-signs (the same checks and firewall as section 5) and sends it; again on every pass until it lands |
+| a hosted launch, not bound, blockhash gone | counts it as launched unbound, logs it, lists it for its launcher (`/runtime/unbound/<wallet>`): only the owner's signature can bind it now |
+| a record that is not a hosted launch | drops it |
+
+So a tab closed after the approval, a full bundle and an ordered send that stopped all end bound
+without the launcher, as long as the launch landed within the rotation's blockhash. The kept wires
+survive a restart of the service (`pending.json`, mode 600). At most 1,000 are kept, each at most 5
+minutes.
+
+### 9.5 Health and counters
+
+`GET /runtime/bind/health`: 200 `{ ok: true, reserve, key_store, cosigner, chain, kept, counters }`
+when a launch can be bound now, 503 with the same body when not. `key_store`: a file can be created in
+the key directory. `cosigner`: a rotation of a throwaway agent to a throwaway key that exist only in
+memory passed the checks and the firewall and was signed (once a minute at most). `chain`: a chain read
+answered in the last minute. `reserve.full`: the reservation list is full. Counters (kept across
+restarts in `bind-service/status.json`, printed by `lineage-runtime status` under `bind`):
+`reservations`, `cosigns`, `bound_with_launch`, `bound_after`, `sent_by_service`, `launches_unbound`.
+
+The site monitor reads it for every service named in `MONITOR_BIND` (`scripts/deploy/monitor.ts`):
+not answering or not ready is a failure that names the part; each further unbound launch is a warning
+of its own.
+
+### 9.6 Abuse, now that a full list refuses launches
+
+While the bind was optional a full reservation list cost nothing. Required, it refuses hosted launches,
+so the list holds 1,000 (was 200) with the same 6 per caller address and 15 minute expiry: filling it
+takes 167 addresses asking continuously. It is still a way to hold hosted launches up; the monitor
+shows it (`reserve.full`) and the escape hatch of 9.2 is the answer while it lasts.
+
+### 9.7 Deploy kit
+
+- `scripts/deploy/systemd/units-bind.service` (an instance: `units-main-bind`, port 9766): the runtime's
+  user and state, no Docker, no model or provider key, `TimeoutStopSec=10`, `Restart=always` after 1 s,
+  conditioned on the instance having a runtime authority key (the file is not read).
+- It is a PUBLIC unit in both kits: restarted with the others, one by one and health-checked, right
+  before the gate; never in the background set that drains. Up but not ready (503) never fails a
+  deploy.
+- The gate forwards `/runtime/bind/*`, `/runtime/unbound/*` and `/runtime/bind/health` to it
+  (`--bind`, port 9666 / 9766). `site-config.ts` writes `bind_service_port` into `runtime.json`.
+- No extra step in the deploy command. The first deploy that carries it, on the first instance only:
+  the old runtime closes its listener when it is told to stop, before the gate has been restarted onto
+  the service, so the bind surface is away for the length of the public restart, once. The second
+  instance's activation stops the runtime after the gate restarted: no window there.
+- After a rollback to a release without it: `systemctl disable --now units-bind` (or
+  `units-main-bind`); the older gate and runtime do not use it.
