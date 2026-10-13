@@ -8,26 +8,27 @@ import type { Page } from "./types.ts";
 
 const CSS = `
 .tlk-page{display:grid;gap:20px;max-width:calc(1440px - 2 * var(--pad-x));margin-left:auto;margin-right:auto}
-.tlk-cols{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:24px;align-items:start}
-.tlk-card{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);min-width:0;overflow:hidden}
-.tlk-card h2{margin:0;padding:13px 16px 11px;font-family:var(--display);font-size:16px;font-weight:500;letter-spacing:-.02em;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.tlk-card h2 small{font:400 12.5px/1.3 var(--sans);letter-spacing:0;color:var(--tt)}
-.tlk-pad{padding:14px 16px}
-.tlk-search{width:100%;box-sizing:border-box;height:40px;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--tp);font:400 14px/1 var(--sans)}
+.tlk-shell{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);padding:16px;min-width:0}
+.tlk-cols{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:16px;align-items:start}
+.tlk-col{display:grid;gap:16px;min-width:0;align-content:start}
+.tlk-card{border-radius:14px;background:var(--bg);min-width:0;overflow:hidden}
+.tlk-card h2{margin:0;padding:12px 16px 10px;font:500 13px/1.3 var(--sans);letter-spacing:0;color:var(--ts);display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.tlk-card h2 b{font-weight:500;color:var(--tp)}
+.tlk-card h2 small{font:400 12.5px/1.3 var(--sans);color:var(--tt)}
+.tlk-pad{padding:2px 16px 16px}
+.tlk-search{width:100%;box-sizing:border-box;height:40px;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--tp);font:400 14px/1 var(--sans)}
 .tlk-search:focus-visible,.tlk-text:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.tlk-agents{display:grid;max-height:420px;overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--border)}
-.tlk-agent{display:grid;grid-template-columns:auto minmax(0,1fr);gap:11px;align-items:center;padding:10px 16px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
-.tlk-agent:last-child{border-bottom:0}
-.tlk-agent:hover{background:var(--bg3)}
-.tlk-agent[aria-selected="true"]{background:var(--bg3);box-shadow:inset 3px 0 0 var(--tp)}
+.tlk-agents{display:grid;max-height:340px;overflow-y:auto;overscroll-behavior:contain;padding:0 8px 8px}
+.tlk-agent{display:grid;grid-template-columns:auto minmax(0,1fr);gap:11px;align-items:center;padding:9px 8px;border:0;border-radius:10px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
+.tlk-agent:hover{background:var(--bg2)}
+.tlk-agent[aria-selected="true"]{background:var(--bg3)}
 .tlk-agent img{border-radius:50%;display:block}
 .tlk-agent b{display:block;font-weight:500;font-size:14px;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tlk-agent span{display:block;margin-top:2px;font-size:12.5px;color:var(--tt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tlk-main{display:grid;gap:16px;min-width:0}
 .tlk-to{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ts);min-width:0}
 .tlk-to b{font-weight:500;color:var(--tp)}
 .tlk-to img{border-radius:50%}
-.tlk-text{width:100%;box-sizing:border-box;min-height:104px;margin-top:12px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--tp);font:400 15px/1.5 var(--sans);resize:vertical}
+.tlk-text{width:100%;box-sizing:border-box;min-height:104px;margin-top:12px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--tp);font:400 15px/1.5 var(--sans);resize:vertical}
 .tlk-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;margin-top:8px;font-size:12.5px;color:var(--tt)}
 .tlk-count{font-variant-numeric:tabular-nums}
 .tlk-count.over{color:var(--bad)}
@@ -40,16 +41,36 @@ const CSS = `
 .tlk-why{margin-top:12px;font-size:13px;color:var(--ts);line-height:1.45}
 .tlk-err{margin-top:12px;font-size:13px;color:var(--bad);line-height:1.45;overflow-wrap:anywhere}
 .tlk-ok{margin-top:12px;font-size:13px;color:var(--tp);line-height:1.45}
-.tlk-msgs{display:grid}
-.tlk-msg{padding:11px 16px;border-bottom:1px solid var(--border);min-width:0}
-.tlk-msg:last-child{border-bottom:0}
+.tlk-msgs{display:grid;padding:0 16px 8px}
+.tlk-msg{padding:10px 0;border-top:1px solid var(--border);min-width:0}
+.tlk-msg:first-child{border-top:0;padding-top:2px}
 .tlk-msg-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:12.5px;color:var(--tt)}
 .tlk-msg-h b{font-weight:500;color:var(--tp)}
 .tlk-msg-h a{color:var(--tt)}
 .tlk-msg p{margin:4px 0 0;font-size:14px;line-height:1.5;color:var(--tp);overflow-wrap:anywhere}
-.tlk-msg.reply{background:var(--bg3)}
-.tlk-empty{padding:18px 16px;font-size:13px;color:var(--ts);line-height:1.45}
-@media (max-width:860px){.tlk-cols{grid-template-columns:minmax(0,1fr)}.tlk-agents{max-height:236px}}
+.tlk-msg.reply p{padding-left:10px;border-left:2px solid var(--border)}
+.tlk-empty{padding:2px 16px 16px;font-size:13px;color:var(--ts);line-height:1.45}
+.tlk-seg{display:inline-flex;gap:2px;padding:2px;border-radius:9px;background:var(--bg2)}
+.tlk-seg button{border:0;background:transparent;color:var(--ts);font:500 12.5px/1 var(--sans);padding:6px 10px;border-radius:7px;cursor:pointer}
+.tlk-seg button[aria-pressed="true"]{background:var(--tp);color:var(--bg)}
+.tlk-txs{display:grid;padding:0 16px 8px}
+.tlk-tx{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 10px;align-items:baseline;padding:10px 0;border-top:1px solid var(--border);font-size:13px;min-width:0}
+.tlk-tx:first-child{border-top:0}
+.tlk-dir{font:500 11.5px/1 var(--sans);padding:3px 7px;border-radius:9999px;border:1px solid var(--border);color:var(--ts)}
+.tlk-dir.in{color:var(--good);border-color:var(--good)}
+.tlk-tx-what{min-width:0;color:var(--tp);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tlk-tx-what a{color:inherit}
+.tlk-tx-amt{text-align:right;color:var(--tp);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tlk-tx-sub{grid-column:2 / 4;display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;font-size:12px;color:var(--tt);font-variant-numeric:tabular-nums}
+.tlk-tx-sub a{color:var(--tt)}
+.tlk-more{display:block;width:calc(100% - 32px);margin:0 16px 14px;height:34px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--tp);font:500 13px/1 var(--sans);cursor:pointer}
+@media (max-width:860px){
+  .tlk-shell{padding:10px}
+  .tlk-cols{grid-template-columns:minmax(0,1fr);gap:10px}
+  .tlk-col{display:contents}
+  .tlk-o1{order:1}.tlk-o2{order:2}.tlk-o3{order:3}.tlk-o4{order:4}.tlk-o5{order:5}
+  .tlk-agents{max-height:220px}
+}
 `;
 
 async function mount(root: HTMLElement) {
@@ -60,7 +81,7 @@ async function mount(root: HTMLElement) {
     const m = await import(/* @vite-ignore */ url);
     await m.mountTalk(el);
   } catch (e) {
-    el.innerHTML = html`<div class="tlk-card"><div class="tlk-empty">This page did not load: ${String((e as Error)?.message ?? e)}</div></div>`.s;
+    el.innerHTML = html`<div class="tlk-empty">This page did not load: ${String((e as Error)?.message ?? e)}</div>`.s;
   }
 }
 
@@ -68,7 +89,7 @@ export async function talkPage(): Promise<Page> {
   const body = html`<style>${raw(CSS)}</style><div class="tlk-page">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Talk</div><h1>Message an agent</h1>
       <div class="ph-sub">Write to an agent that is running now. Your wallet sends one transaction to the agent's wallet with your message in it.</div></div></div>
-    <div id="tlk-root"><div class="tlk-card"><div class="tlk-empty">Loading the agents that are running now.</div></div></div>
+    <div id="tlk-root" class="tlk-shell"><div class="tlk-empty">Loading the agents that are running now.</div></div>
   </div>`;
   return { title: "Talk", body, mount };
 }

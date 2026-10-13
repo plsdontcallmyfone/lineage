@@ -61,7 +61,7 @@ function agentList(): Raw {
   const b = T.board!;
   const q = T.q.trim().toLowerCase();
   const list = b.agents.filter((a) => !q || `${nameOf(a)} ${about(a)} ${a.agent}`.toLowerCase().includes(q));
-  return html`<div class="tlk-card"><h2>Running now <small>${b.agents.length} agent${b.agents.length === 1 ? "" : "s"}</small></h2>
+  return html`<div class="tlk-card tlk-o1"><h2><b>Running now</b> <small>${b.agents.length} agent${b.agents.length === 1 ? "" : "s"}</small></h2>
     <div class="tlk-pad"><input class="tlk-search" type="search" data-tk="q" value="${T.q}" placeholder="Search by name, coin or repository" aria-label="Search agents"></div>
     <div class="tlk-agents" role="listbox" aria-label="Agents running now">${
       list.length
@@ -78,25 +78,27 @@ function compose(): Raw {
   const w = me();
   const costReady = T.cost && T.costFor === costKey();
   const total = costReady ? BigInt(b.min_lamports) + T.cost!.fee : null;
-  return html`<div class="tlk-card"><h2>Your message</h2><div class="tlk-pad">
+  return html`<div class="tlk-card tlk-o2"><h2><b>Your message</b></h2><div class="tlk-pad">
     <div class="tlk-to">${a ? html`${avatar(a, 28)}<span>To <b>${nameOf(a)}</b></span>` : html`<span>Choose an agent from the list.</span>`}</div>
     <textarea class="tlk-text" data-tk="text" maxlength="2000" placeholder="${a ? `Ask ${nameOf(a)} about its work` : "Your message"}" aria-label="Message">${T.text}</textarea>
     <div class="tlk-row"><span class="tlk-public">Messages are public and permanent. Anyone can read them on chain.</span><span class="tlk-count${n > b.max_bytes ? " over" : ""}" data-tk-count>${n} of ${b.max_bytes} bytes</span></div>
     <dl class="tlk-kv">
       <dt>Your wallet</dt><dd>${w ? short(w) : "not connected"}</dd>
       <dt>Sent to the agent's wallet</dt><dd>${solText(b.min_lamports)}<small>${usd(b.min_lamports)}</small></dd>
-      <dt>Network fee</dt><dd data-tk-fee>${costReady ? html`${solText(T.cost!.fee)}<small>${usd(T.cost!.fee)}</small>` : html`<small>${T.costErr ?? (w ? (why ? "shown once the message can be sent" : "working it out") : "shown once your wallet is connected")}</small>`}</dd>
+      <dt>Network fee</dt><dd data-tk-fee>${costReady ? html`${solText(T.cost!.fee)}<small>${usd(T.cost!.fee)}</small>` : html`<small>${T.costErr ?? (!b.open ? "shown before you sign" : w ? (why ? "shown once the message can be sent" : "working it out") : "shown once your wallet is connected")}</small>`}</dd>
       <dt>Total</dt><dd data-tk-total>${total !== null ? html`${solText(total)}<small>${usd(total)}</small>` : html`<small>the amount above plus the fee</small>`}</dd>
     </dl>
     <div class="tlk-act">${
-      !w
-        ? html`<button type="button" class="wl-btn primary" data-tk-act="connect">Connect wallet</button>`
-        : html`<button type="button" class="wl-btn primary" data-tk-act="send" ${why || !costReady || T.busy ? "disabled" : ""}>${T.busy ?? "Send message"}</button>`
+      !b.open
+        ? html`<button type="button" class="wl-btn primary" disabled>Send message</button>`
+        : !w
+          ? html`<button type="button" class="wl-btn primary" data-tk-act="connect">Connect wallet</button>`
+          : html`<button type="button" class="wl-btn primary" data-tk-act="send" ${why || !costReady || T.busy ? "disabled" : ""}>${T.busy ?? "Send message"}</button>`
     }<span class="tlk-public">One signature, one transaction.</span></div>
-    ${why && (T.board!.open === false || w) ? html`<div class="tlk-why">${why}</div>` : ""}
+    ${!b.open ? html`<div class="tlk-why">Sending is not open yet. You can read what people wrote to this agent below.</div>` : why && w ? html`<div class="tlk-why">${why}</div>` : ""}
     ${T.err ? html`<div class="tlk-err">${T.err}</div>` : ""}
     ${T.sent ? html`<div class="tlk-ok">Sent. <a class="link" href="${explorerTx(T.sent)}" target="_blank" rel="noopener">See the transaction</a>. It appears below once the network has read it, usually within a minute.</div>` : ""}
-    <div class="tlk-why">${b.replies ? "This agent may answer in its own words, on chain. It does not act on requests: it cannot send funds, sign anything for you or share work that is not final." : "Agents read messages but do not answer them yet."}</div>
+    ${b.open && b.replies ? html`<div class="tlk-why">This agent may answer in its own words, on chain. It does not act on requests: it cannot send funds, sign anything for you or share work that is not final.</div>` : ""}
   </div></div>`;
 }
 
@@ -110,29 +112,24 @@ function lists(): Raw {
   const w = me();
   const mineIds = new Set(v?.mine.map((m) => m.id) ?? []);
   const thread: { at: number; h: Raw }[] = [...(v?.mine ?? []).map((m) => ({ at: m.at, h: msgHtml(m, true) })), ...(v?.replies ?? []).map((x) => ({ at: x.at, h: html`<div class="tlk-msg reply"><div class="tlk-msg-h"><b>${nameOf(a)}</b><span>${when(x.at)}</span>${x.chain ? html`<a href="${explorerTx(x.chain)}" target="_blank" rel="noopener">on chain</a>` : ""}</div><p>${x.text}</p></div>` }))].sort((x, y) => x.at - y.at);
-  return html`<div class="tlk-card"><h2>You and ${nameOf(a)}</h2><div class="tlk-msgs">${
-    !w ? html`<div class="tlk-empty">Connect your wallet to see the messages it sent to ${nameOf(a)}.</div>`
-    : !v ? html`<div class="tlk-empty">Loading.</div>`
-    : thread.length ? thread.map((x) => x.h)
-    : html`<div class="tlk-empty">Your wallet has not written to ${nameOf(a)} yet.</div>`
-  }</div></div>
-  <div class="tlk-card"><h2>Recent messages to ${nameOf(a)} <small>from any wallet</small></h2><div class="tlk-msgs">${
-    !v ? html`<div class="tlk-empty">Loading.</div>`
-    : v.recent.length ? v.recent.map((m) => msgHtml(m, mineIds.has(m.id)))
-    : html`<div class="tlk-empty">Nobody has written to ${nameOf(a)} yet.</div>`
-  }</div></div>`;
+  const box = (rows: Raw[] | null, none: string): Raw => (rows === null ? html`<div class="tlk-empty">Loading.</div>` : rows.length ? html`<div class="tlk-msgs">${rows}</div>` : html`<div class="tlk-empty">${none}</div>`);
+  return html`<div class="tlk-card tlk-o3"><h2><b>You and ${nameOf(a)}</b></h2>${
+    !w ? html`<div class="tlk-empty">Connect your wallet to see the messages it sent to ${nameOf(a)}.</div>` : box(v ? thread.map((x) => x.h) : null, `Your wallet has not written to ${nameOf(a)} yet.`)
+  }</div>
+  <div class="tlk-card tlk-o5"><h2><b>Recent messages to ${nameOf(a)}</b> <small>from any wallet</small></h2>${box(v ? v.recent.map((m) => msgHtml(m, mineIds.has(m.id))) : null, `Nobody has written to ${nameOf(a)} yet.`)}</div>`;
 }
 
 function render() {
   if (!T.root) return;
   if (T.loadErr || !T.board) {
-    T.root.innerHTML = html`<div class="tlk-card"><div class="tlk-empty">${T.loadErr ?? "Loading the agents that are running now."}</div></div>`.s;
+    T.root.innerHTML = html`<div class="tlk-empty">${T.loadErr ?? "Loading the agents that are running now."}</div>`.s;
     return;
   }
   const active = document.activeElement as HTMLElement | null;
   const focus = active?.dataset?.tk ?? null;
   const sel = focus && active instanceof HTMLTextAreaElement ? [active.selectionStart, active.selectionEnd] : focus && active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] : null;
-  T.root.innerHTML = html`<div class="tlk-cols"><div>${agentList()}</div><div class="tlk-main">${compose()}${lists()}</div></div>`.s;
+  // one outer panel (the page's #tlk-root), the parts as inner cards: left the selector, right the composer, the conversation and the recent messages
+  T.root.innerHTML = html`<div class="tlk-cols"><div class="tlk-col">${agentList()}</div><div class="tlk-col">${compose()}${lists()}</div></div>`.s;
   if (focus) {
     const el = T.root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-tk="${focus}"]`);
     el?.focus();
@@ -243,7 +240,7 @@ function wire(root: HTMLElement) {
         root.querySelector<HTMLButtonElement>('[data-tk-act="send"]')?.setAttribute("disabled", "");
         const fee = root.querySelector<HTMLElement>("[data-tk-fee]");
         const total = root.querySelector<HTMLElement>("[data-tk-total]");
-        if (fee) fee.innerHTML = html`<small>${blocked() ?? "working it out"}</small>`.s;
+        if (fee) fee.innerHTML = html`<small>${!b.open ? "shown before you sign" : !me() ? "shown once your wallet is connected" : (blocked() ?? "working it out")}</small>`.s;
         if (total) total.innerHTML = html`<small>the amount above plus the fee</small>`.s;
       }
       priceSoon();

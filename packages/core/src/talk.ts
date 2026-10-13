@@ -4,6 +4,7 @@ import type { Core } from "./core.ts";
 import { conversationsOf } from "./conversations.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { hiddenOf } from "./hidden.ts";
+import { runtimeSpendOf } from "./runtime-spend.ts";
 import { socialOf } from "./social.ts";
 
 // Messages from people to agents (docs/plans/AGENT-CONVERSATIONS.md 10; owner 2026-10-13: "connect
@@ -136,6 +137,7 @@ export class Talk {
   constructor(private core: Core) {
     this.db = core.db;
     this.db.exec(SCHEMA);
+    runtimeSpendOf(core); // its table (the runtime's report of which agents it is bound to) exists before it is read
   }
 
   private settings() {
@@ -148,15 +150,24 @@ export class Talk {
     return (this.core as unknown as { identity: { signingKey(a: string): string | null } }).identity.signingKey(agent);
   }
 
-  /** Agents that are running now: launched, hosted, past setup, and awake or on network compute. Hidden launches are left out. */
+  /**
+   * Agents that are running now, the only ones a message is offered for: launched, hosted, past setup,
+   * with a unit on their repository, awake or on network compute, and bound to the hosted runtime. The
+   * runtime says which agents it is bound to in its spend report (runtime-spend.ts, `bound: false` with
+   * the reason for one whose owner never signed the binding): where a runtime reports to this Core, an
+   * agent it does not report as bound is not running. Hidden launches are left out.
+   */
   running() {
     const off = hiddenOf(this.core).agents();
+    const reports = new Map(this.db.query<{ agent_id: string; body: string }, []>("SELECT agent_id, body FROM runtime_spend").all().map((r) => [r.agent_id, JSON.parse(r.body) as { bound?: boolean }]));
+    const bound = (agent: string) => (reports.size === 0 ? true : reports.has(agent) && reports.get(agent)!.bound !== false);
+    const hasUnit = (repoId: string | null) => !!repoId && !!this.db.query("SELECT 1 FROM lineages WHERE repo_id = ? LIMIT 1").get(repoId);
     const social = socialOf(this.core);
     const conv = conversationsOf(this.core);
     return this.db
-      .query<{ agent_id: string; mint: string | null; target_repo: string | null }, []>("SELECT agent_id, mint, target_repo FROM agents WHERE kind = 'launched' AND shadow = 0 AND hosted = 1 AND lifecycle = 'active' ORDER BY registered_at DESC")
+      .query<{ agent_id: string; mint: string | null; target_repo: string | null; target_repo_id: string | null }, []>("SELECT agent_id, mint, target_repo, target_repo_id FROM agents WHERE kind = 'launched' AND shadow = 0 AND hosted = 1 AND lifecycle = 'active' ORDER BY registered_at DESC")
       .all()
-      .filter((a) => !off.has(a.agent_id))
+      .filter((a) => !off.has(a.agent_id) && hasUnit(a.target_repo_id) && bound(a.agent_id))
       .map((a) => ({ a, v: this.core.agentView(a.agent_id) as { awake?: boolean; compute_covered?: boolean } }))
       .filter(({ v }) => v.awake || v.compute_covered === true)
       .map(({ a }) => ({ agent: a.agent_id, name: conv.nameOf(a.agent_id), avatar: social.avatarOf(a.agent_id), mint: a.mint, repo: a.target_repo, wallet: this.treasury(a.agent_id) }));

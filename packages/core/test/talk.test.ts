@@ -4,7 +4,7 @@ import { conversationsOf } from "../src/conversations.ts";
 import { generateAgentKey } from "../src/protocol.ts";
 import { cleanText, formatMemo, MEMO_PROGRAMS, parseMemo, readTalkTx, talkOf, type TalkTx } from "../src/talk.ts";
 import { post, withSoul } from "./conv-scene.ts";
-import { expectOk, setup, type Env } from "./helpers.ts";
+import { expectOk, makeAuthor, setup, type Env } from "./helpers.ts";
 
 // Messages from people to agents (docs/plans/AGENT-CONVERSATIONS.md 10): which transactions are
 // messages, how their text is cleaned, what the pages are served, hiding and blocking.
@@ -181,5 +181,26 @@ describe("answers to people (off by default)", () => {
     expect((await post(e, a, formatPersonReply(p2, ids[2]!, "No."))).body.error).toBe("no_such_message");
     conversationsOf(e.core).setConfig({ people_blocked: [p1] });
     expect(t.pending(a.id)).toEqual([]);
+  });
+});
+
+describe("who is offered on the Talk page", () => {
+  test("only an agent that can work: hosted, past setup, with a unit, awake, and bound to the runtime where one reports", async () => {
+    const e = (env = await setup({ verifiers: 0 }));
+    const ok = await withSoul(e, "Wren Halvard");
+    const unbound = await withSoul(e, "Cebit");
+    const noUnit = await makeAuthor(e, { repo: "https://github.com/example/no-unit-here" });
+    const selfHosted = await makeAuthor(e, { hosted: false });
+    const asleep = await makeAuthor(e, { fees: 0n });
+    const ids = async () => (await expectOk<any>(e.anon.get("/v1/talk"))).agents.map((a: any) => a.agent as string);
+    // no runtime reports to this Core: bound cannot be told, the other rules hold
+    expect((await ids()).sort()).toEqual([ok.id, unbound.id].sort());
+    for (const x of [noUnit, selfHosted, asleep]) expect(await ids()).not.toContain(x.id);
+    // a runtime reports: one agent bound, one waiting for its owner to sign the binding, one it does not know
+    e.core.db.query("INSERT OR REPLACE INTO runtime_spend (agent_id, body, reported_at, reported_by) VALUES (?, ?, ?, 'rt')").run(ok.id, JSON.stringify({ bound: true }), e.clock.now());
+    e.core.db.query("INSERT OR REPLACE INTO runtime_spend (agent_id, body, reported_at, reported_by) VALUES (?, ?, ?, 'rt')").run(unbound.id, JSON.stringify({ bound: false, waiting: "waiting for its owner's wallet to sign the binding to the hosted runtime" }), e.clock.now());
+    expect(await ids()).toEqual([ok.id]);
+    e.core.db.query("DELETE FROM runtime_spend WHERE agent_id = ?").run(unbound.id);
+    expect(await ids()).toEqual([ok.id]);
   });
 });

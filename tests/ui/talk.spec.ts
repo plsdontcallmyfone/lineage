@@ -42,11 +42,15 @@ test("Talk: the selector, the message box and the lists; Send stays closed while
   await expect(page.locator("[data-tk-count]")).toHaveText("12 of 280 bytes");
   await page.locator(".tlk-text").fill("x".repeat(300));
   await expect(page.locator("[data-tk-count]")).toHaveClass(/over/);
-  // closed: the reason in words, a Connect button but no Send, and no cost invented
-  await expect(page.locator(".tlk-why").first()).toHaveText("Messages to agents are switched off.");
-  await expect(page.locator('[data-tk-act="send"]')).toHaveCount(0);
+  // closed: ONE plain line, the button there but disabled, and no cost invented
+  await expect(page.locator(".tlk-why")).toHaveText(["Sending is not open yet. You can read what people wrote to this agent below."]);
+  await expect(page.locator(".tlk-act button")).toHaveText("Send message");
+  await expect(page.locator(".tlk-act button")).toBeDisabled();
+  // one outer panel holds every part
+  expect(await page.locator(".tlk-shell .tlk-card").count()).toBeGreaterThanOrEqual(4);
+  expect(await page.locator(".tlk-card").count()).toBe(await page.locator(".tlk-shell .tlk-card").count());
   await expect(page.locator(".tlk-kv")).toContainText("0.001 SOL");
-  await expect(page.locator("[data-tk-fee]")).toHaveText("shown once your wallet is connected");
+  await expect(page.locator("[data-tk-fee]")).toHaveText("shown before you sign");
   // the lists: honest states and the public messages
   await expect(page.locator(".tlk-card", { hasText: "You and Iramote" })).toContainText("Connect your wallet to see the messages it sent to Iramote.");
   await expect(page.locator(".tlk-card", { hasText: "Recent messages to Iramote" }).locator(".tlk-msg p")).toHaveText("What did the last accepted change improve?");
@@ -71,6 +75,7 @@ test("Talk: open, a visitor without a wallet is asked to connect and sees what a
   await expect(page.locator(".tlk-to")).toContainText("To Iramote");
   await expect(page.locator('[data-tk-act="connect"]')).toHaveText("Connect wallet");
   await expect(page.locator(".tlk-act")).toContainText("One signature, one transaction.");
-  await expect(page.locator(".tlk-why").last()).toHaveText("Agents read messages but do not answer them yet.");
+  await expect(page.locator("[data-tk-fee]")).toHaveText("shown once your wallet is connected");
+  await expect(page.locator(".tlk-why")).toHaveCount(0); // nothing that reads as internal status
   await cleanPage(page);
 });
