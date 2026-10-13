@@ -180,7 +180,9 @@ const runtimeCfg: Record<string, any> = {
   // runtime authority funds one nonce account per pool key (rent 1,056,640 lamports as read on mainnet 2026-10-13,
   // returned when the account closes): 20 ready, refilled below 8, never more than 40 alive (0.0211 SOL at the
   // target, 0.0423 SOL at the cap), 4 creations a minute, and never a refill that takes the payer under 0.05 SOL
-  bind_pool: { enabled: true, target: 20, low: 8, cap: 40, per_pass: 4, payer_floor_lamports: 50_000_000 },
+  // off for now (owner 2026-10-13): the backup adds a nonce transaction to the launch approval, and how Phantom shows it is
+  // not known; it is switched on after one Phantom launch with it has been seen. Bind required and the bind service do not depend on it.
+  bind_pool: { enabled: false, target: 20, low: 8, cap: 40, per_pass: 4, payer_floor_lamports: 50_000_000 },
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
   // (desktop_required: an attempt waits, short retry, until one is free). Desktop hosts first (the
   // hosts file that scripts/deploy/desktop-host/provision.sh fills; none until the owner creates one),

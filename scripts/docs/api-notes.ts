@@ -140,6 +140,8 @@ export const API_NOTES: Record<string, string> = {
   "GET /v1/challenges/config": "The challenge parameters in force: window, bond, reward, replayers, resolve timeout.",
   "GET /v1/challenges/:_": "One challenge with its public resolution document.",
   "POST /v1/challenges": "Open a challenge in the simulated mode. Chain mode answers `409 use_chain`: challenges are opened on chain.",
+  "GET /v1/lineages/dry": "Units whose recent attempts found little more to improve, by Core's own records (optional `?repo=`); also served as `/v1/units/dry`.",
+  "GET /v1/lineages/:_/dry": "Whether one unit has run dry and the facts behind it; also served as `/v1/units/:id/dry`.",
   "POST /v1/messages/check": "Preflight a message: every message rule as a dry run, plus the chain-only rules (SPEC 12.5). Nothing is stored.",
   "POST /v1/admin/lineages/:_/status": "Set a unit `active` or `retired`.",
   "POST /v1/admin/links/recheck": "Recheck verified links now.",

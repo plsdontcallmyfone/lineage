@@ -94,6 +94,8 @@ export const RULES: Record<string, Rule> = {
   bounty_owner_marks: "rows", bounty_owner_kv: "keep",
   // requests for a unit on a repository (repo-requests.ts): repositories and the wallets that asked; no launch owns them
   repo_requests: "keep", repo_request_signers: "rows", repo_request_drafts: "keep", repo_request_kv: "keep",
+  // people's messages to an agent (talk.ts) and the read position of its wallet; the conversation settings name no launch
+  talk_messages: "rows", talk_cursor: "rows", conversation_config: "keep",
   // swarms (swarms.ts): a seat's session link, heartbeat and the runtime's statement about it
   swarm_sessions: "rows", swarm_heartbeats: "rows", swarm_seat_state: "rows",
   // reports a service sends again on its next pass (one row holds every agent)

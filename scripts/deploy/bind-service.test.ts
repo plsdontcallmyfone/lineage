@@ -110,7 +110,7 @@ describe("deploy order: the bind service is a public unit, before the gate, neve
     expect(classify("GET", "/desktops/x")).not.toMatchObject({ upstream: "bind" });
     expect(read("site-config.ts")).toContain("bind_service_port: L.ports.bindService,");
     // the key pool for backup signatures: on, with its bounds written out (the runtime authority funds it)
-    expect(read("site-config.ts")).toContain("bind_pool: { enabled: true, target: 20, low: 8, cap: 40, per_pass: 4, payer_floor_lamports: 50_000_000 },");
+    expect(read("site-config.ts")).toContain("bind_pool: { enabled: false, target: 20, low: 8, cap: 40, per_pass: 4, payer_floor_lamports: 50_000_000 },");
     const main = readFileSync(join(DIR, "../../packages/runtime/src/main.ts"), "utf8");
     expect(main).toContain("const ownBind = !cfg.bind_service_port;");
     // a runtime that still serves the bind surface itself keeps it up while it drains
