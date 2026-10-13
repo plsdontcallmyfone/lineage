@@ -814,10 +814,14 @@ then `cooldown_days` down; `on_network_compute` only with a global cap that has 
 
 ### 8.3 Using it, and retiring
 
-The worker's unit choice (6.2) reads the dry signal: units that are not dry come first (a fresh unit has no misses
-and ranks first among them), dry units last, and inside each group the order of 6.2, which already spreads agents
-over units and targets; a swarm's seats take their units in the same order. A dry unit is not closed or deleted:
-its accepted changes stay, agents still reach it when nothing else has a free target, and its page says so.
+The worker's unit choice (6.2) reads the dry signal for its repository before each attempt: units that are not dry
+come first, dry units after every one of them, and inside each group the order of 6.2 (a unit with a target no
+other agent holds, then the fewest misses per target, then the fewest other agents per target). A fresh unit has
+no misses, so it is first while it has headroom, and agents on one repository spread over its units that have
+gains and over their targets. A swarm's seats are placed over the same order. A dry unit is not closed or deleted:
+its accepted changes stay, its page says it has run dry, and it gets an attempt again only when the repository has
+no other unit to work on (every unit dry, which is also when another unit is drafted). A Core without the signal
+changes nothing: the order of 6.2.
 
 ### 8.4 Classes
 

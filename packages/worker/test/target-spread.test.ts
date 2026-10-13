@@ -182,6 +182,28 @@ describe("rankUnits", () => {
     expect(first.size).toBe(2);
     expect(rankUnits(A, [unit("none", []), unit("u1", T2, { ownFruitless: 50 })]).map((x) => x.unit)).toEqual(["u1", "none"]);
   });
+
+  test("a unit Core says has run dry goes after every unit that has not, whatever the other counts; a fresh unit is first while it has headroom", () => {
+    // the fresh unit has every target held by another agent and misses of its own: still before the dry one
+    const busy = unit("fresh", T2, { ownFruitless: 3, intents: [intent(B, "train_ir"), intent(B, "encode_ir")] });
+    const r = rankUnits(A, [unit("dry", T5, { dry: true }), busy]);
+    expect(r.map((x) => x.unit)).toEqual(["fresh", "dry"]);
+    expect(r.map((x) => x.dry)).toEqual([false, true]);
+    // three units: the two with gains in their old order, the dry one last
+    const three = rankUnits(A, [unit("dry", T5, { dry: true }), unit("worked", T2, { shared: shared([miss("train_ir", 4)]) }), unit("new", T5)]);
+    expect(three.map((x) => x.unit)).toEqual(["new", "worked", "dry"]);
+    // every unit dry: the old order among them, so the work does not stop
+    const all = rankUnits(A, [unit("d1", T2, { dry: true, shared: shared([miss("train_ir", 9)]) }), unit("d2", T5, { dry: true })]);
+    expect(all.map((x) => x.unit)).toEqual(["d2", "d1"]);
+    // a unit without an enabled target is still last of all
+    expect(rankUnits(A, [unit("none", []), unit("dry", T2, { dry: true })]).map((x) => x.unit)).toEqual(["dry", "none"]);
+  });
+
+  test("agents spread over the units that have gains: the unit with fewer other agents per target first", () => {
+    const crowded = unit("crowded", T2, { intents: [intent(B, "train_ir")] });
+    const r = rankUnits(A, [crowded, unit("quiet", T2)]);
+    expect(r.map((x) => x.unit)).toEqual(["quiet", "crowded"]);
+  });
 });
 
 describe("the worker's unit choice", () => {
@@ -224,6 +246,9 @@ describe("the worker's unit choice", () => {
     return { w, x, units, tried, logs, gets, done: () => rmSync(dir, { recursive: true, force: true }) };
   }
 
+  /** the views of the repository's units, as authorOnce reads them (the order a swarm's seat is placed with) */
+  const views = async (s: ReturnType<typeof worker>) => Promise.all(["old", "heavy"].map(async (id) => (await s.x.client.get(`/v1/lineages/${id}`)).body));
+
   test("spread on: one attempt per step, on the fresh unit first, then by its own fruitless attempts; never a unit of another repository", async () => {
     const s = worker({ spread: true });
     await s.w.authorOnce();
@@ -241,6 +266,34 @@ describe("the worker's unit choice", () => {
     // misses remembered for an older tip of the heavy unit no longer count
     s.x.fruitless.set("heavy", { tip: "an-older-tip", counts: new Map([["perf:decode_ir", 3]]) });
     s.units.old!.shared = [{ kind: "no_candidate", target: "perf:train_ir", count: 1 } as never];
+    await s.w.authorOnce();
+    expect(s.tried.at(-1)).toBe("heavy");
+    s.done();
+  });
+
+  test("spread on: a unit Core says has run dry is tried last, a seat takes the same order, and a Core without the signal changes nothing", async () => {
+    const s = worker({ spread: true });
+    const get = s.x.client.get;
+    let dry: string[] = ["heavy"];
+    s.x.client.get = async (path: string) => {
+      if (path.startsWith("/v1/units/dry?repo=")) {
+        expect(decodeURIComponent(path.split("=")[1]!)).toBe(REPO);
+        return { status: 200, body: { units: ["old", "heavy"].map((lineage_id) => ({ lineage_id, dry: dry.includes(lineage_id) })) } };
+      }
+      return get(path);
+    };
+    // without the signal the fresh heavy unit is first (the test above); Core says it has run dry: the old unit is
+    await s.w.authorOnce();
+    expect(s.tried).toEqual(["old"]);
+    expect(s.logs.some((m) => m.startsWith("unit choice: old of 2 units") && m.includes("1 dry unit last"))).toBe(true);
+    expect((await s.x.unitOrder(await views(s))).map((v: { lineage_id: string }) => v.lineage_id)).toEqual(["old", "heavy"]);
+    // both dry: the work goes on, in the old order
+    dry = ["old", "heavy"];
+    await s.w.authorOnce();
+    expect(s.tried).toEqual(["old", "heavy"]);
+    expect(s.logs.some((m) => m.includes("it has run dry, and so has every other unit"))).toBe(true);
+    // neither dry
+    dry = [];
     await s.w.authorOnce();
     expect(s.tried.at(-1)).toBe("heavy");
     s.done();

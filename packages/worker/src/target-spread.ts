@@ -84,6 +84,8 @@ export interface UnitInput {
   shared: SharedData | null;
   /** this agent's attempts on the unit's current tip that ended without a candidate, all targets */
   ownFruitless: number;
+  /** Core says the unit has run dry (GET /v1/units/dry, plan AGENT-EFFICIENCY 8.1); absent when Core does not say */
+  dry?: boolean;
 }
 
 export interface UnitRank {
@@ -96,10 +98,15 @@ export interface UnitRank {
   own_fruitless: number;
   /** candidates that failed on the tip plus attempts by anyone that ended without a candidate */
   misses: number;
+  /** Core's dry signal for the unit */
+  dry: boolean;
 }
 
 /**
- * The units in the order to try them. First the units that still have a target no other agent is on;
+ * The units in the order to try them. Units Core says have run dry go after every unit that has not
+ * (plan AGENT-EFFICIENCY 8.3: a dry unit is kept, and worked only when the repository has nothing
+ * else to work on); a fresh unit has no misses, so among the others it comes first while it has
+ * headroom. Inside each group: first the units that still have a target no other agent is on;
  * then the fewest misses per target, counting this agent's own fruitless attempts on the tip (which
  * it knows at once) and the misses by anyone that Core has published (a saturated unit sinks); then
  * the fewest other agents per target. Per target, because a unit with five targets has room for more
@@ -117,7 +124,7 @@ export function rankUnits(self: string, units: UnitInput[]): UnitRank[] {
       items.filter((it) => it.kind === "failed" && it.on_tip).length +
       items.filter((it) => it.kind === "no_candidate").reduce((a, it) => a + (Number.isSafeInteger(it.count) ? it.count : 0), 0);
     const n = u.targets.length;
-    const rank: UnitRank = { unit: u.unit, targets: n, free_targets: n - taken.size, others: new Set(open.map((i) => i.agent)).size, own_fruitless: u.ownFruitless, misses };
+    const rank: UnitRank = { unit: u.unit, targets: n, free_targets: n - taken.size, others: new Set(open.map((i) => i.agent)).size, own_fruitless: u.ownFruitless, misses, dry: u.dry === true };
     return { rank, n, tie: sha256Hex(new TextEncoder().encode(`${self}\n${u.unit}`)) };
   });
   // a / a.n against b / b.n without division
@@ -125,6 +132,7 @@ export function rankUnits(self: string, units: UnitInput[]): UnitRank[] {
   rows.sort(
     (a, b) =>
       Number(a.n === 0) - Number(b.n === 0) ||
+      Number(a.rank.dry) - Number(b.rank.dry) ||
       Number(a.rank.free_targets === 0) - Number(b.rank.free_targets === 0) ||
       per(a.rank.own_fruitless + a.rank.misses, a.n, b.rank.own_fruitless + b.rank.misses, b.n) ||
       per(a.rank.others, a.n, b.rank.others, b.n) ||

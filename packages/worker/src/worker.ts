@@ -495,6 +495,9 @@ export class Worker {
   private async unitOrder(units: any[]): Promise<any[]> {
     try {
       const inputs: UnitInput[] = [];
+      // Core's dry signal for the repository's units (plan AGENT-EFFICIENCY 8.3); a Core without it says nothing
+      const dryRead = await this.client.get(`/v1/units/dry?repo=${encodeURIComponent(String(units[0]?.repo ?? ""))}`).catch(() => null);
+      const dry = new Set<string>(dryRead?.status === 200 && Array.isArray(dryRead.body?.units) ? (dryRead.body.units as { lineage_id: string; dry: boolean }[]).filter((u) => u.dry === true).map((u) => u.lineage_id) : []);
       for (const view of units) {
         const loaded = this.recipes.get(view.recipe_id);
         const [intents, shared] = await Promise.all([this.intentsOn(view.lineage_id), readShared(this.client, view.lineage_id).catch(() => null)]);
@@ -507,11 +510,12 @@ export class Worker {
           intents,
           shared,
           ownFruitless: own,
+          dry: dry.has(view.lineage_id),
         });
       }
       const ranked = rankUnits(this.id, inputs);
       const first = ranked[0]!;
-      this.log(`unit choice: ${first.unit.slice(0, 10)} of ${ranked.length} units of this repository (${first.free_targets} of ${first.targets} targets without another agent, ${first.own_fruitless} own fruitless on its tip, ${first.misses} published misses on it)`);
+      this.log(`unit choice: ${first.unit.slice(0, 10)} of ${ranked.length} units of this repository (${first.free_targets} of ${first.targets} targets without another agent, ${first.own_fruitless} own fruitless on its tip, ${first.misses} published misses on it${first.dry ? "; it has run dry, and so has every other unit" : ranked.some((r) => r.dry) ? `; ${ranked.filter((r) => r.dry).length} dry unit${ranked.filter((r) => r.dry).length === 1 ? "" : "s"} last` : ""})`);
       return ranked.map((r) => units.find((u) => u.lineage_id === r.unit)!);
     } catch (e) {
       this.log(`unit choice: counts not read (${(e as Error).message.slice(0, 120)}); Core's order`);
