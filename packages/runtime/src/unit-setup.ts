@@ -7,8 +7,9 @@ import { CoreClient } from "../../core/src/client.ts";
 import { SpendLedger, type SpendEntry } from "../../worker/src/discovery.ts";
 import { claudeRoute, routedSdk } from "../../worker/src/proposers/claude-route.ts";
 import type { Meter } from "../../worker/src/proposers/types.ts";
-import { DRAFT_MODEL, RecipeDrafter, describeUnits, ensureRecipe, submitProposal, type MoreContext } from "../../worker/src/recipe-proposer.ts";
+import { DRAFT_MODEL, RecipeDrafter, describeUnits, ensureRecipe, submitProposal, type DraftHistory, type MoreContext } from "../../worker/src/recipe-proposer.ts";
 import { RecipeBook } from "../../worker/src/recipes.ts";
+import { oneLine, reasonLine, type TrialOutcome } from "../../worker/src/trial-reason.ts";
 
 // Unit setup (SPEC 6.2, 3.2): a hosted agent launched on a repository that has no unit yet gets one
 // with nobody in the loop. Core keeps such an agent in `setting_up`. For each such repository this
@@ -26,6 +27,11 @@ import { RecipeBook } from "../../worker/src/recipes.ts";
 // A draft that fails is tried again after a backoff, up to `max_drafts` drafts and `repo_max_usd` of
 // model spend per repository. Every state has a public reason, served through the spend report
 // (GET /v1/agents/:id/spend `waiting`), so an agent never waits without saying why.
+// Every trial calibration of a draft is kept with why it failed (the stage, the rule, a short cause
+// from the sandbox result: packages/worker/src/trial-reason.ts): in the log line, in the state (the
+// next draft starts from the failed draft's files and from "last time this failed because ..."), in
+// the public sentence in fixed words ("trial 2 failed at build (compile error)"), and, with the raw
+// cause, in the spend report's `setup` field for the agent's Runway panel.
 
 export interface UnitSetupConfig {
   /** false: setting_up agents are left alone (as before this module) */
@@ -83,6 +89,36 @@ export interface RepoSetup {
   rejected: string[];
   /** when a new head commit last gave the repository a fresh set of drafts */
   reset_at?: number;
+  /** the trials of the drafts so far with why each failed, oldest first (the last SETUP_TRIALS_KEPT) */
+  trials?: SetupTrial[];
+  /** where the last draft that did not pass left its files (under the runtime's state directory; never reported) */
+  last_dir?: string | null;
+}
+
+/** One trial calibration of a draft as the state keeps it. */
+export interface SetupTrial extends TrialOutcome {
+  draft: number;
+  at: number;
+}
+
+export const SETUP_TRIALS_KEPT = 12;
+
+/** The last failed trial of a repository's unit setup as the spend report carries it (`setup`), raw cause included. */
+export interface SetupDetail {
+  draft: number;
+  trial: number;
+  stage: string;
+  kind: string;
+  cause: string;
+  seconds: number | null;
+  at: number;
+}
+
+/** The trials kept in the state, grouped by draft, for the next draft's prompt. */
+export function historyOf(s: Pick<RepoSetup, "trials">): DraftHistory[] {
+  const by = new Map<number, TrialOutcome[]>();
+  for (const t of s.trials ?? []) by.set(t.draft, [...(by.get(t.draft) ?? []), { n: t.n, ok: t.ok, seconds: t.seconds, reason: t.reason }]);
+  return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([draft, trials]) => ({ draft, trials }));
 }
 
 const emptySetup = (): RepoSetup => ({ head: null, class: null, screened_at: 0, impossible: null, impossible_by: null, drafts: 0, usd: 0, errors: 0, next_at: 0, last_reason: null, proposal_id: null, rejected: [] });
@@ -129,15 +165,26 @@ export interface DraftJob {
   meter: Pick<Meter, "model" | "sandbox">;
   /** set for an ADDITIONAL unit (more-units.ts): the repository's active units; commit, class and image are theirs */
   more?: { units: string[] };
+  /** earlier drafts' trials with why each failed, and the directory of the last draft that did not pass */
+  history?: DraftHistory[];
+  resume?: string | null;
   log: (m: string) => void;
 }
 
+/** What a draft measured about itself: every trial with its reason, and the turns and USD before the first one. */
+export interface DraftFacts {
+  trials?: TrialOutcome[];
+  before_trial?: { turns: number; usd: number };
+  /** where the draft's files are (recipe.yml, overlay/) */
+  dir?: string;
+}
+
 export type DraftResult =
-  | { kind: "proposed"; proposal_id: string; name: string }
+  | ({ kind: "proposed"; proposal_id: string; name: string } & DraftFacts)
   /** the model found that the repository cannot have a unit as it stands */
-  | { kind: "impossible"; reason: string }
+  | ({ kind: "impossible"; reason: string } & DraftFacts)
   /** this draft did not pass; another may */
-  | { kind: "failed"; reason: string }
+  | ({ kind: "failed"; reason: string } & DraftFacts)
   /** nothing was spent: something outside the repository is missing (no unit of the class on this network) */
   | { kind: "blocked"; reason: string };
 
@@ -240,18 +287,22 @@ export function unitSetupWork(o: { core: string; state_dir: string; model?: stri
         example: { recipe_yml: readFileSync(join(ex.dir, "recipe.yml"), "utf8"), overlay },
         more,
         seedOverlay: more ? ex.overlayDir : null,
+        history: job.history,
+        resume: job.resume && job.resume.startsWith(root) ? job.resume : null,
         maxTrials: o.max_trials ?? UNIT_SETUP_DEFAULTS.max_trials,
         onSandbox: (s) => job.meter.sandbox(s),
         log: job.log,
       });
       const out = await drafter.draft();
-      if (!out.submitted) return out.impossible ? { kind: "impossible", reason: out.reason ?? "the drafter found no way to measure it" } : { kind: "failed", reason: out.reason ?? "no draft" };
-      if (!existsSync(join(dir, "recipe.yml"))) return { kind: "failed", reason: "the draft had no recipe" };
+      const facts: DraftFacts = { trials: out.outcomes, before_trial: out.before_trial, dir };
+      job.log(`recipe-drafter: draft ended after ${out.turns} turns and ${out.trials} trial${out.trials === 1 ? "" : "s"}; ${out.before_trial.turns} turns and ${(out.before_trial.usd * fee).toFixed(4)} USD before the first trial`);
+      if (!out.submitted) return out.impossible ? { kind: "impossible", reason: out.reason ?? "the drafter found no way to measure it", ...facts } : { kind: "failed", reason: out.reason ?? "no draft", ...facts };
+      if (!existsSync(join(dir, "recipe.yml"))) return { kind: "failed", reason: "the draft had no recipe", ...facts };
       try {
         const p = await submitProposal(new CoreClient(o.core, { ...job.key, agent: job.agent } as AgentKey), dir, out.note ?? "");
-        return { kind: "proposed", proposal_id: p.proposal_id, name };
+        return { kind: "proposed", proposal_id: p.proposal_id, name, ...facts };
       } catch (e) {
-        return { kind: "failed", reason: `Core refused the draft (${(e as Error).message.replace(/^proposal: /, "").slice(0, 160)})` };
+        return { kind: "failed", reason: `Core refused the draft (${(e as Error).message.replace(/^proposal: /, "").slice(0, 160)})`, ...facts };
       }
     },
   };
@@ -303,6 +354,8 @@ export class UnitSetup {
   private proposals: ProposalView[] = [];
   private reasons = new Map<string, string>();
   private final = new Set<string>();
+  /** agent -> its repository, as of the last tick */
+  private repoOf = new Map<string, string>();
   /** repository -> the agent drafting for it now */
   private jobs = new Map<string, string>();
   private reading = new Set<string>();
@@ -320,6 +373,16 @@ export class UnitSetup {
   reason(agent: string): { why: string; final: boolean } | null {
     const why = this.reasons.get(agent);
     return why ? { why, final: this.final.has(agent) } : null;
+  }
+
+  /**
+   * The last trial that failed for the agent's repository, raw cause included, while its setup is not
+   * done: for the spend report's `setup` field (the agent's Runway panel). Null when no trial failed.
+   */
+  detail(agent: string): SetupDetail | null {
+    const repo = this.repoOf.get(agent);
+    const t = repo ? (this.host.store()[repo]?.trials ?? []).filter((x) => !x.ok && x.reason).at(-1) : undefined;
+    return t ? { draft: t.draft, trial: t.n, stage: t.reason!.stage, kind: t.reason!.kind, cause: oneLine(t.reason!.cause), seconds: t.reason!.seconds ?? t.seconds ?? null, at: t.at } : null;
   }
 
   private entry(repo: string): RepoSetup {
@@ -351,6 +414,8 @@ export class UnitSetup {
     }
     this.reasons.clear();
     this.final.clear();
+    this.repoOf.clear();
+    for (const [repo, agents] of byRepo) for (const a of agents) this.repoOf.set(a, repo);
     for (const [repo, agents] of byRepo) {
       try {
         this.step(repo, agents.sort());
@@ -421,11 +486,19 @@ export class UnitSetup {
     this.say(agents, `setting up: no agent of ${label} can pay for the draft of its unit now (${why})`);
   }
 
-  private failed(s: RepoSetup, label: string, reason: string): void {
+  /** `reason` is the public one (fixed words); `raw` is the sandbox's own cause, for the log only. */
+  private failed(s: RepoSetup, label: string, reason: string, raw?: string): void {
     s.last_reason = plain(reason, 200);
     s.next_at = this.host.now() + Math.min(this.cfg.retry_s * 2 ** Math.max(0, s.drafts - 1), 21_600) * 1000;
     this.host.save();
-    this.host.log(`unit setup for ${label}: ${s.last_reason}; ${s.drafts >= this.cfg.max_drafts ? "no draft left" : `next draft ${hhmm(s.next_at)}`}`);
+    this.host.log(`unit setup for ${label}: ${s.last_reason}${raw ? ` [${raw}]` : ""}; ${s.drafts >= this.cfg.max_drafts ? "no draft left" : `next draft ${hhmm(s.next_at)}`}`);
+  }
+
+  /** Keeps a draft's trials (with why each failed) and where its files are. */
+  private keep(s: RepoSetup, draft: number, r: DraftFacts, now: number): void {
+    const add = (r.trials ?? []).map((t): SetupTrial => ({ draft, at: now, n: t.n, ok: t.ok, seconds: t.seconds, reason: t.reason ? { ...t.reason, cause: oneLine(t.reason.cause) } : null }));
+    if (add.length) s.trials = [...(s.trials ?? []), ...add].slice(-SETUP_TRIALS_KEPT);
+    if (r.dir) s.last_dir = r.dir;
   }
 
   private async readNow(repo: string, s: RepoSetup, label: string): Promise<void> {
@@ -435,7 +508,7 @@ export class UnitSetup {
       const r = await this.work.read(repo);
       // a new head commit gives a stopped or impossible repository a fresh set of drafts, at most once a week
       if (s.head && r.commit && r.commit !== s.head && (s.impossible || s.drafts >= this.cfg.max_drafts || s.usd >= this.cfg.repo_max_usd) && now() - (s.reset_at ?? 0) >= 7 * 86_400_000) {
-        Object.assign(s, { drafts: 0, usd: 0, errors: 0, next_at: 0, last_reason: null, impossible: null, impossible_by: null, reset_at: now() });
+        Object.assign(s, { drafts: 0, usd: 0, errors: 0, next_at: 0, last_reason: null, impossible: null, impossible_by: null, reset_at: now(), trials: [], last_dir: null });
         this.host.log(`unit setup for ${label}: new head commit ${r.commit.slice(0, 7)}; starting over`);
       }
       s.head = r.commit;
@@ -472,7 +545,7 @@ export class UnitSetup {
       const counted: DraftJob["meter"] = { model: (u) => ((spent += u.usd), meter.model(u)), sandbox: (sec) => meter.sandbox(sec) };
       let r: DraftResult | { kind: "error"; reason: string };
       try {
-        r = await this.work.draft({ repo, commit: s.head!, class: s.class!, agent, key: this.host.keyOf(agent), capUsd: maxUsd, meter: counted, log: (m) => this.host.log(`${agent.slice(0, 6)} ${m.split("\n")[0]!.slice(0, 300)}`) });
+        r = await this.work.draft({ repo, commit: s.head!, class: s.class!, agent, key: this.host.keyOf(agent), capUsd: maxUsd, meter: counted, history: historyOf(s), resume: s.last_dir ?? null, log: (m) => this.host.log(`${agent.slice(0, 6)} ${m.split("\n")[0]!.slice(0, 300)}`) });
       } catch (e) {
         r = { kind: "error", reason: (e as Error).message };
       } finally {
@@ -483,6 +556,7 @@ export class UnitSetup {
       if (r.kind === "proposed") {
         s.drafts++;
         s.errors = 0;
+        this.keep(s, s.drafts, r, now);
         s.proposal_id = r.proposal_id;
         s.proposed_at = now;
         s.last_reason = null;
@@ -497,7 +571,9 @@ export class UnitSetup {
       } else if (r.kind === "failed") {
         s.drafts++;
         s.errors = 0;
-        this.failed(s, label, `draft ${s.drafts} of ${this.cfg.max_drafts} did not pass: ${r.reason}`);
+        this.keep(s, s.drafts, r, now);
+        const last = (r.trials ?? []).filter((t) => !t.ok && t.reason).at(-1);
+        this.failed(s, label, `draft ${s.drafts} of ${this.cfg.max_drafts} did not pass: ${r.reason}`, last ? reasonLine(last.reason!) : undefined);
       } else if (r.kind === "blocked") {
         s.last_reason = plain(r.reason, 200);
         s.next_at = now + this.cfg.recheck_s * 1000;

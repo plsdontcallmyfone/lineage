@@ -10,7 +10,8 @@ import { purgeOf } from "./purge.ts";
 // A hosted agent the runtime knows but is not bound to (its owner has not signed the bind, or moved
 // the key away) is reported with `bound: false`, null figures and the reason it does not work: that
 // its binding waits for a signature, or, while its repository has no unit, the unit setup sentence
-// (packages/runtime/src/unit-setup.ts).
+// (packages/runtime/src/unit-setup.ts). While a repository's unit setup has a failed trial, the row
+// also carries `setup`: that trial's stage, rule and short cause, for the agent's Runway panel.
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runtime_spend (
@@ -100,6 +101,22 @@ function coveredOf(v: unknown): { min_interval_s: number } | null {
 }
 
 /**
+ * Unit setup (packages/runtime/src/unit-setup.ts): the last trial of a recipe draft that failed for the
+ * agent's repository: which draft and trial, the stage and rule as fixed words, the sandbox's own short
+ * cause (plain text the runtime scrubbed; bounded again here) and the measured seconds. Null when
+ * absent or malformed: a bad `setup` never refuses a report.
+ */
+function setupOf(v: unknown) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const d = v as Record<string, unknown>;
+  const word = (x: unknown) => typeof x === "string" && /^[a-z_]{1,24}$/.test(x);
+  const n = (x: unknown) => typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= 1000;
+  if (!word(d.stage) || !word(d.kind) || !n(d.draft) || !n(d.trial) || typeof d.cause !== "string") return null;
+  const cause = d.cause.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\u2014/g, ", ").replace(/\s+/g, " ").trim().slice(0, 300);
+  return { draft: d.draft as number, trial: d.trial as number, stage: d.stage as string, kind: d.kind as string, cause, seconds: fin(d.seconds), at: fin(d.at) };
+}
+
+/**
  * True while the hosted runtime's last report names `agent` as covered by the network and that report
  * is no older than network_compute_report_max_age_s. Reads only: safe inside a transaction (it never
  * creates the table; with no report ever stored the answer is false).
@@ -155,7 +172,7 @@ export class RuntimeSpend {
       if (a.covered !== undefined && a.covered !== null && !coveredOf(a.covered)) throw bad("bad_spend", `agents.${id}.covered: { min_interval_s }`);
       const m = a.model as { provider?: unknown; id?: unknown } | null | undefined;
       if (m != null && !(typeof m.provider === "string" && typeof m.id === "string" && m.provider.length <= 32 && m.id.length <= 100)) throw bad("bad_spend", `agents.${id}.model: { provider, id }`);
-      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}), ...(a.bound === false ? { bound: false } : {}), ...(coveredOf(a.covered) ? { covered: coveredOf(a.covered) } : {}) };
+      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}), ...(a.bound === false ? { bound: false } : {}), ...(coveredOf(a.covered) ? { covered: coveredOf(a.covered) } : {}), ...(setupOf(a.setup) ? { setup: setupOf(a.setup) } : {}) };
       put.run(id, JSON.stringify(row), now, by);
     }
     this.c.db.query("INSERT OR REPLACE INTO runtime_spend_global (id, body, reported_at) VALUES (1, ?, ?)").run(JSON.stringify(global), now);

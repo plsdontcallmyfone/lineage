@@ -314,6 +314,8 @@ export async function toolLoop(o: {
   capUsd: number;
   maxTurns: number;
   log: (m: string) => void;
+  /** called after every model call with the number of turns taken and the task's spend so far */
+  onTurn?: (turn: number, usd: number) => void;
   /** returns a tool result, or { done } to stop with a value */
   handle: (name: string, input: Record<string, unknown>) => Promise<string | { done: unknown }>;
 }): Promise<{ value: unknown; usd: number; turns: number }> {
@@ -341,6 +343,7 @@ export async function toolLoop(o: {
     usd += e.usd;
     last = e.usd;
     o.log(`${o.who}: turn ${turn + 1} ${e.usd.toFixed(4)} USD (${e.input_tokens} in, ${e.output_tokens} out, ${e.cache_read_tokens} cache read, ${e.cache_write_tokens} cache write); task ${usd.toFixed(4)}, ledger ${o.ledger.total().toFixed(4)}`);
+    o.onTurn?.(turn + 1, usd);
     if (msg.stop_reason === "refusal") return { value: null, usd, turns: turn + 1 };
     if (msg.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: msg.content });

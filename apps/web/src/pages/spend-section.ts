@@ -31,6 +31,22 @@ export async function setupLine(agent: string): Promise<Raw> {
   return html`<div class="pf-sub" id="pf-setup"><span class="dim">${text}${/[.!?]$/.test(text) ? "" : "."}</span></div>`;
 }
 
+const SETUP_STAGE: Record<string, string> = { recipe: "its recipe", prepare: "fetching dependencies", build: "the build", tests: "the tests", metric: "a benchmark", equivalence: "the behaviour check", headroom: "the share of its own code", sandbox: "the sandbox" };
+
+/**
+ * The detail of the last try at setting up the agent's measurement that failed (the runtime's `setup`
+ * field): which draft and trial, where it stopped, how long that step ran, and the sandbox's own short
+ * line (a compiler error, the tests that failed, two readings that differed). Only this panel shows
+ * that line; the status under the agent's name says the same thing in product words.
+ */
+export function setupDetailLine(d: unknown): string | null {
+  const x = d as { draft?: unknown; trial?: unknown; stage?: unknown; cause?: unknown; seconds?: unknown } | null;
+  if (!x || typeof x.cause !== "string" || !x.cause || typeof x.stage !== "string") return null;
+  const secs = typeof x.seconds === "number" && Number.isFinite(x.seconds) && x.seconds > 0 ? ` after ${Math.round(x.seconds).toLocaleString("en-US")} s` : "";
+  const which = typeof x.draft === "number" && typeof x.trial === "number" ? `Draft ${x.draft}, trial ${x.trial}` : "The last trial";
+  return `${which} stopped at ${SETUP_STAGE[x.stage] ?? x.stage}${secs}: ${x.cause}`;
+}
+
 /** The Runway panel. Never throws: a failed read or an agent the runtime does not run shows nothing. */
 export async function spendPanel(agent: string): Promise<Raw> {
   const r = await get<any>(`agents/${agent}/spend`).catch(() => null);
@@ -51,6 +67,7 @@ export async function spendPanel(agent: string): Promise<Raw> {
       ...(coveredLine(s) ? ([["Compute", coveredLine(s)]] as [string, unknown][]) : []),
       ["Model", model],
       ["Status", s.waiting ? html`<span class="dim">${statusLine(s)}</span>` : statusLine(s)],
+      ...(setupDetailLine(s.setup) ? ([["Last setup try", html`<span class="dim">${setupDetailLine(s.setup)}${s.setup.at ? html` (${ago(s.setup.at)})` : ""}</span>`]] as [string, unknown][]) : []),
     ])}`;
   return panel("Runway", s.vault === null && s.runway_h === null && !s.model && !s.waiting ? empty("Not reported yet") : body, {
     note: html`${coveredLine(s) ? "The network pays for this agent's model and sandbox time while its own compute vault cannot." : "The agent's own compute vault pays for its model and sandbox time; there is no platform cap on that."} Reported by the hosted runtime ${r.reported_at ? ago(r.reported_at) : ""}.`,

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { actionLink, agentStatus, cannotReason, factsOf, statusHtml, statusSlot, STALE_MS, type AgentFacts } from "../src/agent-status.ts";
+import { KINDS, STAGE_WORD, reasonWords, type TrialStage } from "../../../packages/worker/src/trial-reason.ts";
+import { actionLink, agentStatus, cannotReason, factsOf, setupFailure, SETUP_FAIL_WORDS, statusHtml, statusSlot, STALE_MS, type AgentFacts } from "../src/agent-status.ts";
+import { setupDetailLine } from "../src/pages/spend-section.ts";
 
 // The one status line (src/agent-status.ts): every case to its exact words. The waiting sentences are
 // the hosted runtime's own (packages/runtime/src/unit-setup.ts and runtime.ts), two of them copied from
@@ -26,6 +28,13 @@ const rows: Row[] = [
   ["setting up: verifiers checking the draft", f({ ...SETUP, waiting: "setting up: verifiers are calibrating the unit drafted for morluto/rea (1 of 3 measured)" }), "Setting up", "Verifiers are checking its measurement (1 of 3 done). Work starts when they agree.", null],
   ["setting up: created", f({ ...SETUP, waiting: "setting up: the unit for morluto/rea was created; work starts shortly" }), "Setting up", "Its measurement is ready. Work starts shortly.", null],
   ["setting up: a try did not pass", f({ ...SETUP, waiting: "setting up: draft 1 of 3 did not pass: the tests were not stable; next try 14:20 UTC" }), "Setting up", "The last try at setting up its measurement did not pass. It tries again at 14:20 UTC.", null],
+  ["setting up: a try did not build", f({ ...SETUP, waiting: "setting up: draft 2 of 3 did not pass: trial 2 failed at build (compile error), and it reached its spend limit; next try 16:51 UTC" }), "Setting up", "Its measurement did not build yet: the code or the benchmark written for it did not compile. It tries again at 16:51 UTC.", null],
+  ["setting up: the repository asks for a newer compiler", f({ ...SETUP, waiting: "setting up: draft 1 of 3 did not pass: trial 1 failed at build (toolchain version), and it reached its spend limit; next try 16:18 UTC" }), "Setting up", "Its measurement did not build yet: the code would not compile on the compiler version the network runs. It tries again at 16:18 UTC.", null],
+  ["setting up: tests did not pass in the sandbox", f({ ...SETUP, waiting: "setting up: draft 1 of 3 did not pass: trial 1 failed at tests (no test passed every run), and none of its 4 trials passed; next try 09:05 UTC" }), "Setting up", "Its measurement did not pass its checks yet: none of the repository's tests passed on every run in the sandbox. It tries again at 09:05 UTC.", null],
+  ["setting up: a reading that was not the same twice", f({ ...SETUP, waiting: "setting up: draft 1 of 3 did not pass: trial 3 failed at metrics (a metric differed between identical runs), and it reached its spend limit; next try 09:05 UTC" }), "Setting up", "Its measurement is not steady yet: a benchmark gave different readings on identical runs. It tries again at 09:05 UTC.", null],
+  ["setting up: a step past its time", f({ ...SETUP, waiting: "setting up: draft 1 of 3 did not pass: trial 1 failed at prepare (time limit), and it reached its spend limit; next try 09:05 UTC" }), "Setting up", "Its measurement could not fetch what the code needs yet: fetching took longer than the time limit. It tries again at 09:05 UTC.", null],
+  ["setting up: no trial was reached", f({ ...SETUP, waiting: "setting up: draft 1 of 3 did not pass: it reached its spend limit before its first trial (30 turns); next try 09:05 UTC" }), "Setting up", "Its measurement was not finished yet: the try used its budget reading the repository before it could test anything. It tries again at 09:05 UTC.", null],
+  ["setup stopped: says what the last failure was", f({ ...SETUP, waiting: "unit setup for anza-xyz/cryptography stopped after 3 drafts and 5.12 USD: draft 3 of 3 did not pass: trial 2 failed at build (compile error), and it reached its spend limit" }), "Cannot be measured", "It cannot work on this repository yet: its measurement could not be set up in 3 tries. On the last one it did not build: the code or the benchmark written for it did not compile. It reads the repository again by itself and starts when that changes.", null],
   ["setting up: next in line", f({ ...SETUP, waiting: "setting up: the draft of the unit for morluto/rea starts when a slot is free" }), "Setting up", "It is next in line to set up its measurement.", null],
   ["setting up: nothing said yet", f({ ...SETUP }), "Setting up", "It is setting up how its work on this repository is measured.", null],
   ["setting up: cannot pay for it", f({ ...SETUP, waiting: "setting up: no agent of morluto/rea can pay for the draft of its unit now (asleep (vault below the wake threshold))" }), "Paused", "Its compute vault is too low to pay for an attempt. The vault refills from its coin's trading fees.", "fund:Open its coin"],
@@ -101,6 +110,33 @@ describe("the facts and the markup", () => {
     expect(cannotReason("setting up: reading o/r")).toBeNull();
     expect(cannotReason("Paused: vault low")).toBeNull();
     expect(cannotReason("unit setup for o/r stopped after 1 draft and 1.00 USD: x")).toBe("its measurement could not be set up in 1 try");
+  });
+  test("a failed setup try: every stage and rule the runtime can name has product words, and the sandbox's own line never reaches the status", () => {
+    const stageOf: Record<string, string[]> = { recipe: ["invalid", "duplicate"], prepare: ["network", "toolchain", "time", "disk", "memory", "failed"], build: ["toolchain", "offline", "compile", "time", "memory", "disk", "processes", "failed"], tests: ["not_recognised", "none_stable", "time", "offline", "memory", "compile", "failed"], metric: ["not_deterministic", "missing", "too_noisy", "time", "memory"], equivalence: ["differs", "none", "empty", "time", "failed"], headroom: ["not_shown"], sandbox: ["unavailable", "failed"] };
+    expect(Object.keys(stageOf).sort()).toEqual(Object.keys(STAGE_WORD).sort());
+    for (const [stage, kinds] of Object.entries(stageOf))
+      for (const kind of kinds) {
+        expect(KINDS[kind]).toBeString();
+        const w = `setting up: draft 1 of 3 did not pass: ${reasonWords(1, { stage: stage as TrialStage, kind, cause: "error[E0433]: raw compiler line in /work/src/x.rs" })}, and it reached its spend limit; next try 10:00 UTC`;
+        const got = setupFailure(w);
+        expect(got).not.toBeNull();
+        const s = agentStatus(f({ ...SETUP, waiting: w })).sentence;
+        expect(s).toBe(`Its measurement ${got!.head}: ${got!.why}. It tries again at 10:00 UTC.`);
+        expect(s).not.toMatch(/E0433|\/work\/src|\u2014|toolchain|recipe|draft|\bunits?\b|calibrat/);
+      }
+    // a rule the page has specific words for is one the runtime can say
+    for (const [stage, t] of Object.entries(SETUP_FAIL_WORDS)) {
+      expect(Object.values(STAGE_WORD)).toContain(stage);
+      for (const words of Object.keys(t.why)) expect(Object.values(KINDS)).toContain(words);
+    }
+    expect(setupFailure("setting up: draft 1 of 3 did not pass: the verifiers' calibrations of draft 1 did not agree (stable test sets differ); next try 10:00 UTC")).toEqual({ head: "was not confirmed yet", why: "the verifiers measured it and their results did not agree" });
+    expect(setupFailure("setting up: draft 1 of 3 did not pass: the tests were not stable; next try 14:20 UTC")).toBeNull();
+  });
+  test("the Runway panel alone shows the sandbox's own line", () => {
+    expect(setupDetailLine({ draft: 2, trial: 2, stage: "build", kind: "compile", cause: "error[E0433]: failed to resolve: use of undeclared crate `x` in curve25519/src/lib.rs:12", seconds: 96.4, at: 1 })).toBe("Draft 2, trial 2 stopped at the build after 96 s: error[E0433]: failed to resolve: use of undeclared crate `x` in curve25519/src/lib.rs:12");
+    expect(setupDetailLine({ stage: "metric", cause: "metric add_ir is not deterministic", seconds: null })).toBe("The last trial stopped at a benchmark: metric add_ir is not deterministic");
+    expect(setupDetailLine(null)).toBeNull();
+    expect(setupDetailLine({ stage: "build" })).toBeNull();
   });
   test("label, sentence and the action as a link to where it is done", () => {
     const unbound = agentStatus(f({ bound: false }));

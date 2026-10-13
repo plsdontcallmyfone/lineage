@@ -57,7 +57,10 @@ export interface DepsLayer {
   digest: Hex;
 }
 
-export class EvalError extends Error {}
+export class EvalError extends Error {
+  /** the sandbox step the error came from (its exit, time and output tails), when one ran: a recipe drafter's trial reads why from it */
+  step?: Pick<TranscriptStep, "step" | "exit" | "timed_out" | "duration_ms" | "stdout_tail" | "stderr_tail">;
+}
 
 /** Live phase reporting (SPEC 17.1): called as each step starts, with the container start time. */
 export type PhaseCallback = (phase: "prepare" | "build" | "test" | "equivalence" | "metrics", startedAt: number) => void;
@@ -157,7 +160,7 @@ export async function prepareDeps(loaded: LoadedRecipe, opts: { force?: boolean 
         timeout_s: r.limits.wall_s,
         job: `prepare-${r.name}`,
       });
-      if (res.exit !== 0) throw new EvalError(`prepare failed (${res.exit}): ${tail(res.stderr, 2000)}`);
+      if (res.exit !== 0) throw Object.assign(new EvalError(`prepare failed (${res.exit}): ${tail(res.stderr, 2000)}`), { step: { step: "prepare", exit: res.exit, timed_out: res.timed_out, duration_ms: res.duration_ms, stdout_tail: tail(res.stdout), stderr_tail: tail(res.stderr) } });
     }
     copyPrepareOutputs(tree, join(dir, "outputs"), r.prepare_outputs ?? []);
     const digest = H("deps-layer", dirDigest(join(dir, "layer"), (rel) => !VOLATILE_DEPS.test(rel)), dirDigest(join(dir, "outputs")));
@@ -643,6 +646,9 @@ export async function calibrate(input: { loaded: LoadedRecipe; deps: DepsLayer; 
       seed,
     };
     return { calibration, transcript: ctx.transcript, snapshot_commit: r.commit };
+  } catch (e) {
+    if (e instanceof EvalError && !e.step) e.step = ctx.transcript.steps.at(-1);
+    throw e;
   } finally {
     removeTree(work);
   }

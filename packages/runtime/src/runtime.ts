@@ -20,7 +20,7 @@ import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { sha256Hex } from "../../protocol/src/hash.ts";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
-import { UnitSetup, unitSetupWork, type RepoSetup, type UnitSetupWork } from "./unit-setup.ts";
+import { UnitSetup, unitSetupWork, type RepoSetup, type SetupDetail, type UnitSetupWork } from "./unit-setup.ts";
 import { MoreUnits, type RepoMore } from "./more-units.ts";
 import { LEAD_PLAN_SYSTEM, leadPlanUser, parseLeadPlan, parseSlotKey, slotKey, SwarmLedger, type LeadPlan, type LedgerState, type RosterSeat, type SwarmConfig } from "./swarm.ts";
 import { ROLE_PARAGRAPHS, swarmSeats } from "../../souls/src/swarm.ts";
@@ -105,6 +105,8 @@ export interface SpendReport {
     covered?: { min_interval_s: number };
     /** false: known to the runtime but not bound to it (reported only with a unit setup reason; its figures are null) */
     bound?: false;
+    /** unit setup: the last trial that failed for its repository, with the sandbox's own short cause (unit-setup.ts detail) */
+    setup?: SetupDetail;
     /** since when the agent has been waiting for a desktop (ms); null when it is not */
     waiting_since?: number | null;
     /** per-agent desktops (desktop_mode per_agent): the agent's own desktop, in words a page can show; absent in per-attempt mode */
@@ -1874,10 +1876,11 @@ export class Runtime {
     for (const [agent, st] of Object.entries(this.state.agents)) {
       // unit setup (unit-setup.ts): why an agent whose repository has no unit is not working yet
       const su = this.setup.reason(agent);
+      const sd = su ? this.setup.detail(agent) : null;
       if (st.status !== "bound") {
         // not bound, so nothing of its vault is read or spent here; its page still says why it does not work
         const why = su?.why ?? (st.status === "awaiting_owner" ? "waiting for its owner's wallet to sign the binding to the hosted runtime" : "its owner moved the signing key away from the hosted runtime");
-        if (this.hosted.has(agent)) unbound[agent] = { vault: null, vault_usd: null, burn_per_h: null, burn_usd_per_h: null, burn_window_s: null, runway_h: null, model: null, via: null, waiting: why, bound: false };
+        if (this.hosted.has(agent)) unbound[agent] = { vault: null, vault_usd: null, burn_per_h: null, burn_usd_per_h: null, burn_window_s: null, runway_h: null, model: null, via: null, waiting: why, bound: false, ...(sd ? { setup: sd } : {}) };
         continue;
       }
       const v = this.vaults.get(agent);
@@ -1906,6 +1909,7 @@ export class Runtime {
         via: r?.via ?? null,
         waiting: su?.final ? su.why : !v ? "vault not read yet" : cov ? (this.waiting.get(agent) ?? null) : !v.awake ? "asleep (vault below the wake threshold)" : su?.why ?? this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
         ...(cov ? { covered: { min_interval_s: this.cfg.platform_funding?.min_interval_s ?? PLATFORM_FUNDING_DEFAULTS.min_interval_s } } : {}),
+        ...(sd ? { setup: sd } : {}),
       };
       // a funded agent whose attempts do not start for want of a desktop: since when (desktop-gate.ts writes the reason)
       const w = out.agents[agent]!.waiting;

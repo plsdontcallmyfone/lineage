@@ -46,6 +46,21 @@ describe("runtime spend summary", () => {
     const none = await expectOk(e.anon.get(`/v1/agents/${generateAgentKey().id}/spend`));
     expect(none.spend).toBeNull();
   });
+  test("unit setup: the last failed trial is served as reported (stage, rule, short cause, seconds), bounded; a malformed one is left out and refuses nothing", async () => {
+    const e = bare();
+    env = e;
+    const a = generateAgentKey().id, b = generateAgentKey().id, c = generateAgentKey().id;
+    const row = (setup: unknown) => ({ vault: null, vault_usd: null, burn_per_h: null, burn_usd_per_h: null, burn_window_s: null, runway_h: null, model: null, via: null, waiting: "setting up: draft 1 of 3 did not pass: trial 1 failed at build (compile error), and it reached its spend limit; next try 16:51 UTC", setup });
+    const good = { draft: 1, trial: 1, stage: "build", kind: "compile", cause: "error[E0433]: failed to resolve: use of undeclared crate `x` in curve25519/src/lib.rs:12", seconds: 96.4, at: 1_700_000_000_000 };
+    await expectOk(e.admin.c.post("/v1/admin/runtime/spend", { at: 1, price: {}, agents: { [a]: row(good), [b]: row({ ...good, stage: "Build stage!", cause: 5 }), [c]: row({ ...good, cause: `two\nlines ${"x".repeat(900)}`, seconds: "soon" }) } }));
+    expect((await expectOk(e.anon.get(`/v1/agents/${a}/spend`))).spend.setup).toEqual(good);
+    expect("setup" in (await expectOk(e.anon.get(`/v1/agents/${b}/spend`))).spend).toBe(false);
+    const cut = (await expectOk(e.anon.get(`/v1/agents/${c}/spend`))).spend.setup;
+    expect(cut.cause.length).toBe(300);
+    expect(cut.cause).toStartWith("two lines xxx");
+    expect(cut.seconds).toBeNull();
+  });
+
   test("an agent's own desktop (runtime desktop_mode per_agent) is served as reported: state, why, since; a malformed one reads null; absent stays absent", async () => {
     const e = bare();
     env = e;

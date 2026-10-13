@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentKey } from "@units/protocol";
 import type { CoreClient } from "../../core/src/client.ts";
-import { plain, readTree, recipeName, UnitSetup, unitSetupError, type DraftJob, type DraftResult, type Reading, type RepoSetup, type SetupHost } from "../src/unit-setup.ts";
+import { historyOf, plain, readTree, recipeName, UnitSetup, unitSetupError, type DraftJob, type DraftResult, type Reading, type RepoSetup, type SetupHost } from "../src/unit-setup.ts";
 
 // Unit setup (unit-setup.ts): the free reading of a repository, and the state machine that has one
 // agent draft a recipe, waits for the verifiers, retries with a bound, and always says why.
@@ -188,6 +188,46 @@ describe("unit setup", () => {
     expect(setup.reason(A)).toEqual({ why: "unit setup for acme/thing stopped after 2 drafts and 0.50 USD: draft 2 of 2 did not pass: the benchmark was not stable", final: true });
   });
 
+  test("a failed trial is kept with why: in the log, in the state, in the next draft's job, on the Runway detail; the public sentence says it in fixed words", async () => {
+    const build = { stage: "build" as const, kind: "compile", cause: "error[E0433]: failed to resolve: use of undeclared crate `x` in curve25519/src/lib.rs:12", seconds: 96.4 };
+    const tests = { stage: "tests" as const, kind: "none_stable", cause: "no test passed in every run: 3 failed every run (a, b, c)" };
+    let n = 0;
+    const { w, setup, tick } = world({
+      agents: [{ agent: A, status: "bound" }],
+      cfg: { max_drafts: 2, retry_s: 600 },
+      draft: async () =>
+        ++n === 1
+          ? { kind: "failed", reason: "trial 1 failed at build (compile error), and it reached its spend limit", trials: [{ n: 1, ok: false, seconds: 427, reason: build }], before_trial: { turns: 24, usd: 1.2 }, dir: "/state/unit-setup/thing-1" }
+          : { kind: "failed", reason: "trial 2 failed at tests (no test passed every run), and it reached its spend limit", trials: [{ n: 1, ok: false, seconds: 174, reason: build }, { n: 2, ok: false, seconds: 392, reason: tests }], dir: "/state/unit-setup/thing-2" },
+    });
+    await tick();
+    await tick();
+    await tick();
+    // the public sentence: the stage and the rule in fixed words, never the sandbox's own output
+    expect(setup.reason(A)!.why).toMatch(/^setting up: draft 1 of 2 did not pass: trial 1 failed at build \(compile error\), and it reached its spend limit; next try \d\d:\d\d UTC$/);
+    expect(setup.reason(A)!.why).not.toContain("E0433");
+    // the journal line carries the cause
+    expect(w.logs.find((l) => l.startsWith("unit setup for acme/thing: draft 1 of 2 did not pass"))).toContain("[build: error[E0433]: failed to resolve: use of undeclared crate `x` in curve25519/src/lib.rs:12]; next draft");
+    // the state keeps the trial, and the spend report's detail is the last failed one
+    const at = w.now - 31_000; // the tick the draft ran in
+    expect(w.store[REPO]!.trials).toEqual([{ draft: 1, at, n: 1, ok: false, seconds: 427, reason: build }]);
+    expect(w.store[REPO]!.last_dir).toBe("/state/unit-setup/thing-1");
+    expect(setup.detail(A)).toEqual({ draft: 1, trial: 1, stage: "build", kind: "compile", cause: build.cause, seconds: 96.4, at });
+    // the next draft starts from it
+    await tick(600_000);
+    expect(w.drafts.length).toBe(2);
+    expect(w.drafts[1]!.history).toEqual([{ draft: 1, trials: [{ n: 1, ok: false, seconds: 427, reason: build }] }]);
+    expect(w.drafts[1]!.resume).toBe("/state/unit-setup/thing-1");
+    expect(w.drafts[0]!.history).toEqual([]);
+    await tick(86_400_000);
+    await tick();
+    // the final state says what the last failure was
+    expect(setup.reason(A)).toEqual({ why: "unit setup for acme/thing stopped after 2 drafts and 0.50 USD: draft 2 of 2 did not pass: trial 2 failed at tests (no test passed every run), and it reached its spend limit", final: true });
+    expect(setup.detail(A)).toMatchObject({ draft: 2, trial: 2, stage: "tests", kind: "none_stable", cause: tests.cause });
+    expect(w.store[REPO]!.trials!.map((t) => `${t.draft}.${t.n}`)).toEqual(["1.1", "2.1", "2.2"]);
+    expect(historyOf(w.store[REPO]!).map((d) => d.trials.length)).toEqual([1, 2]);
+  });
+
   test("the drafting model finds the repository impossible: final, no further draft", async () => {
     const { w, setup, tick } = world({ agents: [{ agent: A, status: "bound" }], draft: async () => ({ kind: "impossible", reason: "its tests need a GPU" }) });
     await tick();
@@ -288,7 +328,7 @@ test("runtime wiring: a setting_up agent drafts instead of authoring, pays from 
         j.meter.model({ model: "m", input_tokens: 10, output_tokens: 5, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0.3 });
         j.meter.sandbox(12);
         await gate;
-        return { kind: "failed", reason: "the benchmark was not stable" };
+        return { kind: "failed", reason: "trial 1 failed at build (compile error), and it reached its spend limit", trials: [{ n: 1, ok: false, seconds: 189, reason: { stage: "build", kind: "compile", cause: "error[E0499]: cannot borrow `*r` as mutable more than once at a time in syscall/solana-bn254/examples/lineage_equiv.rs:63", seconds: 127.2 } }] };
       },
     },
   });
@@ -320,7 +360,12 @@ test("runtime wiring: a setting_up agent drafts instead of authoring, pays from 
   expect(b in rt.state.open.usage).toBe(false); // the unbound agent is never charged
   await r.setup.tick();
   rep = rt.spendReport();
-  expect(rep.agents[a]!.waiting).toMatch(/^setting up: draft 1 of 3 did not pass: the benchmark was not stable; next try \d\d:\d\d UTC$/);
+  expect(rep.agents[a]!.waiting).toMatch(/^setting up: draft 1 of 3 did not pass: trial 1 failed at build \(compile error\), and it reached its spend limit; next try \d\d:\d\d UTC$/);
+  // the report carries the failed trial with the sandbox's own line, for the Runway panel, also for the agent that is not bound
+  const detail = { draft: 1, trial: 1, stage: "build", kind: "compile", cause: "error[E0499]: cannot borrow `*r` as mutable more than once at a time in syscall/solana-bn254/examples/lineage_equiv.rs:63", seconds: 127.2 };
+  expect(rep.agents[a]!.setup).toMatchObject(detail);
+  expect(rep.agents[b]!.setup).toMatchObject(detail);
+  expect(lines.find((l) => l.startsWith("unit setup for acme/thing: draft 1 of 3 did not pass"))).toContain("[build: error[E0499]: cannot borrow `*r` as mutable more than once at a time in syscall/solana-bn254/examples/lineage_equiv.rs:63]");
   // the unit exists now: the sentence goes, the bound agent authors, the unbound one says what it waits for
   life[a] = "active";
   life[b] = "active";
@@ -328,6 +373,7 @@ test("runtime wiring: a setting_up agent drafts instead of authoring, pays from 
   await r.setup.tick();
   rep = rt.spendReport();
   expect(rep.agents[a]!.waiting ?? "").not.toContain("setting up");
+  expect(rep.agents[a]!.setup).toBeUndefined();
   expect(rep.agents[b]).toMatchObject({ bound: false, waiting: "waiting for its owner's wallet to sign the binding to the hosted runtime" });
   expect(r.setup.settingUp(a)).toBe(false);
   await rt.stop({ flush: false });

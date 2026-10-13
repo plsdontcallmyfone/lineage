@@ -6,6 +6,9 @@
 // action. Used by the launched screen, the Profile cards, the agent profile header, the coin page's
 // building panel and the setup bar's popup, so they all say the same thing in the same words.
 // The runtime's own sentence stays on the agent's Runway panel (pages/spend-section.ts) for the detail.
+// A try at setting up the measurement that did not pass says what stopped it, in product words chosen
+// by the stage and rule the runtime names ("trial 2 failed at build (compile error)"); the sandbox's
+// own output (the compiler's line, the test names) is shown on the Runway panel only.
 // Pure except statusSlot, which reads the runtime's report for pages that do not have it.
 import { html, type Raw } from "./html.ts";
 
@@ -55,10 +58,43 @@ function every(s: number | null | undefined): string {
   return `: one attempt every ${s === 1 ? "second" : `${s} seconds`}`;
 }
 
+/**
+ * What stopped a try at setting up the measurement, by the stage and the rule the runtime names
+ * (packages/worker/src/trial-reason.ts: its stage words and KINDS; a test holds the two in step).
+ * `head` completes "Its measurement ..."; `why` is the cause in product words.
+ */
+const SETUP_FAIL: Record<string, { head: string; why: Record<string, string>; other: string }> = {
+  "the recipe": { head: "was not written correctly yet", why: { "recipe not valid": "its settings were not valid", "nothing new measured": "it measured nothing the repository's existing measurement does not" }, other: "its settings were not valid" },
+  prepare: { head: "could not fetch what the code needs yet", why: { "a download failed": "a download failed", "toolchain version": "the repository asks for a compiler or language version the network does not run", "time limit": "fetching took longer than the time limit", "disk limit": "what the code depends on did not fit the disk limit", "memory limit": "fetching ran out of memory" }, other: "the step that fetches what the code depends on stopped with an error" },
+  build: { head: "did not build yet", why: { "toolchain version": "the code would not compile on the compiler version the network runs", "a dependency was not fetched": "something the code depends on was not fetched before the build", "compile error": "the code or the benchmark written for it did not compile", "time limit": "the build took longer than the time limit", "memory limit": "the build ran out of memory", "disk limit": "the build ran out of disk", "process limit": "the build started more processes than the sandbox allows" }, other: "the build stopped with an error" },
+  tests: { head: "did not pass its checks yet", why: { "test output not recognised": "the repository's tests did not report results the network can read", "no test passed every run": "none of the repository's tests passed on every run in the sandbox", "time limit": "the repository's tests took longer than the time limit", "a dependency was not fetched": "the repository's tests need something that was not fetched", "memory limit": "the repository's tests ran out of memory", "compile error": "the repository's tests did not compile" }, other: "the repository's tests did not run in the sandbox" },
+  metrics: { head: "is not steady yet", why: { "a metric differed between identical runs": "a benchmark gave different readings on identical runs", "a metric gave no value": "a benchmark gave no reading", "a metric too noisy": "a benchmark's readings were too noisy to show a small improvement", "time limit": "a benchmark took longer than the time limit", "memory limit": "a benchmark ran out of memory" }, other: "a benchmark did not run" },
+  equivalence: { head: "is not steady yet", why: { "equivalence output differed between identical runs": "its behaviour check printed different results on identical runs", "no equivalence harness": "it has no behaviour check yet", "equivalence harness printed nothing": "its behaviour check printed nothing", "time limit": "its behaviour check took longer than the time limit" }, other: "its behaviour check did not run" },
+  headroom: { head: "measures too little of the code yet", why: {}, other: "too much of what its benchmark counts is not the repository's own code" },
+  "the sandbox": { head: "could not be tried yet", why: {}, other: "the network's sandbox could not run it" },
+};
+
+/** "did not build yet: the code ... did not compile" from the runtime's sentence, or null when it names no failed trial. */
+export const SETUP_FAIL_WORDS = SETUP_FAIL;
+
+export function setupFailure(w: string): { head: string; why: string } | null {
+  const m = /trial \d+ failed at (the recipe|prepare|build|tests|metrics|equivalence|headroom|the sandbox) \(([^)]+)\)/.exec(w);
+  if (m) {
+    const s = SETUP_FAIL[m[1]!]!;
+    return { head: s.head, why: s.why[m[2]!] ?? s.other };
+  }
+  if (/before its first trial/.test(w)) return { head: "was not finished yet", why: "the try used its budget reading the repository before it could test anything" };
+  if (/calibrations of draft \d+ did not agree/.test(w)) return { head: "was not confirmed yet", why: "the verifiers measured it and their results did not agree" };
+  return null;
+}
+
 /** Why the repository cannot be measured, in the launcher's words, from the runtime's sentence; null when it says no such thing. */
 export function cannotReason(w: string): string | null {
   const stopped = /^unit setup for .+? stopped after (\d+) drafts?/.exec(w);
-  if (stopped) return `its measurement could not be set up in ${stopped[1]} ${stopped[1] === "1" ? "try" : "tries"}`;
+  if (stopped) {
+    const f = setupFailure(w);
+    return `its measurement could not be set up in ${stopped[1]} ${stopped[1] === "1" ? "try" : "tries"}${f ? `. On the last one it ${f.head.replace(/ yet$/, "")}: ${f.why}` : ""}`;
+  }
   const m = /^no unit possible for .+?: (.+)$/.exec(w);
   if (!m) return null;
   const r = m[1]!;
@@ -105,6 +141,7 @@ export function agentStatus(f: AgentFacts, viewer: "launcher" | "public" = "laun
     if (/can pay for the draft/.test(w)) return PAUSED();
     const v = /verifiers are calibrating .*\((\d+) of (\d+) measured\)/.exec(w);
     const retry = /next try (\d\d:\d\d UTC)/.exec(w);
+    const fail = retry ? setupFailure(w) : null;
     const s =
       /^setting up: reading /.test(w) ? "It is reading the repository to set up how its work is measured."
       : /is drafting the unit/.test(w) ? "Another agent of this repository is writing how work on it is measured; that serves this agent too."
@@ -112,6 +149,7 @@ export function agentStatus(f: AgentFacts, viewer: "launcher" | "public" = "laun
       : /waits for enough verifiers|goes to the verifiers/.test(w) ? "Its measurement is written and waits for verifiers to check it."
       : v ? `Verifiers are checking its measurement (${v[1]} of ${v[2]} done). Work starts when they agree.`
       : /was created; work starts shortly/.test(w) ? "Its measurement is ready. Work starts shortly."
+      : retry && fail ? `Its measurement ${fail.head}: ${fail.why}. It tries again at ${retry[1]}.`
       : retry ? `The last try at setting up its measurement did not pass. It tries again at ${retry[1]}.`
       : /starts when a slot is free/.test(w) ? "It is next in line to set up its measurement."
       : "It is setting up how its work on this repository is measured.";
