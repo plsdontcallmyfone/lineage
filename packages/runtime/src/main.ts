@@ -27,7 +27,8 @@ import { anthropicPrices, reloadKeys, resolveRoute, routedProposers, RegistrySou
 import { OpenRouterBalance } from "./provider-balance.ts";
 import { JupiterPrice } from "./price.ts";
 import type { AgentRoute } from "./runtime.ts";
-import { bindHandler, chainCosign, serveBind } from "./bind.ts";
+import { bindHandler, chainCosign, chainCosignOnly, serveBind, waitingOf } from "./bind.ts";
+import { Reservations } from "./reserve.ts";
 import { withGenesis } from "./genesis.ts";
 import type { ModelClient } from "../../souls/src/generator.ts";
 import { routedModelClient } from "../../souls/src/routed-client.ts";
@@ -182,12 +183,17 @@ async function main() {
           if (r.status >= 300) throw new Error(`HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
         },
       });
-      fwAgents = () => rt.state.agents;
+      // keys reserved for launches that are not on chain yet (reserve.ts): guarded like every agent key, each for its own agent only
+      const reservations = backend instanceof ChainBackend
+        ? new Reservations({ dir: cfg.state_dir, keyFor: (a) => rt.store.keyFor(a), keyFile: (a) => rt.store.keyFile(a), adopted: (a) => !!rt.state.agents[a], adopt: async (a) => !!(await rt.bindTarget(a)), log })
+        : null;
+      fwAgents = () => (reservations ? { ...reservations.agents(), ...rt.state.agents } : rt.state.agents);
+      for (const r of Object.values(reservations?.agents() ?? {})) guardKey(r.key_id);
       for (const st of Object.values(rt.state.agents)) guardKey(st.key_id);
       await rt.start();
       // hosted launches bind from the Wallet page (bind.ts): the owner signs the rotation, this runtime co-signs
       const bindServer = cfg.bind_port && backend instanceof ChainBackend
-        ? serveBind(cfg.bind_port, withGenesis(rt, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), log })), log), log)
+        ? serveBind(cfg.bind_port, withGenesis(rt, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), reserve: reservations ? { reservations, recordExists: async (a) => !!(await backend.reader.agent(a)), sign: chainCosignOnly } : undefined, waiting: waitingOf({ agents: () => rt.state.agents, launcherOf: async (a) => (await backend.hostedAgent(a))?.launcher ?? null }), log })), log), log)
         : desktops && (cfg.desktop_port ?? cfg.bind_port)
           ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
           : null;

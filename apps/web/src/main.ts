@@ -6,6 +6,7 @@ import { live, MAX_FEED } from "./live.ts";
 import { loadNetworkLabels, NETWORK } from "./market.ts";
 import { DEVNET_CHAIN, MAINNET_CHAIN, setWalletChain } from "../wallet/standard.ts";
 import { loadUsd } from "./usd.ts";
+import { wireSetupBar } from "./setup-bar.ts";
 import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage } from "./pages/agents.ts";
 import { directoryPage } from "./pages/directory.ts";
@@ -90,7 +91,7 @@ let currentPath = "";
 let renderSeq = 0;
 
 function shell() {
-  app.innerHTML = html`<header class="top"><div class="top-in">
+  app.innerHTML = html`<div id="setup-bar" hidden></div><header class="top"><div class="top-in">
       <a class="brand" href="/" aria-label="Home"><img class="brand-logo" src="/logo.png" alt="" width="26" height="26"></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
@@ -108,6 +109,7 @@ function shell() {
     <main id="main" aria-live="polite"></main>
     ${siteFooter}`.s;
   wireConnect(document.getElementById("cn")!);
+  wireSetupBar(document.getElementById("setup-bar")!); // shown only to the launcher of a hosted agent that is not bound yet
 }
 
 function setNav(section: string) {

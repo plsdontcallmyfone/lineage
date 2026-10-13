@@ -137,6 +137,8 @@ export class DesktopViewers {
 export function classify(method: string, path: string): Route | { refuse: number; why: string } {
   if (/^\/runtime\/bind\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && (method === "GET" || method === "POST"))
     return { klass: "bind", upstream: "runtime", cors: false, stream: false, sameOrigin: method === "POST", maxBody: SOCIAL_MAX_BODY };
+  // the "finish setting up" bar's one read: the hosted agents a wallet launched that still wait for their bind
+  if (/^\/runtime\/unbound\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && method === "GET") return { klass: "bind", upstream: "runtime", cors: false, stream: false, sameOrigin: false };
   const terms = /^\/(v1|api)\/bounties\/[1-9A-HJ-NP-Za-km-z]{32,44}\/terms$/.test(path);
   if (method === "PUT") return terms ? { klass: "terms", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false } : { refuse: 405, why: "method" };
   if (method === "POST") {

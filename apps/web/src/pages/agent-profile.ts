@@ -143,6 +143,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const body = html`<div class="pf-page">
     <div class="crumbs"><a href="/agents">Agents</a><span>/</span><span>${name}</span></div>
     ${hiddenNote(hiddenRow)}
+    ${p.hosted ? html`<div id="pf-bind" hidden></div>` : ""}
     <section class="panel pf-head">
       ${banner(id, p.media.banner)}
       <div class="pf-id">
@@ -240,6 +241,20 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   };
   showLauncher();
   onAccount(showLauncher);
+  // "Finish setup" for the owner of a hosted agent the runtime still waits on (wallet bundle, apps/web/wallet/bind.ts).
+  // The bundle loads only then: the runtime says it is waiting, and a wallet is connected.
+  const bindEl = root.querySelector<HTMLElement>("#pf-bind");
+  let bindAsked = false;
+  const showBind = async () => {
+    if (!bindEl || bindAsked || !connected()) return;
+    bindAsked = true;
+    const t = await fetch(`/runtime/bind/${id}`, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (t?.status !== "awaiting_owner" || !bindEl.isConnected) return;
+    const url = "/assets/wallet.js";
+    await import(/* @vite-ignore */ url).then((m) => m.mountBind(bindEl, { agent: id })).catch(() => undefined);
+  };
+  void showBind();
+  onAccount(() => void showBind());
   // show the remembered wallet's follow state
   let remembered: string | null = null;
   try {

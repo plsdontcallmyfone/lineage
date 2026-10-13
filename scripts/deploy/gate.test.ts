@@ -250,6 +250,9 @@ describe("hosted runtime bind", () => {
     expect(classify("POST", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
     for (const p of ["/runtime/bind/0OIl", "/runtime/health", "/runtime/bind/", `/runtime/bind/${agent}/x`]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
     expect(classify("PUT", `/runtime/bind/${agent}`)).toEqual({ refuse: 405, why: "method" });
+    // the setup bar's read of a wallet's waiting agents: GET only, to the runtime, in the bind class
+    expect(classify("GET", `/runtime/unbound/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: false, cors: false });
+    expect(classify("POST", `/runtime/unbound/${agent}`)).toEqual({ refuse: 405, why: "method" });
     expect(classify("GET", "/runtime/health")).toMatchObject({ klass: "page", upstream: "web" });
   });
 });

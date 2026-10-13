@@ -40,8 +40,10 @@ export const COSIGN_MAX_CU_PRICE = 1_000_000n;
 export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expectAgent?: Address } = {}): CosignPlan {
   const { signatures, message } = parseWire(wire);
   const m = decodeMessage(message);
-  // lookup-table accounts are not shown in the message itself: co-sign legacy messages only
-  if (m.version !== "legacy") throw new Error("refusing to co-sign: a versioned (v0) message");
+  // lookup-table accounts are not shown in the message itself: a legacy message, or a v0 message that
+  // reads no lookup table (it names every account itself, exactly like a legacy one; a launch approved
+  // as v0 messages carries its bind as one, docs/plans/SEAMLESS-BIND.md)
+  if (m.version !== "legacy" && m.lookups.length) throw new Error("refusing to co-sign: a versioned (v0) message that reads a lookup table");
   const signers = m.keys.slice(0, m.numSigners);
   if (!signers.includes(agent)) throw new Error(`agent ${agent} is not a signer of this transaction`);
   // the co-signing key proves possession only: it never pays fees and is never a writable account,
@@ -88,6 +90,20 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
 
 export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
   return placeSignature(wire, key.id, signBytes(key, parseWire(wire).message));
+}
+
+/**
+ * Checks a wire exactly as `cosignCommand` does (inspectForCosign, then the transaction firewall for a
+ * guarded key) and returns it with this key's signature placed. Nothing is simulated or sent: the
+ * caller sends it. For the bind a launcher approves together with the launch
+ * (docs/plans/SEAMLESS-BIND.md): the agent's record does not exist yet, so there is nothing to simulate.
+ */
+export async function cosignWire(o: { key: Signer; tx: string; expectAgent: Address }): Promise<{ wire: Uint8Array; signature: string; summary: string[]; payer: Address }> {
+  const wire = new Uint8Array(Buffer.from(o.tx.trim(), "base64"));
+  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
+  await authorizeSigners(parseWire(wire).message, [o.key.id]);
+  const signed = cosign(wire, o.key);
+  return { wire: signed, signature: base58Encode(parseWire(signed).signatures[0]!), summary: plan.summary, payer: plan.payer };
 }
 
 /** `units-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */

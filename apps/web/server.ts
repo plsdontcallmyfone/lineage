@@ -94,6 +94,7 @@ const MARKET = (arg("market", (process.env.UNITS_MARKET ?? process.env.LINEAGE_M
 // the GitHub identity service (packages/identity); on the site Caddy routes /identity/* to it directly
 const IDENTITY = (arg("identity", (process.env.UNITS_IDENTITY ?? process.env.LINEAGE_IDENTITY) ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
 const UPSTREAM = (arg("upstream", SITE_BACKEND ? SITE : "") ?? "").replace(/\/+$/, "");
+const RUNTIME_GIVEN = process.argv.includes("--runtime");
 const RUNTIME = (arg("runtime", (process.env.UNITS_RUNTIME ?? process.env.LINEAGE_RUNTIME) ?? "http://127.0.0.1:9667") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
@@ -429,9 +430,11 @@ const server = Bun.serve({
   async fetch(req, srv) {
     const url = new URL(req.url);
     const p = url.pathname;
-    if (UPSTREAM && (/^\/(souls|social|runtime|identity)\//.test(p) || p === "/chain/faucet")) return toUpstream(req, url);
+    // --runtime given by hand: the bind endpoints go to that runtime even beside --upstream (a local runtime tried against a deployed site)
+    const localBind = RUNTIME_GIVEN && /^\/runtime\/(bind|unbound)\//.test(p);
+    if (UPSTREAM && !localBind && (/^\/(souls|social|runtime|identity)\//.test(p) || p === "/chain/faucet")) return toUpstream(req, url);
     if (p.startsWith("/chain/")) return chainRoute(req, p);
-    if (p.startsWith("/runtime/bind/")) {
+    if (p.startsWith("/runtime/bind/") || p.startsWith("/runtime/unbound/")) {
       // local development: the hosted runtime's bind endpoint (on the site the gate routes it)
       const r = await fetch(`${RUNTIME}${p}`, { method: req.method, headers: { "content-type": "application/json" }, body: req.method === "POST" ? await req.text() : undefined }).catch(() => null);
       return r ? new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } }) : Response.json({ error: "runtime_unavailable", message: "the hosted runtime is not running here" }, { status: 503 });

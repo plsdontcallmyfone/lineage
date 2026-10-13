@@ -107,6 +107,10 @@ import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdWhy } from "../src/usd.ts";
 import { budgetIxs, buildAndSimulate, unitPrice, onRpcBusy, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, signAndSendAll, sol, testLabels, units, usym, devnetGate, type BundlePart, type ChainCfg } from "./chain.ts";
 import { connectWallet, onSession, walletChain, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
+export { mountBind } from "./bind.ts";
+export { mountSetupBar } from "./setup-bar.ts";
+import { bindProblem, finishBind } from "./bind.ts";
+import { BIND_LABEL, BIND_UNITS, bindPart, declined, keepSignedBind, reserveRuntimeKey, withBind, type RuntimeKey } from "./bind-plan.ts";
 import { custodyHtml, ghClick, hasIdentityService, initGithubIdentity, launchTrackRows, showIdentity, submitLaunchToken } from "./identity.ts";
 import { builtRateNote, builtRateStale, depositBase, depositForBuild, depositNote, depositUsd, loadPrepay, P, prepayHelp, RATE_REBUILT, rateBlockedBox, rateBlockedNow, rateNote, showCorePrepay, tickRate } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, type FundingView, type InitialBuy } from "./fronting.ts";
@@ -176,6 +180,8 @@ const S = {
   draft: null as null | { agent: WebKey; mint: WebKey; args: { name: string; symbol: string; uri: string; repoUrl: string; identityMode: number; hosted: boolean; cls: string; identity: string }; soul: SoulDoc | null; deposit: bigint; buy: InitialBuy | null; plan: BundleTx[];
     /** per transaction of `plan`: its signatures, compute unit limit and the unit price it is sent with */
     txs: LaunchCostTx[]; detail: LaunchCostDetail; swap: PreparedSwap | null; costs: LaunchSolCosts;
+    /** a hosted launch: the hosted runtime's key reserved for the agent; the bind rides in the launch's approval (bind-plan.ts). Null when the runtime gave none. */
+    bind?: RuntimeKey | null;
     /** the SOL purchase is a Jupiter quote (labelled as one), not the curve's arithmetic */
     quoted: boolean; identity: bigint; landed: string[]; metaLive: boolean; links: CoinLinks },
   /** the launch is being built (chain reads in flight) */
@@ -540,6 +546,7 @@ function txTable(d: NonNullable<typeof S.draft>): Raw {
     </div>
     <div class="tw"><table class="t wl-acc"><thead><tr><th>Transaction</th><th class="right">Bytes</th><th class="right">Compute limit</th><th class="right">Fee, SOL</th></tr></thead><tbody>
       ${d.plan.map((x, i) => html`<tr data-tx="${String(i)}" data-units="${String(d.txs[i]!.units)}" data-fee="${t.fees[i]!.toString()}"><td class="wrap">${x.groups.join(" + ")}${x.table ? html` <span class="dim">v0</span>` : ""}</td><td class="right num">${String(x.size)}</td><td class="right num">${d.txs[i]!.units.toLocaleString("en-US")}</td><td class="right num">${sol(t.fees[i]!)}</td></tr>`)}
+      ${d.bind && d.txs[d.plan.length] ? html`<tr data-tx="${String(d.plan.length)}" data-units="${String(d.txs[d.plan.length]!.units)}" data-fee="${t.fees[d.plan.length]!.toString()}"><td class="wrap">${BIND_LABEL} <span class="dim">hands the agent's signing key to the hosted runtime</span></td><td class="right num"></td><td class="right num">${d.txs[d.plan.length]!.units.toLocaleString("en-US")}</td><td class="right num">${sol(t.fees[d.plan.length]!)}</td></tr>` : ""}
     </tbody></table></div>
     <div class="tw"><table class="t wl-acc"><thead><tr><th>Account created</th><th class="right">Bytes</th><th class="right">Rent, SOL</th></tr></thead><tbody>
       ${t.rents.map((r) => html`<tr data-rent-group="${r.group}" data-lamports="${r.lamports.toString()}"><td class="wrap">${r.what}</td><td class="right num">${String(r.size)}</td><td class="right num">${sol(r.lamports)}</td></tr>`)}
@@ -772,7 +779,7 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   // Three things at once, none a simulation: the coin's metadata (the image picked in the Coin step is stored first, signed by the
   // agent key and named in the URI by its hash; the URI is on chain for good, so the document and image are read back), the amounts
   // (credits at the price read again here, the venue's initial buy on the curve as read), and the cluster's rent rate, tip and balance.
-  const [uri, deposit, buy, rate, tips, balance] = await Promise.all([
+  const [uri, deposit, buy, rate, tips, balance, bind] = await Promise.all([
     // the image and the links are stored first (each signed by the agent key), then the URI that names both by hash is read back
     Promise.all([coinImageFor(agent), storeCoinLinks(agent, links)]).then(([image]) => checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl, image, links })),
     depositForBuild(val("l_deposit"), dec()),
@@ -781,6 +788,8 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
     // mainnet: the Jito tip rides in the last transaction (never through a lookup table)
     isMainnet() ? Promise.all([rpc.call<string[]>("getTipAccounts", []), rpc.call<{ lamports: string }>("getTipFloor", [])]) : null,
     rpc.getBalance(launcher),
+    // a hosted launch: the runtime reserves its key for this agent, so the bind is approved with the launch (never blocks the build)
+    args.hosted ? reserveRuntimeKey(agent.id) : null,
   ]);
   S.sol = balance;
   args.uri = uri;
@@ -874,15 +883,18 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
       buy: buy ? { createsBuyback: buy.ixs.length > 2, launcherVolume: pumpPdas.userVolume(launcher) } : undefined, feeRoute: extras.creates.feeRoute, pool: extras.creates.pool });
     const maybe = creates.flatMap((c) => (c.address ? [c.address] : []));
     // each transaction's unit price is read once here and the transaction is sent with it, so the fee shown is the fee paid
-    const [prices, there] = await Promise.all([Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : []]);
+    const bindIxs = bind && bind.status !== "bound" ? bindPart({ owner: launcher, agent: agent.id, newKey: bind.new_key }).ixs : null;
+    const [prices, there, bindPrice] = await Promise.all([Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : [], bindIxs ? unitPrice(launcher, bindIxs) : 0]);
     const FAKE = "11111111111111111111111111111111";
     const txs: LaunchCostTx[] = plan.map((t, i) => {
       const all = [...budgetIxs(CU_MAX), ...t.ixs];
       return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups, purchaseVenue), price: prices[i]! };
     });
+    // the bind: one more transaction in the same approval (the launcher and the runtime's key sign), after the plan's
+    if (bindIxs) txs.push({ groups: [BIND_LABEL], signatures: 2, units: BIND_UNITS, price: bindPrice });
     const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase: fromUnits ? null : purchase, hasBuy: !!buy, identity, tip,
       headroom: fromUnits ? 0n : headroom, units: fromUnits ?? undefined });
-    return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links };
+    return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links, bind: bindIxs ? bind : null };
   };
   const paidInSol = await assemble(null);
   // $UNITS on its pool: a wallet whose SOL does not cover the purchase but which holds the $UNITS itself launches with those
@@ -958,7 +970,7 @@ function fundingView(): FundingView {
   }
   const identityChosen = (S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "purchased") === "purchased";
   return { costs: d?.costs ?? null, creditsUsd: usd, bps: P.cfg?.initial_buy_bps ?? null, identityChosen, solUsd: S.solUsd, solBalance: S.sol,
-    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr,
+    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) + (d.bind ? 1 : 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr,
     unitsFmt: unitsAmt, unitsUsd: (b) => qUsd(b), unitsName: qsym(), getUnitsUrl: d?.costs.units && unitsShortfall(d.costs, S.line, unitsAmt) ? getUnitsUrl() : undefined };
 }
 
@@ -993,7 +1005,7 @@ function renderLaunchReview() {
         ${txTable(d)}
         <div class="eyebrow" style="margin:8px 0 6px">register_pump_launch arguments</div>${kv(recordRows)}
       </details>
-      <div class="panel-b wl-row lz-launch">${btn("launch-sign", "Launch (one signature)", { primary: true, disabled: blocked ? `Launch disabled: ${blocked}` : false })}${btn("launch-review", "Read prices again")}<span class="wl-why">${S.wallet!.name} approves every transaction of the launch at once; a hosted agent's binding is one more signature after it.</span></div>
+      <div class="panel-b wl-row lz-launch">${btn("launch-sign", "Launch (one signature)", { primary: true, disabled: blocked ? `Launch disabled: ${blocked}` : false })}${btn("launch-review", "Read prices again")}<span class="wl-why">${S.wallet!.name} approves every transaction of the launch at once${d.bind ? ", the hosted runtime's binding with them" : d.args.hosted ? "; a hosted agent's binding follows it" : ""}.</span></div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
   // the real Launch button is drawn: the footer's stand-in leaves
@@ -1029,7 +1041,11 @@ async function launchSign() {
       parts.push({ ixs: t.ixs, units: d.txs[d.plan.indexOf(t)]!.units, price: d.txs[d.plan.indexOf(t)]!.price, table: t.table, label: t.groups.join(" + "),
         local: [...(t.groups.includes("launch") || t.groups.includes("soul") ? [d.agent] : []), ...(t.groups.includes("launch") ? [d.mint] : [])] });
     if (todo.length < d.plan.length) st(`${d.plan.length - todo.length} of ${d.plan.length} transactions are already on chain; approving the rest`);
-    const r = parts.length ? await signAndSendAll({ wallet: S.wallet!, account: S.account!, parts, onStatus: st }) : { landed: [], failed: null };
+    // the bind rides last in the same approval (bind-plan.ts): optional, so the launch never fails or waits because of it
+    const bindTx = d.bind && parts.length ? d.txs[d.plan.length] : undefined;
+    const all = bindTx ? withBind(parts, { ...bindPart({ owner: me()!, agent: d.agent.id, newKey: d.bind!.new_key, v0: parts.some((x) => x.table || x.tables?.length) }), price: bindTx.price }, { mainnet: isMainnet() }) : parts;
+    const r = all.length ? await signAndSendAll({ wallet: S.wallet!, account: S.account!, parts: all, onStatus: st }) : { landed: [], failed: null, left: [] };
+    if (d.bind) keepSignedBind(d.agent.id, d.bind.new_key, r.left);
     for (const x of r.landed) {
       logSig(`${x.label} ${d.args.symbol}`, x.confirmed.signature, x.confirmed.fee, !x.confirmed.err);
       d.landed.push(...x.label.split(" + "));
@@ -1061,7 +1077,7 @@ async function launchSign() {
     const first: Record<string, [StepState, string]> = {
       vault: ["wait", "reading the compute vault"],
       github: ["wait", "asking the identity service"],
-      runtime: d.args.hosted ? ["wait", "the hosted runtime's binding follows"] : ["skip", "self-hosted: run the worker with the agent key below"],
+      runtime: d.args.hosted ? ["wait", r.landed.some((x) => x.label === BIND_LABEL) ? "bound with the launch; the hosted runtime picks it up" : "finishing the hosted runtime's binding"] : ["skip", "self-hosted: run the worker with the agent key below"],
       images: ["wait", "after Core reads the launch"],
       session: ["wait", "after the agent is awake and bound"],
       verdict: ["wait", "after the first candidate is replayed"],
@@ -1127,46 +1143,31 @@ async function renderLaunched() {
   if (l.hosted) void bindHosted(l.agent);
 }
 
-// A hosted launch binds to the site's hosted runtime (packages/runtime/src/bind.ts): the runtime made
-// its own key for the agent; the owner's wallet signs rotate_agent_key to it, and the runtime checks
-// the transaction, co-signs as the new key and sends it. The launcher's agent key never leaves this tab.
-async function bindHosted(agent: string) {
-  const out = (r: Raw | string) => set("w-rt-bind", r);
-  const retry = () => btn("rt-bind", "Bind to the hosted runtime");
+// A hosted launch binds to the site's hosted runtime in the launch's own approval (bind-plan.ts,
+// docs/plans/SEAMLESS-BIND.md). This is what the launched screen and Profile > Manage run after it:
+// nothing when the agent is already bound; otherwise bind.ts finishes it by itself (what the wallet
+// already signed first, then the one missing signature, said in a plain line before the wallet is
+// asked). The launcher's agent key never leaves this tab.
+let bindRun = 0;
+async function bindHosted(agent: string, attempt = 0) {
+  const run = ++bindRun;
+  const out = (r: Raw | string) => run === bindRun && set("w-rt-bind", r);
   try {
-    let t: { new_key: string; status: string } | null = null;
-    // the runtime reads the launch from chain; a few seconds of RPC lag are normal right after it lands
-    for (let i = 0; i < 20 && !t; i++) {
-      const r = await fetch(`/runtime/bind/${agent}`, { headers: { accept: "application/json" } });
-      const j = await r.json().catch(() => ({}));
-      if (r.ok) t = j;
-      else if (r.status !== 404 && r.status !== 503 && r.status !== 429) throw new Error(j.message ?? j.error ?? `the hosted runtime answered HTTP ${r.status}`);
-      else await new Promise((res) => setTimeout(res, 3000));
+    const ready = requireReady();
+    const r = await finishBind({ agent, wallet: ready ? S.wallet : null, account: ready ? S.account : null, say: (line) => out(html`<span class="dim">${line}</span>`) });
+    if (r.signature) {
+      const t2 = await rpc.getTransaction(r.signature).catch(() => null);
+      logSig(`rotate_agent_key ${short(agent)} to the hosted runtime (co-signed by the runtime)`, r.signature, t2?.meta?.fee, true);
     }
-    if (!t) throw new Error("the hosted runtime has not seen this launch yet");
-    const rec0 = await reader.agent(agent);
-    if (t.status === "bound" || rec0?.signingKey === t.new_key) {
-      out(html`<span class="mark good">${icon.check} bound</span> <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's)</span><div id="w-rt-holding"></div>`);
-      return void moveHolding(agent, t.new_key);
-    }
-    if (!requireReady()) return out(html`${retry()} <span class="dim">connect the launcher wallet</span>`);
-    if (rec0 && rec0.owner !== me()) return out(html`<span class="dim">only the owner ${addr(rec0.owner)} can bind it</span>`);
-    out(html`<span class="dim">Sign the binding: your wallet signs <span class="num">rotate_agent_key</span> as owner, to the runtime's key ${addr(t.new_key)}; the runtime co-signs and sends it.</span>`);
-    const ix = registry.rotateAgentKey({ owner: me()!, agent, newKey: t.new_key });
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: [ix], leaveFor: t.new_key, onStatus: (m) => out(html`<span class="dim">${m}</span>`) });
-    out(html`<span class="dim">Signed. The hosted runtime is co-signing and sending…</span>`);
-    const p = await fetch(`/runtime/bind/${agent}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx: base64Encode(r.partial!) }) });
-    const j = await p.json().catch(() => ({}));
-    if (!p.ok) throw new Error(j.message ?? j.error ?? `HTTP ${p.status}`);
-    const t2 = await rpc.getTransaction(j.signature).catch(() => null);
-    logSig(`rotate_agent_key ${short(agent)} to the hosted runtime (co-signed by the runtime)`, j.signature, t2?.meta?.fee, true);
-    const rec = await reader.agent(agent);
-    out(rec?.signingKey === t.new_key
-      ? html`<span class="mark good">${icon.check} bound</span> ${txLink(j.signature)} <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's), key changes ${rec.keySeq}; it starts on the runtime's next pass</span><div id="w-rt-holding"></div>`
-      : html`<span class="mark warn">${icon.warn} sent ${txLink(j.signature)}, the registry has not shown the new key yet</span>`);
-    if (rec?.signingKey === t.new_key) await moveHolding(agent, t.new_key);
+    out(html`<span class="mark good">${icon.check} bound</span> ${r.signature ? txLink(r.signature) : ""} <span class="dim">signing key ${addr(r.newKey)} (the hosted runtime's); it starts on the runtime's next pass</span><div id="w-rt-holding"></div>`);
+    await moveHolding(agent, r.newKey);
   } catch (e) {
-    out(html`${errBox(e, (e as any).logs)}<div class="wl-row" style="margin-top:6px">${retry()}</div>`);
+    if (run !== bindRun) return;
+    const line = bindProblem(e);
+    // what can pass by itself (the runtime catching up, a busy chain) is tried again without being asked; a refusal in the wallet is not
+    const again = attempt < 3 && !declined(e) && !/Connect the wallet|Only the wallet/.test(line);
+    out(html`<span class="mark warn">${icon.warn} not bound yet</span> <span class="dim">${line}${again ? " Trying again by itself." : ""}</span><div class="wl-row" style="margin-top:6px">${btn("rt-bind", "Finish setup: bind")}</div>`);
+    if (again) setTimeout(() => run === bindRun && void bindHosted(agent, attempt + 1), 8000 * (attempt + 1));
   }
 }
 
