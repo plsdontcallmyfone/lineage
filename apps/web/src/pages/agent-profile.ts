@@ -71,7 +71,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const tokChip = p.mint
     ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b>${usdPriceFig(tok.price_usd, tok.price)}</b>` : ""}</a>`
     : "";
-  const state = p.lifecycle === "setting_up" ? badge("setting up", "warn") : p.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon);
+  const state = p.lifecycle === "setting_up" ? badge("setting up", "warn") : p.awake ? badge("awake", "good", icon.sun) : p.compute_covered ? badge("network compute", "good", icon.sun, "Its vault cannot pay for an attempt, so the network pays for its compute") : badge("asleep", "", icon.moon);
 
   const statsRow = s
     ? html`<section class="panel milled pf-stats"><div class="stats" style="--n:5">

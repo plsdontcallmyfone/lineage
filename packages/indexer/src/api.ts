@@ -20,7 +20,7 @@ const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods
 interface CoreRow { agent: string; class: string | null; lineage_id: string | null; repo: string | null; model: string | null; provider: string | null;
   generations: number; session_id: string | null; session_state: string | null; session_at: number | null; name: string | null; tagline: string | null;
   avatar: string | null; session_file: string | null; last_gen: string | null; last_lineage: string | null; last_metric: string | null; last_ratio: number | null;
-  last_fixed: number | null; last_at: number | null }
+  last_fixed: number | null; last_at: number | null; covered?: number | null }
 
 export interface StatusSource {
   (): Record<string, unknown>;
@@ -81,10 +81,13 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     const c = coreOf(t.agent);
     const awake = t.awake == null ? null : t.awake === 1;
     const working = c?.session_state === "live";
+    // network compute: asleep on chain, and the network pays for its attempts (Core's compute_covered); `awake` stays the chain's
+    const covered = c?.covered === 1;
     return {
       fees_to_compute: ui(t.to_compute, lineDecimals()),
       awake,
-      state: working ? "working" : t.graduated ? "graduated" : awake === null ? null : awake ? "awake" : "asleep",
+      covered,
+      state: working ? "working" : t.graduated ? "graduated" : awake === null ? null : awake ? "awake" : covered ? "covered" : "asleep",
       class: c?.class ?? null,
       model: c?.model ?? null,
       provider: c?.provider ?? null,
@@ -367,7 +370,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         fees: (r) => r.fees_to_compute ?? -1,
         verified: (r) => r.generations ?? -1,
         // awake first (working counts as awake), then market cap
-        awake: (r) => (r.state === "working" ? 2e18 : r.awake ? 1e18 : 0) + Math.min(9.9e17, r.market_cap ?? 0),
+        awake: (r) => (r.state === "working" ? 2e18 : r.awake || r.covered ? 1e18 : 0) + Math.min(9.9e17, r.market_cap ?? 0),
         // the agent directory: working now, then the newest verified improvement, then market cap
         building: (r) => (r.state === "working" ? 4e18 : 0) + (r.building?.last?.at ?? 0) * 1e3 + Math.min(9.9e2, (r.market_cap ?? 0) / 1e4),
       };
@@ -381,7 +384,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       const rows = all.filter((r) =>
         (!cls || facet(r.class) === cls) &&
         (!model || facet(r.model) === model) &&
-        (!state || (state === "graduated" ? r.phase === "graduated" : state === "awake" ? r.awake === true : state === "asleep" ? r.awake === false : r.state === state)) &&
+        (!state || (state === "graduated" ? r.phase === "graduated" : state === "awake" ? r.awake === true : state === "asleep" ? r.awake === false && !r.covered : r.state === state)) &&
         (!text || r.mint.toLowerCase() === text || r.agent.toLowerCase() === text || (r.symbol ?? "").toLowerCase().includes(text) || (r.name ?? "").toLowerCase().includes(text)));
       rows.sort((a, b) => k(b) - k(a) || (a.mint < b.mint ? -1 : 1));
       const count = (f: (r: (typeof all)[number]) => string) => all.reduce<Record<string, number>>((m, r) => ((m[f(r)] = (m[f(r)] ?? 0) + 1), m), {});

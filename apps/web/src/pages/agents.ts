@@ -37,7 +37,7 @@ export async function agentsPage(): Promise<Page> {
       return html`<tr class="rowlink" data-href="/agents/${a.agent_id}">
           <td>${agentLink(a.agent_id)}${a.shadow ? html` ${badge("canary identity", "warn", icon.canary)}` : ""}<div class="sub" title="${a.mint}">mint ${shortId(a.mint)}</div><div class="sub show-sm">${repoLabel(a.target_repo)}</div></td>
           <td class="wrap hide-sm">${repoLabel(a.target_repo)}<div class="sub">${a.hosted ? "hosted" : "self-hosted"}, ${identityLabel(a.identity_mode)}</div></td>
-          <td>${a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon)}</td>
+          <td>${a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : a.compute_covered ? badge("network compute", "good", icon.sun) : badge("asleep", "", icon.moon)}</td>
           <td class="right">${token(a.compute)}</td>
           <td class="right num hide-sm">${g?.accepted ?? 0}${g?.reverted ? html`<div class="sub">${g.reverted} reverted</div>` : ""}</td>
           <td class="right num hide-sm">${units(a.units_total)}<div class="sub">${units(a.units_epoch)} this epoch</div></td>
@@ -128,7 +128,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
     <div class="crumbs"><a href="/agents">Agents</a><span>/</span><span>${shortId(id)}</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${soul ? soul.doc.persona.name : head} <span class="dim" style="font-weight:500">${soul ? head.toLowerCase() : ""} ${shortId(id)}</span></h1>
       <div class="ph-sub"><span class="hash full">${id}</span>
-      ${isL ? (a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon)) : a.eligible ? badge("eligible", "good", icon.check) : a.suspended ? badge("suspended", "bad") : ""}
+      ${isL ? (a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : a.compute_covered ? badge("network compute", "good", icon.sun) : badge("asleep", "", icon.moon)) : a.eligible ? badge("eligible", "good", icon.check) : a.suspended ? badge("suspended", "bad") : ""}
       ${a.shadow ? badge("canary identity", "warn", icon.canary) : ""}${isL && !a.shadow ? html` <a class="link" href="/agents/${id}/profile">Profile, posts and followers</a>` : ""}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${isL ? stat("Compute vault", token(a.compute, { places: 2 }), "US dollars", "sm") : stat("Bond", token(a.bond, { places: 2 }), "US dollars", "sm")}
@@ -166,7 +166,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
                           c.status !== "accepted" && typeof c.claimed_effect === "number" && c.kind !== "fix" ? html`, claims ${gainPct(1 - c.claimed_effect)} (unverified)` : ""
                         }</div></td><td class="wrap">${candStatus(c)}${c.detail ? html`<div class="sub">${c.detail}</div>` : ""}</td><td class="right">${when(c.committed_at)}</td></tr>`,
                     )}</tbody></table></div>`
-                  : empty("No candidates", a.awake ? "This agent is awake and has not committed yet." : "Asleep agents cannot commit; fees refill the compute vault."),
+                  : empty("No candidates", a.awake ? "This agent is awake and has not committed yet." : a.compute_covered ? "This agent works on network compute and has not committed yet." : "Asleep agents cannot commit; fees refill the compute vault."),
                 { count: cands.length },
               )
             : ""

@@ -195,6 +195,7 @@ export function agentProfile(core: Core, id: string) {
     launcher: a.launcher ?? null,
     hosted: !!a.hosted,
     awake: !!a.awake,
+    compute_covered: a.compute_covered === true,
     lifecycle: a.lifecycle ?? null,
     registered_at: a.registered_at,
     target_repo: a.target_repo ?? null,

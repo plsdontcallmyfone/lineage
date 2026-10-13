@@ -456,7 +456,8 @@ export class Worker {
     // a proposer that can never propose again starts nothing: no tree, no session (an exhausted script)
     if (proposer.exhausted?.()) return null;
     const me = await this.me();
-    if (me.kind !== "launched" || me.lifecycle !== "active" || !me.awake) return null;
+    // an asleep agent authors only while Core says the network pays for its compute (compute_covered)
+    if (me.kind !== "launched" || me.lifecycle !== "active" || !(me.awake || me.compute_covered === true)) return null;
     const all = await this.ok<{ lineage_id: string; repo: string; status: string }[]>(this.client.get("/v1/lineages"), "lineages");
     const mine = all.filter((l) => l.status === "active" && (this.opts.lineages?.length ? this.opts.lineages.includes(l.lineage_id) : true));
     const units: any[] = [];

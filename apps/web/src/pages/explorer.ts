@@ -69,7 +69,8 @@ export const CLASS_LABEL: Record<string, string> = {
 const CLASS_ORDER = ["rust", "python", "solana", "zig", "cuda", "go", "cpp"];
 export const SORTS: [string, string][] = [["market_cap", "Top"], ["newest", "New"], ["volume", "Volume"], ["change", "Gainers"], ["awake", "Working first"]];
 export const STATES: [string, string][] = [["", "All"], ["awake", "Awake"], ["asleep", "Asleep"], ["graduated", "Graduated"]];
-const BADGE: Record<string, string> = { working: "Working", awake: "Awake", asleep: "Asleep", graduated: "Graduated" };
+// covered: asleep on chain while the network pays for its attempts (plan MODELS-AND-SELF-FUNDING section D)
+const BADGE: Record<string, string> = { working: "Working", awake: "Awake", covered: "Network compute", asleep: "Asleep", graduated: "Graduated" };
 
 const searchIcon = raw(`<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4L14 14"/></svg>`);
 
@@ -542,7 +543,7 @@ const CSS = `
 .ex-state{position:absolute;right:8px;bottom:8px;z-index:1;display:inline-flex;align-items:center;gap:5px;font:500 12px/1 var(--sans);letter-spacing:-.01em;padding:5px 8px;border-radius:12px;corner-shape:squircle;background:#e6e3dc;color:#1a1a19}
 .ex-state.working{background:#a68aff;color:#47146e}
 .ex-state.working i{width:6px;height:6px;border-radius:50%;background:#47146e;animation:ex-pulse 1.4s ease-in-out infinite}
-.ex-state.awake{background:#b9d98a;color:#243a07}
+.ex-state.awake,.ex-state.covered{background:#b9d98a;color:#243a07}
 .ex-state.graduated{background:#76c1f5;color:#092538}
 @keyframes ex-pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.ex-state.working i{animation:none}.ex-card{transition:none}}

@@ -43,6 +43,12 @@ export interface NetworkConfig {
   qualify_retry_s: number;
   /** Activity events accepted per agent per minute (SPEC 17.1). Optional, default 120. */
   activity_rate: number;
+  /**
+   * Network compute (docs/plans/MODELS-AND-SELF-FUNDING.md section D): how old the hosted runtime's last
+   * spend report may be, in seconds, for an agent it reported as covered to still count as covered
+   * (its candidates are accepted while its vault is asleep). Optional, default 600.
+   */
+  network_compute_report_max_age_s: number;
   /** Worker heartbeat period; a machine is awake while its last heartbeat is younger than 3x this (SPEC 17.1). Optional, default 10. */
   heartbeat_s: number;
   /** Random auditors drawn per audit besides the reference runner (SPEC 10.6). Optional, default 2. */
@@ -222,6 +228,9 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   const hb = raw.heartbeat_s ?? 10;
   if (typeof hb !== "number" || !Number.isFinite(hb) || hb < 1) throw new Error("network config: heartbeat_s must be a number of at least 1");
   out.heartbeat_s = hb;
+  const ncAge = raw.network_compute_report_max_age_s ?? 600;
+  if (typeof ncAge !== "number" || !Number.isFinite(ncAge) || ncAge < 0) throw new Error("network config: network_compute_report_max_age_s must be a number of seconds, 0 or more");
+  out.network_compute_report_max_age_s = ncAge;
   const posInt = (k: string, def: number, min: number) => {
     const v = raw[k] ?? def;
     if (typeof v !== "number" || !Number.isInteger(v) || v < min) throw new Error(`network config: ${k} must be an integer of at least ${min}`);

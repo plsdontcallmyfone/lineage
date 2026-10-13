@@ -6,7 +6,7 @@ import { Worker } from "../../worker/src/worker.ts";
 import { JOURNAL_RESERVE_USD } from "../../worker/src/journal.ts";
 import type { Meter, Proposer } from "../../worker/src/proposers/types.ts";
 import type { Backend, HostedAgent, Vault } from "./backend.ts";
-import { chainCostOf, costOf, resolvePrices, usdFor, windowStart, type Prices, type RuntimeConfig } from "./config.ts";
+import { chainCostOf, costOf, PLATFORM_FUNDING_DEFAULTS, resolvePrices, usdFor, windowStart, type Prices, type RuntimeConfig } from "./config.ts";
 import type { ChainFee, Messenger } from "../../core/src/msgchain.ts";
 import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenance.ts";
 import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
@@ -99,6 +99,8 @@ export interface SpendReport {
     model: { provider: string; id: string } | null;
     via: "direct" | "openrouter" | null;
     waiting: string | null;
+    /** network compute (plan section D): set while the agent's vault cannot pay and the network pays for its attempts, one every min_interval_s */
+    covered?: { min_interval_s: number };
     /** false: known to the runtime but not bound to it (reported only with a unit setup reason; its figures are null) */
     bound?: false;
     /** since when the agent has been waiting for a desktop (ms); null when it is not */
@@ -131,6 +133,8 @@ interface Attempt {
   totals: AttemptTotals;
   /** the route the attempt was started on (OpenRouter attempts hold part of its balance) */
   via?: "direct" | "openrouter" | null;
+  /** network compute (plan section D): sized by the global cap and the OpenRouter balance, not by the vault */
+  network?: boolean;
 }
 
 interface Running {
@@ -215,6 +219,11 @@ export class Runtime {
   /** agents whose budget is under the minimum useful attempt: no attempt, desktop or session until `until`, or until the vault holds more than `balance` */
   private paused = new Map<string, { until: number; balance: bigint; why: string }>();
   private lastReport = 0;
+  /** network compute (plan section D): the slot keys whose running attempt was started on the network's money, and the agents Core has been told are covered */
+  private networkRun = new Set<string>();
+  private coveredTold = new Set<string>();
+  /** when each agent's last attempt began (its budget was granted), this process: the covered interval counts from it */
+  private begun = new Map<string, number>();
   /** the hosted agents of the last successful discovery (an agent that left it no longer exists for the desktops) */
   private discovered: Set<string> | null = null;
   /** sha256 digests of the launches Core purged (GET /v1/purged; kept in <state_dir>/purged.json so a start without Core still knows them) */
@@ -466,6 +475,8 @@ export class Runtime {
       spent_usd: spent,
       left_usd: Math.max(0, this.globalLeft()),
       lifetime_usd: this.state.spent_usd_total,
+      /** what the vaults could not pay so far, in USD (leaf shortfalls of closed usage epochs) */
+      subsidized_lifetime_usd: this.state.subsidized_usd_total ?? 0,
       past_windows: (this.state.windows ?? []).slice(-7),
     };
   }
@@ -563,6 +574,102 @@ export class Runtime {
       return { usd: null, why: `${base}${need}`, vault: fromVault === usd, short: true };
     }
     return { usd };
+  }
+
+  // ------------------------------------------------------------------ network compute (plan MODELS-AND-SELF-FUNDING section D)
+
+  /**
+   * True while the network pays for `agent`'s attempts: the setting is on, the agent is bound, its
+   * repository has a unit, and only its vault stands between it and an attempt (asleep, or budget()
+   * refused it for the vault). Read again on every tick: it ends as soon as the vault can pay.
+   */
+  covered(agent: string): boolean {
+    if (!this.cfg.platform_funding?.enabled) return false;
+    if (this.state.agents[agent]?.status !== "bound" || this.setup.settingUp(agent)) return false;
+    const v = this.vaults.get(agent);
+    if (!v) return false;
+    return !v.awake || this.exhausted.has(agent);
+  }
+
+  /** Room under the global cap for an attempt the network pays for (USD). */
+  private networkCapLeft(): number {
+    // scope "all": every metered USD is in the window and every running attempt's unspent reserve is held already
+    if (this.cfg.global_cap_scope === "all") return this.globalLeft();
+    // scope "subsidized": the window gets a shortfall only when its usage epoch closes, so the unspent
+    // reserves of running covered attempts and the shortfall the open usage already implies are held here
+    let held = 0;
+    for (const a of this.attempts.values()) if (a.network) held += Math.max(0, a.maxUsd - a.totals.usd);
+    if (this.prices.perUsd > 0n)
+      for (const agent of Object.keys(this.state.open.usage)) {
+        const gap = this.owed(agent) - (this.vaults.get(agent)?.balance ?? 0n);
+        if (gap > 0n) held += Number((gap * 1_000_000n) / this.prices.perUsd) / 1e6;
+      }
+    return this.globalLeft() - held;
+  }
+
+  /**
+   * The most an attempt of a covered agent may spend (USD), or null with the reason: the lowest of the
+   * attempt cap (platform_funding.attempt_max_usd, else attempt_max_usd), the room under the global
+   * cap, and what OpenRouter's known balance covers after running reserves. The vault is not part of
+   * it. Only for a model that runs through OpenRouter here: the network pays from that balance alone.
+   */
+  private networkBudget(agent: string, seat = 1): { usd: number } | { usd: null; why: string; vault: false; short?: false } {
+    const key = slotKey(agent, seat);
+    if (!this.applyPrice()) return { usd: null, why: `waiting for a quote price (${this.price?.why(this.now()) ?? "none"})`, vault: false };
+    const used = this.usageOf(agent).usd;
+    if (typeof used !== "number" || !Number.isFinite(used)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
+    if (this.routeOf(key)?.via !== "openrouter") return { usd: null, why: "network compute runs through OpenRouter, and this agent's model has no OpenRouter route here", vault: false };
+    const pr = this.providerRoom();
+    const prov = pr === null ? Infinity : pr;
+    const g = this.networkCapLeft();
+    const usd = Math.min(this.cfg.platform_funding?.attempt_max_usd ?? this.cfg.attempt_max_usd, g, prov);
+    const floor = Math.max(this.cfg.min_attempt_usd, this.minUsefulUsd(key));
+    if (!(usd >= floor)) {
+      const why = prov === usd && prov !== g
+        ? `provider balance low (OpenRouter has ${(this.deps.providerBalance?.room() ?? 0).toFixed(2)} USD, ${Math.max(0, prov).toFixed(4)} free of running reserves)`
+        : `global runtime cap (${this.cfg.global_max_usd} USD${this.cfg.global_window_s ? ` per ${this.cfg.global_window_s} s window` : ""}) reached`;
+      return { usd: null, why, vault: false };
+    }
+    return { usd };
+  }
+
+  /**
+   * Starts a covered agent's next attempt when its interval has passed and the cap and the balance
+   * allow one. A swarm runs its first seat only while covered. True when one started.
+   */
+  private startCovered(agent: string, st: { candidates: number }): boolean {
+    if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) return false;
+    if (this.busy(agent)) return false;
+    const seat = this.rosters.get(agent)?.[0]?.seat ?? 1;
+    const k = slotKey(agent, seat);
+    const b = this.networkBudget(agent, seat);
+    if (b.usd === null) {
+      if (this.waiting.get(k) !== b.why) this.log(`${agent.slice(0, 6)} attempt on network compute not started: ${b.why}`);
+      this.waiting.set(k, b.why);
+      return false;
+    }
+    // the vault's own reason no longer holds it; a desktop wait is the desktop gate's to clear
+    if (!this.waiting.get(k)?.startsWith("waiting for a desktop")) this.waiting.delete(k);
+    const now = this.now();
+    // from the last attempt that began (its budget was granted); one that could not begin (no desktop free,
+    // nothing to author on) is tried again after the short gap below and uses up no interval
+    const last = Math.max(this.state.network_started?.[agent] ?? -Infinity, this.begun.get(agent) ?? -Infinity);
+    const every = (this.cfg.platform_funding?.min_interval_s ?? PLATFORM_FUNDING_DEFAULTS.min_interval_s) * 1000;
+    if (now - last < every) return false;
+    if ((this.misses.get(k)?.until ?? 0) > now) return false;
+    // Core refuses an asleep agent's candidate unless the runtime's report says it is covered: told first
+    if (this.deps.report && (this.cfg.spend_report_s ?? 60) > 0 && !this.coveredTold.has(agent)) {
+      this.lastReport = 0;
+      return false;
+    }
+    this.lastStarted.set(k, now);
+    this.networkRun.add(k);
+    const promise = this.attemptFor(agent, seat).finally(() => {
+      this.running.delete(k);
+      this.networkRun.delete(k);
+    });
+    this.running.set(k, { agent, promise });
+    return true;
   }
 
   /**
@@ -707,7 +814,9 @@ export class Runtime {
     const k = slotKey(agent, seat);
     const swarm = this.rosters.has(agent);
     const tag = swarm ? `${agent.slice(0, 6)} s${seat}` : agent.slice(0, 6);
-    const b = this.budget(agent, swarm ? { seat } : {});
+    // an attempt started on network compute is sized by the cap and the OpenRouter balance, not by the vault
+    const net = this.networkRun.has(k);
+    const b = net ? this.networkBudget(agent, seat) : this.budget(agent, swarm ? { seat } : {});
     if (b.usd === null) {
       if (swarm && this.runningSeats(agent) > 1) {
         // other seats hold the vault's room: this seat waits, the swarm is not marked as out of funds
@@ -732,12 +841,14 @@ export class Runtime {
     }
     this.waiting.delete(k);
     this.desktopWaitSince.delete(k);
-    const a: Attempt = { agent, ...(swarm ? { seat } : {}), maxUsd: b.usd, via: this.routeOf(k)?.via ?? null, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
+    const a: Attempt = { agent, ...(swarm ? { seat } : {}), ...(net ? { network: true } : {}), maxUsd: b.usd, via: this.routeOf(k)?.via ?? null, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
     this.attempts.set(k, a);
     this.usageOf(agent).attempts++;
     if (swarm) ((this.usageOf(agent).seats ??= {})[String(seat)] ??= emptySeatUsage()).attempts++;
+    this.begun.set(agent, this.now());
+    if (net) (this.state.network_started ??= {})[agent] = this.now();
     this.save();
-    this.log(`${tag} attempt starts, cap ${b.usd.toFixed(4)} USD`);
+    this.log(`${tag} attempt starts${net ? " on network compute" : ""}, cap ${b.usd.toFixed(4)} USD`);
     return { maxUsd: b.usd, meter: this.meterFor(a) };
   }
 
@@ -778,6 +889,8 @@ export class Runtime {
       if (st.status !== "bound" || !(this.discovered ?? this.hosted).has(agent)) continue;
       const awake = this.vaults.get(agent)?.awake !== false;
       const roster = this.rosters.get(agent);
+      // network compute: a covered agent's desktop is not rested for a low vault (a swarm's first seat; its other seats rest)
+      const cov = this.covered(agent);
       if (roster) {
         // a swarm: one desktop per seat; seats the vault does not carry now rest with their reason
         const funded = this.seatsFunded(agent);
@@ -785,6 +898,7 @@ export class Runtime {
         roster.forEach((m, i) => {
           const k = slotKey(agent, m.seat);
           const working = this.running.has(k);
+          if (cov) return void list.push({ agent: k, working, asleep: i > 0, ...(i > 0 ? { asleep_why: "Paused: vault low" } : {}) });
           const low = awake && !working && (broke || i >= funded);
           list.push({ agent: k, working, asleep: !awake || low, ...(low ? { asleep_why: "Paused: vault low" } : {}) });
         });
@@ -793,7 +907,8 @@ export class Runtime {
       const working = this.running.has(agent);
       // an awake agent whose vault cannot pay for an attempt does not work either: its desktop rests until a deposit
       const broke = awake && !working && (this.exhausted.has(agent) || !!this.pausedNow(agent));
-      list.push({ agent, working, asleep: !awake || broke, ...(broke ? { asleep_why: "agent cannot pay for an attempt (vault low)" } : {}) });
+      if (cov) list.push({ agent, working, asleep: false });
+      else list.push({ agent, working, asleep: !awake || broke, ...(broke ? { asleep_why: "agent cannot pay for an attempt (vault low)" } : {}) });
     }
     try {
       d.syncAgents(list);
@@ -888,7 +1003,9 @@ export class Runtime {
       const at = ledger.activeOf(m.seat);
       const w = this.waiting.get(k) ?? null;
       const working = this.running.has(k) && !!at;
-      const state: SeatReport["state"] = !v?.awake ? "asleep" : working ? "working" : w === "Paused: vault low" || (!this.busy(agent) && this.exhausted.has(agent)) ? "paused" : "waiting";
+      // network compute: a covered swarm's first seat works; it is neither asleep nor paused
+      const cov = i === 0 && this.covered(agent);
+      const state: SeatReport["state"] = cov ? (working ? "working" : "waiting") : !v?.awake ? "asleep" : working ? "working" : w === "Paused: vault low" || (!this.busy(agent) && this.exhausted.has(agent)) ? "paused" : "waiting";
       const r = this.routeOf(k);
       const desk = this.deps.desktop?.agentDesktop?.(k) ?? null;
       const spend = { usd: 0, sandbox_s: 0, desktop_s: 0, desktop_usd: 0, attempts: 0, epochs: 0 };
@@ -1105,6 +1222,11 @@ export class Runtime {
     const ceiling = this.cfg.max_concurrent_ceiling ?? this.cfg.max_concurrent;
     let funded = 0;
     for (const [agent, st] of Object.entries(this.state.agents)) {
+      // network compute: a covered agent takes one slot while it runs or may start
+      if (this.covered(agent)) {
+        if (this.busy(agent) || this.networkBudget(agent, this.rosters.get(agent)?.[0]?.seat ?? 1).usd !== null) funded++;
+        continue;
+      }
       if (st.status !== "bound" || this.exhausted.has(agent) || !this.vaults.get(agent)?.awake) continue;
       const roster = this.rosters.get(agent);
       if (roster) {
@@ -1136,6 +1258,11 @@ export class Runtime {
     for (const [agent, st] of order) {
       if (this.running.size >= slots) return;
       if (st.status !== "bound") continue;
+      // network compute: an agent whose vault cannot pay, one attempt per interval
+      if (this.covered(agent)) {
+        this.startCovered(agent, st);
+        continue;
+      }
       const roster = this.rosters.get(agent);
       if (!roster) {
         if (this.running.has(agent)) continue;
@@ -1419,7 +1546,7 @@ export class Runtime {
     const open = this.state.open;
     const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0 || (u.desktop_usd ?? 0) > 0);
     const due = this.now() - open.opened_at >= this.cfg.usage_epoch_s * 1000;
-    const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.busy(a));
+    const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.busy(a) && !this.covered(a));
     const pending = this.state.closed.some((e) => !e.done);
     // no quote price (mainnet feed stale or out of band): the epoch stays open, no amount is invented
     const priced = !!this.applyPrice();
@@ -1436,8 +1563,9 @@ export class Runtime {
           leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0, ...(u.seats ? { desktop_usd: u.desktop_usd ?? 0, desktop_s: u.desktop_s ?? 0, seats: u.seats } : {}) });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
-        // subsidized spend (plan MODELS-AND-SELF-FUNDING): what the vaults could not pay, in USD, is what the global cap counts
-        if (this.cfg.global_cap_scope !== "all") {
+        // subsidized spend (plan MODELS-AND-SELF-FUNDING): what the vaults could not pay, in USD. Scope
+        // "subsidized": it is what the global cap counts; scope "all": the window already holds every USD
+        {
           let short = 0;
           for (const l of leaves) {
             const gap = BigInt(l.cost) - BigInt(l.amount);
@@ -1445,7 +1573,7 @@ export class Runtime {
           }
           if (short > 0) {
             this.state.subsidized_usd_total = (this.state.subsidized_usd_total ?? 0) + short;
-            const w = this.spendWindow();
+            const w = this.cfg.global_cap_scope !== "all" ? this.spendWindow() : null;
             if (w) w.usd += short;
             this.log(`usage epoch ${next.epoch}: ${short.toFixed(4)} USD the vaults could not pay counts as subsidized spend`);
           }
@@ -1586,6 +1714,8 @@ export class Runtime {
       const spanS = Number.isFinite(first) ? Math.max(3600, (now - first) / 1000) : null;
       const perH = spanS && burn > 0n ? (burn * 3600n) / BigInt(Math.ceil(spanS)) : null;
       const r = this.routeOf(agent);
+      // network compute: a covered agent is not reported as asleep or out of funds; only what holds its covered attempts (the cap, the balance, a desktop)
+      const cov = this.covered(agent);
       out.agents[agent] = {
         vault: v ? v.balance.toString() : null,
         vault_usd: v && q ? usdFor(this.prices, v.balance, 0) : null,
@@ -1595,7 +1725,8 @@ export class Runtime {
         runway_h: v && perH && perH > 0n ? Number((v.balance * 1000n) / perH) / 1000 : null,
         model: r?.model ?? null,
         via: r?.via ?? null,
-        waiting: su?.final ? su.why : !v ? "vault not read yet" : !v.awake ? "asleep (vault below the wake threshold)" : su?.why ?? this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
+        waiting: su?.final ? su.why : !v ? "vault not read yet" : cov ? (this.waiting.get(agent) ?? null) : !v.awake ? "asleep (vault below the wake threshold)" : su?.why ?? this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
+        ...(cov ? { covered: { min_interval_s: this.cfg.platform_funding?.min_interval_s ?? PLATFORM_FUNDING_DEFAULTS.min_interval_s } } : {}),
       };
       // a funded agent whose attempts do not start for want of a desktop: since when (desktop-gate.ts writes the reason)
       const w = out.agents[agent]!.waiting;
@@ -1629,7 +1760,12 @@ export class Runtime {
     const every = (this.cfg.spend_report_s ?? 60) * 1000;
     if (!this.deps.report || every <= 0 || this.now() - this.lastReport < every) return;
     this.lastReport = this.now();
-    await this.deps.report(this.spendReport()).catch((e) => this.log(`spend report not sent: ${(e as Error).message}`));
+    const body = this.spendReport();
+    await this.deps.report(body).then(
+      // network compute: Core now knows which agents are covered (startCovered waits for this)
+      () => void (this.coveredTold = new Set(Object.entries(body.agents).filter(([, a]) => a.covered).map(([id]) => id))),
+      (e) => this.log(`spend report not sent: ${(e as Error).message}`),
+    );
   }
 
   /** A public summary (no keys, no secrets). */

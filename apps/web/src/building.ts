@@ -37,7 +37,7 @@ export interface DirToken {
   change_24h_usd?: number | null;
   created_at: number;
   repo_url: string | null;
-  state: "working" | "awake" | "asleep" | "graduated" | null;
+  state: "working" | "awake" | "covered" | "asleep" | "graduated" | null;
   awake: boolean | null;
   class: string | null;
   lineage_id: string | null;

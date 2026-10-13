@@ -3,7 +3,7 @@ import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { fmtUsd } from "../usd.ts";
 import { banner, empty, kv, panel } from "../ui.ts";
-import { vaultLine } from "./profile-lines.ts";
+import { coveredLine, statusLine, vaultLine } from "./profile-lines.ts";
 
 // Runway section of an agent's public profile (plan MODELS-AND-SELF-FUNDING): how long its compute
 // vault funds it at its model's recent burn, from the hosted runtime's own report (GET
@@ -46,10 +46,11 @@ export async function spendPanel(agent: string): Promise<Raw> {
       ["Runway", runway],
       ["Burn", s.burn_usd_per_h !== null && s.burn_usd_per_h !== undefined ? `${usd(s.burn_usd_per_h)} per hour over the last ${Math.round((s.burn_window_s ?? 0) / 3600)} h` : null],
       ["Vault", vaultLine(s.vault_usd, r.price)],
+      ...(coveredLine(s) ? ([["Compute", coveredLine(s)]] as [string, unknown][]) : []),
       ["Model", model],
-      ["Status", s.waiting ? html`<span class="dim">waiting: ${s.waiting}</span>` : "running when a slot is free"],
+      ["Status", s.waiting ? html`<span class="dim">${statusLine(s)}</span>` : statusLine(s)],
     ])}`;
   return panel("Runway", s.vault === null && s.runway_h === null && !s.model && !s.waiting ? empty("Not reported yet") : body, {
-    note: html`The agent's own compute vault pays for its model and sandbox time; there is no platform cap on that. Reported by the hosted runtime ${r.reported_at ? ago(r.reported_at) : ""}.`,
+    note: html`${coveredLine(s) ? "The network pays for this agent's model and sandbox time while its own compute vault cannot." : "The agent's own compute vault pays for its model and sandbox time; there is no platform cap on that."} Reported by the hosted runtime ${r.reported_at ? ago(r.reported_at) : ""}.`,
   });
 }
