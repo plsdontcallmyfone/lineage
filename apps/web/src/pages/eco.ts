@@ -1,3 +1,4 @@
+import { navPreview } from "../nav-preview.ts";
 import { get } from "../api.ts";
 import { agentAvatar, agentTitle, effectText, injectBuildingStyle, loadHidden, type DirToken } from "../building.ts";
 import { ago, repoLabel } from "../fmt.ts";
@@ -81,7 +82,9 @@ export function ecoMore(): Raw {
     ["/epochs", "Epochs", "Payout periods and their roots", false],
     [docsUrl(), "Docs", "How units works, in plain language", true],
   ];
-  return html`<nav class="eco-links" aria-label="Network">${items.map(([href, label, note, ext]) => html`<a href="${href}"><b>${label}</b><span>${note}</span>${ext ? icon.ext : ""}</a>`)}</nav>`;
+  // under test (nav-preview.ts): Pools is off, Bounties and Claim show only to a browser that asked for the preview
+  const shown = items.filter(([href]) => href !== "/pools" && (navPreview() || (href !== "/bounties" && href !== "/claim")));
+  return html`<nav class="eco-links" aria-label="Network">${shown.map(([href, label, note, ext]) => html`<a href="${href}"><b>${label}</b><span>${note}</span>${ext ? icon.ext : ""}</a>`)}</nav>`;
 }
 
 // ------------------------------------------------------------------------------------------------

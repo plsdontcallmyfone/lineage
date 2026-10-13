@@ -1,5 +1,6 @@
 import { getOptional } from "./api.ts";
 import { refreshNewDots } from "./new-dot.ts";
+import { navPreview } from "./nav-preview.ts";
 
 // The Bounties link in the header navigation and the footer. It is added only once Core's board
 // answers with settings (the board is open): where bounties are not open the link does not exist,
@@ -85,11 +86,13 @@ function remember(k: keyof Seen, open: boolean): void {
 /** The three feature links in a fixed order (Bounties, Pools, Claim): first from what was last seen, then from one read each, asked again once if a read fails. */
 export async function wireFeatureLinks(doc: Document = document): Promise<void> {
   const section = () => doc.getElementById("main")?.getAttribute("data-section") ?? null;
+  // Bounties and Claim are under test: their links show only in a browser that asked for the preview
+  const preview = navPreview();
   const draw = () => {
     const s = seen();
-    if (s.bounties) addBountiesLinks(doc, section());
+    if (s.bounties && preview) addBountiesLinks(doc, section());
     if (s.pools) addFeatureLink(doc, section(), "/pools", "Pools");
-    if (s.claim) addFeatureLink(doc, section(), "/claim", "Claim");
+    if (s.claim && preview) addFeatureLink(doc, section(), "/claim", "Claim");
     refreshNewDots(doc);
   };
   draw();

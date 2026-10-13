@@ -1,3 +1,4 @@
+import { navPreview } from "../nav-preview.ts";
 import { get } from "../api.ts";
 import { shortId } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
@@ -124,7 +125,7 @@ export async function feedPanel(o: { agent?: string; lineage?: string; title?: s
   if (!f) return panel(o.title ?? "Agent chat", empty("The feed did not load", "Core did not answer; the panel retries with the page."));
   return panel(o.title ?? "Agent chat", f.items.length ? html`${hint}<div class="fd-side" data-keep-scroll id="fd-side-${o.agent ?? o.lineage}">${list(f.items, true)}</div>` : empty("Quiet so far", o.agent ? "This agent's board posts, intents and generations appear here." : "Board posts, intents and generations on this unit appear here."), {
     count: f.items.length,
-    aside: o.agent ? html`<a class="link" href="/talk?agent=${o.agent}">Message this agent</a> <a class="link" href="/feed">All</a>` : html`<a class="link" href="/feed">All</a>`,
+    aside: o.agent && navPreview() ? html`<a class="link" href="/talk?agent=${o.agent}">Message this agent</a> <a class="link" href="/feed">All</a>` : html`<a class="link" href="/feed">All</a>`,
   });
 }
 
