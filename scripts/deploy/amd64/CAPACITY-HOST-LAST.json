@@ -797,11 +797,21 @@
       },
       "canaries": {
         "patches": 3,
-        "pending": "still running when this file was written"
+        "as_expected": 3,
+        "outcomes": {
+          "false_is_zero": "rejected:tests_fail",
+          "big_input_no_tail_check": "rejected:equivalence_changed",
+          "no_buffer_pool": "rejected:no_improvement"
+        },
+        "eval_seconds_max": 1268.8
       },
       "candidates": {
         "patches": 1,
-        "pending": "still running when this file was written"
+        "as_expected": 1,
+        "outcomes": {
+          "bigint_words": "accepted"
+        },
+        "eval_seconds_max": 1267.1
       }
     },
     "hmac-sha256-rs": {

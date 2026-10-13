@@ -1160,8 +1160,7 @@ and judged with `scripts/check-canaries.ts`. Every recipe id equals the one the 
 All are inside `det_tolerance` 0.001. The two hosts differ (Xeon Gold 6248 with AVX-512 and kernel 7.0
 against DO-Regular and kernel 6.8), and Python and Go counts are not identical across them; the four
 Python units already live qualified all four verifiers. Canaries: every one rejected for its expected
-reason. Candidates: every one judged as its index expects (geth-rlp's four patches were still running
-when this was written; see its results file). bech32-py and spl-record had no amd64
+reason. Candidates: every one judged as its index expects. bech32-py and spl-record had no amd64
 calibration: `recipes/<name>/calibration-amd64.json` now holds the one measured here (not a Core record).
 
 **zig-clap on a 32-core host.** `zig build examples` failed there with `error: SystemResources`: Zig
@@ -1174,9 +1173,10 @@ starts one worker per core can fail the same way on a capacity host; none of the
 
 **geth-rlp.** One evaluation took 1,279 s on the capacity host (median of 5, with up to four other
 sandboxes running) and 1,394 s on the site (Core's record), against the recipe's `wall_s` of 1800; its
-calibration alone took 55 minutes here and 53 on the site. It calibrates and its base values agree
-(largest difference 2.7e-5), but every candidate costs that once per replayer and every verifier once to
-qualify. Leave it out of the mainnet list, or put it last.
+calibration alone took 55 minutes here and 53 on the site, and each of its four patches took 1,263 to
+1,269 s to judge. It calibrates, its base values agree (largest difference 2.7e-5) and its patches are
+judged as expected, but every candidate costs that once per replayer and every verifier once to qualify.
+Leave it out of the mainnet list, or put it last.
 
 **To serve them** (owner; the first list is the instance's own at the time, read it from
 `/etc/units-main/site.env` again before deploying):
