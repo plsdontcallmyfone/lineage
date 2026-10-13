@@ -136,7 +136,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       .get(t.mint, t0) as { p: number } | null;
     const refPrice = ref?.p ?? t.start_price;
     // the same change in dollars needs the quote coin's dollar price 24 hours ago: only when a reading was stored within the hour before
-    const rate24 = usdAt24(t0);
+    // a coin launched inside the window has no price 24 hours ago: its reference is its start price, in dollars at the reading stored for its launch
+    const rate24 = !ref && t.created_at >= t0 ? usdLookup(db, t.created_at - 3600, t.created_at, 3600)(t.created_at) : usdAt24(t0);
     const supply = ui(t.supply, t.decimals);
     const price = t.spot_price;
     const threshold = t.migration_threshold ? BigInt(t.migration_threshold) : null;
@@ -417,6 +418,11 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         let atTime = 0, atCurrent = 0;
         const mx = (a: number | null, b: number | null) => (a == null || b == null ? null : Math.max(a, b));
         const mn = (a: number | null, b: number | null) => (a == null || b == null ? null : Math.min(a, b));
+        // Where the first candle opens: the pool price after the last trade before the window; with no such
+        // trade the pool still sat at the curve's start price (the first buy then shows as a move, not a dot).
+        const prior = rows.length ? db.query(`SELECT COALESCE(spot_after, price) AS p FROM trades WHERE mint = ? AND time < ? ORDER BY slot DESC, idx DESC LIMIT 1`)
+          .get(t.mint, from) as { p: number } | null : null;
+        const before = prior?.p ?? (t.start_price != null && t.start_price > 0 ? t.start_price : null);
         for (const r of rows) {
           const b = Math.floor(r.time / sec) * sec;
           const stored = at(r.time);
@@ -426,8 +432,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
           let c = out[out.length - 1];
           if (!c || c.t !== b) {
             const prev = out[out.length - 1];
-            const open = prev ? prev.close : r.p;
-            const openUsd = prev ? prev.close_usd : pu;
+            const open = prev ? prev.close : before ?? r.p;
+            const openUsd = prev ? prev.close_usd : before != null ? inUsd(before, rate) : pu;
             c = { t: b, open, high: Math.max(open, r.p), low: Math.min(open, r.p), close: r.p, volume: 0, volume_base: 0, trades: 0,
               open_usd: openUsd, high_usd: mx(openUsd, pu), low_usd: mn(openUsd, pu), close_usd: pu, volume_usd: 0 };
             out.push(c);
@@ -444,7 +450,9 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
           c.volume_usd = c.volume_usd == null || rate == null ? null : c.volume_usd + r.quote * rate;
         }
         return json({ mint: t.mint, tf, from, to, price: `pool price after each trade, ${QUOTE} per token; the _usd fields are the same in US dollars`, usd: reading,
-          usd_basis: cur == null && atCurrent ? null : atCurrent === 0 ? "at_time" : atTime === 0 ? "current" : "mixed", start_price_usd: inUsd(t.start_price, cur), candles: out });
+          usd_basis: cur == null && atCurrent ? null : atCurrent === 0 ? "at_time" : atTime === 0 ? "current" : "mixed",
+          // the curve's start price in dollars as the candles are: at the reading stored for the launch, else at the current one
+          start_price_usd: inUsd(t.start_price, usdSampleAt(db, t.created_at)?.usd ?? cur), candles: out });
       }
       case "trades": {
         const limit = Math.max(1, int("limit", 50, 500));

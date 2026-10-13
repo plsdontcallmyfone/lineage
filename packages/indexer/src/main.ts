@@ -72,6 +72,9 @@ function status() {
     trades: count("SELECT COUNT(*) AS n FROM trades"),
     fee_cranks: count("SELECT COUNT(*) AS n FROM fee_cranks"),
     transactions: count("SELECT COUNT(*) AS n FROM seen"),
+    // sources whose last pass failed and that have not completed one for 15 minutes: their coin's trades are behind the chain
+    stuck_sources: sources.filter((s) => s.last_error && !/^skipped /.test(s.last_error) && (s.last_ok_at == null || now - s.last_ok_at > 900)).length,
+    tx_version_max: ix.txVersion,
     rpc_stats: { calls: stats.calls, errors: stats.errors, http_429: stats.http429, last_error: stats.lastError, last_error_at: stats.lastErrorAt },
     logs_subscribe: ws,
     sources,

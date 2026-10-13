@@ -36,6 +36,15 @@ import { isPurgedLaunch, purgedSets } from "./purged.ts";
 // signature. The cursor only moves past a signature once it is stored, so a crash or restart resumes
 // where it stopped and re-reading is harmless.
 //
+// Transaction versions: getTransaction refuses a transaction whose version is above
+// `maxSupportedTransactionVersion` with an RPC error. Mainnet has carried version 1 transactions since
+// 2026-10 (most pump.fun trades by bots are sent as version 1), and the indexer used to ask for 0: the
+// first such trade stopped its source for good, so every later trade, candle and volume figure was
+// missing (found 2026-10-13: 2 of 416 signatures of one curve indexed). The indexer now asks for
+// TX_VERSION_MAX and, when the RPC names a higher version in its refusal, raises to that and asks again
+// (the JSON shape the decoder reads is the same for legacy, 0 and 1). A failed transaction is recorded
+// from its signature row alone, without fetching it: it moved nothing.
+//
 // Purged launches (purged.ts): a launch Core purged still exists on chain. Discovery skips it by the
 // digest of its mint or agent, and every write that follows a chain read checks that the token row is
 // still there, so a pass that was reading the chain for the coin when it was purged writes nothing.
@@ -52,6 +61,15 @@ export interface IndexerOpts {
   discoverEveryS?: number;
   log?: (msg: string) => void;
   now?: () => number;
+}
+
+/** The highest transaction version asked for at start (legacy, 0 and 1 share the JSON shape decode.ts reads). */
+export const TX_VERSION_MAX = 1;
+/** "Transaction version (N) is not supported by the requesting client": the N, else null. */
+export function refusedTxVersion(message: string): number | null {
+  const m = /Transaction version \((\d+)\) is not supported/.exec(message);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= 255 ? n : null;
 }
 
 interface TokenRow {
@@ -86,6 +104,8 @@ export class Indexer {
   private schedule = new Map<string, { next: number; idle: number }>();
   /** The RPC refused getProgramAccounts on the token program once: count holders from indexed transactions from then on. */
   private gpaRefused = false;
+  /** maxSupportedTransactionVersion for getTransaction; raised when the RPC refuses a transaction for its version. */
+  txVersion = TX_VERSION_MAX;
 
   constructor(
     readonly db: Database,
@@ -95,6 +115,32 @@ export class Indexer {
     this.launchProgram = opts.launchProgram ?? LAUNCH_PROGRAM_ID;
     this.log = opts.log ?? (() => {});
     this.now = opts.now ?? (() => Math.floor(Date.now() / 1000));
+    // the quote coin as the last run read it: known from the first moment after a restart (its USD price needs it), read again by discover()
+    try {
+      const meta = new Map((db.query("SELECT k, v FROM meta WHERE k IN ('line_mint', 'line_decimals')").all() as { k: string; v: string }[]).map((r) => [r.k, r.v]));
+      const mint = meta.get("line_mint"), dec = Number(meta.get("line_decimals"));
+      if (mint && Number.isInteger(dec)) { this.lineMint = mint as Address; this.lineDecimals = dec; }
+    } catch {
+      /* a database without the meta table yet */
+    }
+  }
+
+  /**
+   * One transaction by signature, whatever its version: asks with `txVersion` and, when the RPC refuses
+   * the transaction for a higher version, raises `txVersion` to the one it names and asks again.
+   */
+  async getTx(signature: string): Promise<RawTx | null> {
+    for (;;) {
+      try {
+        return await this.rpc.call<RawTx | null>("getTransaction", [signature,
+          { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: this.txVersion }]);
+      } catch (e) {
+        const v = refusedTxVersion(String((e as Error).message));
+        if (v === null || v <= this.txVersion) throw e;
+        this.log(`getTransaction: the RPC serves transaction version ${v}; asking for it from now on`);
+        this.txVersion = v;
+      }
+    }
   }
 
   /** Finds every agent token and registers its sources. */
@@ -244,10 +290,10 @@ export class Indexer {
     // Meteora-era rows are read-only history: nothing new is ingested for them
     if (!tok || !this.lineMint || tok.venue !== "pump") return 0;
     this.db.query("UPDATE sources SET last_poll_at = ? WHERE address = ?").run(this.now(), address);
-    const sigs: { signature: string; slot: number; err: unknown }[] = [];
+    const sigs: { signature: string; slot: number; err: unknown; blockTime?: number | null }[] = [];
     let before: string | undefined;
     for (;;) {
-      const page = await this.rpc.call<{ signature: string; slot: number; err: unknown }[]>("getSignaturesForAddress", [
+      const page = await this.rpc.call<{ signature: string; slot: number; err: unknown; blockTime?: number | null }[]>("getSignaturesForAddress", [
         address, { limit: 1000, commitment: "confirmed", ...(before ? { before } : {}), ...(src.newest_sig ? { until: src.newest_sig } : {}) },
       ]);
       sigs.push(...page);
@@ -260,9 +306,12 @@ export class Indexer {
     let n = 0;
     let skipped = false;
     for (const s of sigs) {
-      if (!isSeen.get(s.signature, tok.mint)) {
-        const tx = await this.rpc.call<RawTx | null>("getTransaction", [s.signature,
-          { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
+      if (s.err != null) {
+        // a failed transaction moved nothing: it is recorded from its signature row, never fetched
+        if (!this.db.query("SELECT 1 FROM tokens WHERE mint = ?").get(tok.mint)) return n;
+        this.db.query("INSERT OR IGNORE INTO seen (sig, mint, slot, time, failed) VALUES (?,?,?,?,1)").run(s.signature, tok.mint, s.slot, s.blockTime ?? null);
+      } else if (!isSeen.get(s.signature, tok.mint)) {
+        const tx = await this.getTx(s.signature);
         if (!tx) break; // not served yet: resume from here on the next poll
         // one transaction the decoder cannot read (malformed balances or keys from the RPC) is logged
         // and skipped, never retried forever: it used to throw here and wedge the source (audit A2 OFF-I3)

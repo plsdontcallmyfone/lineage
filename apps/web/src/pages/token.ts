@@ -6,6 +6,7 @@ import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { mountCommits } from "./commits.ts";
 import { mountTokenChart } from "./token-chart.ts";
+import { TF_SECONDS } from "../candle-fill.ts";
 import { mountAbout } from "./token-about.ts";
 import { feeRouteChip, poolChip } from "./fee-route-line.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
@@ -92,7 +93,7 @@ function statsRow(t: TokenDetail, h: Holders): Raw {
     ${stat("Market cap", usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`, "tk-big")}
     ${stat("Price", usdPriceFig(t.price_usd, t.price, "price_usd"), `US dollars per ${sym(t)}`)}
     ${stat("24h volume", usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
-    ${stat("24h change", usdChangeFig(t), "vs the price 24h ago")}
+    ${stat("24h change", usdChangeFig(t), t.created_at > Date.now() / 1000 - 86400 ? "since launch" : "vs the price 24h ago")}
     ${stat("Holders", fig(fmtInt(h.holders), h.holders, undefined, "holders"), h.as_of ? html`as of ${when(h.as_of * 1000)}` : "not counted yet")}
   </div>`;
 }
@@ -211,7 +212,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       const seatBy = sw ? (gen: string) => sw.record.find((r) => r.gen_id === gen) ?? null : null;
       const chart = mountTokenChart(chartEl);
       const label = (x: Data) => `${sym(x.t)} · ${x.tf}`;
-      chart.set(d.usd?.candles ?? [], d.usd?.start ?? null, label(d), d.usd === null && d.candles.length > 0);
+      chart.set(d.usd?.candles ?? [], d.usd?.start ?? null, label(d), d.usd === null && d.candles.length > 0, TF_SECONDS[d.tf]);
       // the agent chat feed in the left column (plan F), refreshed while the page is open
       const feedEl = root.querySelector<HTMLElement>("#mk-feed");
       // the agent's commits to its own GitHub fork, live (identity service + GitHub)
@@ -245,7 +246,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         set("mk-building", buildingBody(x.t));
         about.refresh(x.t);
         for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === x.tf));
-        chart.set(x.usd?.candles ?? [], x.usd?.start ?? null, label(x), x.usd === null && x.candles.length > 0);
+        chart.set(x.usd?.candles ?? [], x.usd?.start ?? null, label(x), x.usd === null && x.candles.length > 0, TF_SECONDS[x.tf]);
         const note = root.querySelector("#mk-usdnote");
         if (note) note.textContent = usdBasisNote(x.usd?.basis ?? null, x.candles.length > 0);
         tradeBox?.update?.(x.t);
