@@ -199,7 +199,7 @@ async function loadMarket(d: O): Promise<Market | null> {
   const candles = new Map<string, any[]>();
   const bases = new Set<UsdBasis>();
   await Promise.all(pick.map(async (t) => {
-    const a = await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}`).catch(() => null);
+    const a = await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}&fill=0`).catch(() => null);
     candles.set(t.mint, (a?.candles ?? []) as any[]);
     if (a?.candles?.length) bases.add(a.usd_basis ?? null);
   }));

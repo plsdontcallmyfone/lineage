@@ -81,7 +81,7 @@ export interface CardOpts {
 
 /** The four market figures (price, market cap, 24h volume, 24h change), the app's markup. */
 export function tokenParams(t: { price: number | null; market_cap: number | null; volume_24h: number | null; change_24h: number | null; price_usd?: number | null; market_cap_usd?: number | null;
-  volume_24h_usd?: number | null; change_24h_usd?: number | null }, o: { full?: boolean } = {}): string {
+  volume_24h_usd?: number | null; change_24h_usd?: number | null; change_window?: "24h" | "since_launch" }, o: { full?: boolean } = {}): string {
   return String(paramCells(t, o));
 }
 

@@ -1,6 +1,6 @@
 import { effectText, type Building } from "../../../apps/web/src/building.ts";
 import { fmtChange, fmtInt, shortAddr } from "../../../apps/web/src/market.ts";
-import { NO_DATA, usdText } from "../../../apps/web/src/usd.ts";
+import { NO_DATA, USD_NA, usdText } from "../../../apps/web/src/usd.ts";
 import type { Stats, TokenSummary } from "./client.ts";
 import { esc, extLink, howSteps, repoLabel } from "./render.ts";
 
@@ -217,7 +217,7 @@ function tokenRows(ts: TokenSummary[], links: TermLinks): string[] {
       `<span class="c">${a(links.token(t.mint), t.symbol ?? shortAddr(t.mint))}</span>`,
       `<span class="d">${esc(t.name ?? "")}</span>`,
       `<span class="n">${esc(usdText(t.market_cap_usd, { exists: t.market_cap != null, compact: true }))}</span>`,
-      `<span class="n">${esc(fmtChange(t.change_24h_usd ?? t.change_24h))}</span>`,
+      `<span class="n">${esc(t.change_24h_usd == null && t.change_24h != null ? USD_NA : fmtChange(t.change_24h_usd))}</span>`,
       `<span class="x">${cmdBtn(`watch ${t.symbol ?? ""}`, "watch")}</span>`,
     ]),
   );
@@ -309,7 +309,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
           row([`<span class="d">Price</span>`, `<span class="n">${esc(usdText(t.price_usd, { exists: t.price != null, price: true }))}</span>`]),
           row([`<span class="d">Market cap</span>`, `<span class="n">${esc(usdText(t.market_cap_usd, { exists: t.market_cap != null }))}</span>`]),
           row([`<span class="d">24h volume</span>`, `<span class="n">${esc(usdText(t.volume_24h_usd, { exists: t.volume_24h != null }))}</span>`]),
-          row([`<span class="d">24h change</span>`, `<span class="n">${esc(fmtChange(t.change_24h_usd ?? t.change_24h))}</span>`]),
+          row([`<span class="d">24h change</span>`, `<span class="n">${esc(t.change_24h_usd == null && t.change_24h != null ? USD_NA : fmtChange(t.change_24h_usd))}</span>`]),
           row([`<span class="d">Building</span>`, `<span class="n">${esc(buildingText(t, s))}</span>`]),
           `${cmdBtn(`watch ${label}`, "watch")} ${a(links.token(t.mint), "token page")}`,
         ],

@@ -5,7 +5,7 @@ import { acceptanceStat } from "./profile-lines.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig, type Candle, type CandlesAnswer, type TokenDetail } from "../market.ts";
+import { changeLabel, defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig, type Candle, type CandlesAnswer, type TokenDetail } from "../market.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { OLD_WALLET_KEY, WALLET_KEY } from "./feed.ts";
@@ -45,7 +45,7 @@ function tokenStats(t: TokenDetail): Raw {
     ${stat("Price", usdPriceFig(t.price_usd, t.price, "price_usd"), `US dollars per ${t.symbol ?? "token"}`)}
     ${stat("Market cap", usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`)}
     ${stat("24h volume", usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
-    ${stat("24h change", usdChangeFig(t), "vs the price 24h ago")}
+    ${stat(t.change_window === "since_launch" ? "Change" : "24h change", usdChangeFig(t), changeLabel(t))}
   </div>`;
 }
 

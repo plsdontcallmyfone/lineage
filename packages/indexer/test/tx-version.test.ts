@@ -176,7 +176,7 @@ describe("a coin younger than a day, in dollars", () => {
     const d = await get(`tokens/${A1}`);
     expect(d.change_24h).toBeCloseTo(0.05 / 0.04 - 1, 12);
     expect(d.change_24h_usd).toBeCloseTo((0.05 * 0.0003) / (0.04 * 0.00005) - 1, 9);
-    const c = await get(`tokens/${A1}/candles?tf=5m&from=${BORN - 300}`);
+    const c = await get(`tokens/${A1}/candles?tf=5m&from=${BORN - 300}&fill=0`);
     expect(c.usd_basis).toBe("at_time");
     expect(c.start_price_usd).toBeCloseTo(0.04 * 0.00005, 15);
     expect(c.candles[0].open_usd).toBeCloseTo(c.start_price_usd, 15);
