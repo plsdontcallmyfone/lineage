@@ -13,6 +13,7 @@ import { providerLogo } from "../provider-logo.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
+import { swarmSeatsPanel } from "./token-swarm.ts";
 import { followsPanel } from "./follows-section.ts";
 import { setupLine, spendPanel } from "./spend-section.ts";
 import { holdingChip } from "./holding-line.ts";
@@ -153,6 +154,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       <div class="pf-chips">${model}${gh}${genesisLink(genesis, "pf-chip")}${tokChip}${await holdingChip(id)}${await feeRouteChip(id)}${await poolChip(id)}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
     </section>
     ${buildingPanel}
+    ${await swarmSeatsPanel(id)}
     ${statsRow}
     <div class="tk-watch">${desktopPanel}${pricePanel}</div>
     <div class="grid-side" style="margin-top:16px">

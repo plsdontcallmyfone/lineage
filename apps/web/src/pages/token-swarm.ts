@@ -1,4 +1,4 @@
-import { get } from "../api.ts";
+import { get, loadLineageNames } from "../api.ts";
 import { lineageName } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
@@ -34,9 +34,12 @@ const STYLE = `
 .sw-st.working{color:var(--good)}
 .sw-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px 6px;border-top:1px solid var(--border);font:500 12px/1.4 var(--sans);letter-spacing:-.01em;color:var(--tt)}
 .sw-seats>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;cursor:pointer}
+.sw-profile{margin-top:16px}
+.sw-profile .sw-seats>li{cursor:default}
 .sw-seats>li[aria-current="true"]{background:var(--bg3)}
 .sw-seats .tk-row-main{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
-.sw-seats .sw-model{display:inline-flex;align-items:center;gap:5px;color:var(--ts);font-size:12.5px}
+.sw-model{display:inline-flex;align-items:center;gap:5px;color:var(--ts);font-size:12.5px}
+.sw-record .tk-row-sub{white-space:normal}
 .sw-seats .tk-row-sub{white-space:normal}
 .sw-seats .sw-res{grid-column:2;grid-row:1 / span 2;text-align:right;font:500 12px/1.4 var(--sans);color:var(--tt);font-variant-numeric:tabular-nums;white-space:nowrap}
 .sw-res.ok{color:var(--good)}
@@ -96,7 +99,7 @@ const modelChip = (m: { provider: string; id: string }): Raw => html`<span class
 function seatRows(sw: SwarmView, shown: number): Raw {
   return html`${sw.seats.map((s) => {
     const res = seatResult(s);
-    return html`<li data-seat="${s.seat}" aria-current="${String(s.seat === shown)}" title="Show ${s.name}'s screen">
+    return html`<li data-seat="${s.seat}" aria-current="${String(s.seat === shown)}" >
       <div class="tk-row-main"><span>${s.name}</span><span class="b outline">${ROLE[s.role]}</span>${modelChip(s.model)}</div>
       <div class="tk-row-sub">${seatNow(s)}</div>
       <div class="sw-res ${res.cls}">${res.text}<br><span class="faint">${s.totals.accepted} accepted of ${s.totals.final} final</span></div></li>`;
@@ -136,6 +139,15 @@ export function swarmBuilding(sw: SwarmView): Raw {
   }
   if (!by.size) return html`<ul class="sw-units" id="sw-units"><li><span>No unit in work right now.</span></li></ul>`;
   return html`<ul class="sw-units" id="sw-units">${[...by].map(([unit, seats]) => html`<li><a class="link" href="/units/${unit}">${lineageName(unit)}</a> <span>${seats.map((s) => `${s.name}${s.runtime?.target ? ` on ${s.runtime.target}` : ""}`).join(", ")}</span></li>`)}</ul>`;
+}
+
+/** The agent profile's seat list: one profile for the swarm, its agents under it (empty for a solo agent or while swarms are off). */
+export async function swarmSeatsPanel(agent: string): Promise<Raw> {
+  const sw = await swarmOf(agent);
+  if (!sw) return html``;
+  injectStyle();
+  return html`<section class="panel sw-profile"><div class="panel-h"><h2>Agents of this swarm <span class="count num">${sw.size}</span></h2><div class="aside"><span class="faint">one coin, one vault, one record</span></div></div>
+    <ul class="tk-rows sw-seats" style="cursor:default">${seatRows(sw, 0)}</ul></section>`;
 }
 
 export interface SwarmPaneHandle {
@@ -225,6 +237,8 @@ export function mountSwarmPane(root: HTMLElement, first: SwarmView, o: { agent: 
     if (visible) mountLive();
     paint();
   };
+  // unit names for the rows (Core's list of units, read once)
+  void loadLineageNames().then(() => !dead && paint()).catch(() => undefined);
   tiles.addEventListener("click", pick);
   root.querySelector("#sw-seats")?.addEventListener("click", pick);
   paint();

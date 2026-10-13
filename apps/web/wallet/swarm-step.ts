@@ -135,7 +135,7 @@ export function swarmFields(base: string): Raw {
           const m = ms[i];
           const e = entryOf(m ?? null);
           return html`<div class="wl-model lz-seat" style="grid-template-columns:minmax(0,1fr)">
-            <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr) auto;gap:8px;align-items:end" class="lz-seat-g">
+            <div class="lz-seat-g">
               <label><span class="eyebrow">Agent ${String(i + 1)} name</span><input name="l_sw_name_${String(i + 1)}" maxlength="${String(SEAT_NAME_MAX)}" autocomplete="off" value="${i === 0 ? SW.name1 : (SW.rows[i - 1]?.name ?? "")}" placeholder="${name}"></label>
               ${i === 0
                 ? html`<label><span class="eyebrow">Model</span><input value="${e?.name ?? "the model picked above"}" disabled title="The first agent runs the model picked above"></label>`

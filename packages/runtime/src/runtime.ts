@@ -195,6 +195,8 @@ export class Runtime {
   private rosterAt = new Map<string, number>();
   private ledgers = new Map<string, SwarmLedger>();
   private planning = new Set<string>();
+  /** what the lead's last plan was made from (the ledger's summary), by agent */
+  private planned = new Map<string, string>();
   /** slot keys whose cached worker was made as a swarm's seat */
   private seated = new Set<string>();
   private poster: AgentPoster | null = null;
@@ -846,7 +848,10 @@ export class Runtime {
     const rate = this.routeOf(k)?.rate;
     if (!rate || !(rate.output > 0)) return;
     const cap = cfg.lead_plan_max_usd ?? this.cfg.efficiency?.journal_reserve_usd ?? JOURNAL_RESERVE_USD;
-    const user = leadPlanUser(roster, ledger.summary());
+    const summary = ledger.summary();
+    // nothing changed since the last plan (the swarm is waiting for verdicts, say): the plan stands, no call
+    if (this.planned.get(agent) === summary) return;
+    const user = leadPlanUser(roster, summary);
     const fee = rate.fee_factor ?? 1;
     const inputUsd = (((LEAD_PLAN_SYSTEM.length + user.length) / 2) * Math.max(rate.input, rate.cache_write) * fee) / 1e6;
     const maxTokens = Math.min(1500, Math.floor(((cap - inputUsd) * 1e6) / (rate.output * fee)));
@@ -865,6 +870,7 @@ export class Runtime {
       const text = res.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
       const plan = parseLeadPlan(text, roster, ledger.known, this.now());
       ledger.setPlan(plan);
+      this.planned.set(agent, summary);
       this.log(`${agent.slice(0, 6)} s${lead.seat} lead plan: ${plan ? Object.entries(plan.seats).map(([seat, a]) => `seat ${seat} -> ${a.unit.slice(0, 10)} ${a.kind} ${a.target}`).join(", ") : "no usable assignment; seats placed from counts"}; ${usd.toFixed(4)} USD metered`);
     } finally {
       this.holds.delete(agent);
