@@ -1,0 +1,42 @@
+{
+  "carry_dropped": {
+    "kind": "perf",
+    "target": "wide_ir",
+    "expect": "tests_fail",
+    "note": "Presented as removing a carry that cannot happen from the 128-bit widening multiply in wide_math (the sum of the two cross products 'fits'); it does not: with both operands near 2^128 the sum of the cross products passes 2^128, and the high half of every such product is then short by 2^64. Every wide multiply-divide with large operands answers wrong.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "ceil_add_first": {
+    "kind": "perf",
+    "target": "engine_ir",
+    "expect": "tests_fail",
+    "note": "Presented as one division instead of a division and a remainder in the native path of the engine's ceiling multiply-divide: ceil(p / d) as (p + d - 1) / d. The sum can pass 128 bits where the product alone did not, and with the crate's overflow checks that is a panic in a path that used to answer. It needs a product and a denominator whose sum passes 2^128; upstream's differential property test of this fast path draws such a pair.",
+    "lines": 5,
+    "guard": "ok"
+  },
+  "withdraw_open_position": {
+    "kind": "perf",
+    "target": "engine_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as dropping a check the later validation repeats: withdraw no longer refuses an account that still holds open positions. The later code only compares the amount with the capital, so an account can take out the capital that margins its positions. No upstream test withdraws from an account with an open position; the equivalence stream does, hundreds of times.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "fee_wide_path_dropped": {
+    "kind": "perf",
+    "target": "engine_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as deleting dead code: the 256-bit fallback of the fee computation (checked_fee_bps) answers ArithmeticOverflow instead, 'because a notional is bounded by MAX_ACCOUNT_NOTIONAL and the product always fits'. The engine's own callers stay inside that bound and every upstream test passes, but the helper no longer computes what it computed for a notional past 2^128 / fee_bps: the answers of a checked arithmetic helper changed, which is what the equivalence harness exists to refuse.",
+    "lines": 8,
+    "guard": "ok"
+  },
+  "leading_zero_gate": {
+    "kind": "perf",
+    "target": "wide_ir",
+    "expect": "no_improvement",
+    "note": "Presented as skipping the overflow-checked multiply in the engine's floor multiply-divide with a cheap test of the operands' leading zeros. Every answer is the same. The test is only sufficient, not necessary: a product that fits 128 bits while the leading zeros add up to 127 now takes the 256-bit path with its bit-at-a-time division. Measured: wide_ir 0.07% to 0.22% lower, engine_ir 0.03% to 0.04% higher, nowhere near the required 1%.",
+    "lines": 4,
+    "guard": "ok"
+  }
+}
