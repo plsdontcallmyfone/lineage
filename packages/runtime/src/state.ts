@@ -122,6 +122,8 @@ export interface RuntimeState {
   agents: Record<string, AgentState>;
   /** unit setup per repository that has no unit yet (unit-setup.ts RepoSetup) */
   unit_setup?: Record<string, unknown>;
+  /** additional units per repository whose units ran dry (more-units.ts RepoMore) */
+  more_units?: Record<string, unknown>;
   /** swarm ledgers by agent (swarm.ts LedgerState): the open candidates of each swarm per unit, with their patches */
   swarms?: Record<string, unknown>;
   open: { period: number; opened_at: number; usage: Record<string, AgentUsage> };

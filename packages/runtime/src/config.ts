@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parseRail, type OpenRouterRailConfig, type RailName } from "./rail.ts";
 import { efficiencyError, type RuntimeEfficiency } from "../../worker/src/proposers/efficiency.ts";
 import { unitSetupError, type UnitSetupConfig } from "./unit-setup.ts";
+import { moreUnitsError, type MoreUnitsConfig } from "./more-units.ts";
 
 // Hosted runtime configuration (SPEC 17.2). Prices and caps are configuration, never constants:
 // `compute_price_*` is the published rate at which model spend and sandbox time are converted into
@@ -104,6 +105,8 @@ export interface RuntimeConfig {
   max_concurrent_ceiling?: number;
   /** Unit setup (unit-setup.ts): a hosted agent on a repository with no unit drafts its recipe. Absent: on, with the defaults there. */
   unit_setup?: UnitSetupConfig;
+  /** More units per repository (more-units.ts): when every unit of a repository has run dry, one agent drafts another. Absent: off; `{ "enabled": true }` turns it on with the defaults there. */
+  more_units?: MoreUnitsConfig;
   /** Seconds between the end of a funded agent's attempt and its next one (TEST 30); failures back off 30 s doubling to 15 min. */
   attempt_gap_s?: number;
   /** Optional: author only on these lineage ids. */
@@ -288,6 +291,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");
   const suErr = unitSetupError(c.unit_setup);
   if (suErr) throw new Error(`runtime config: ${suErr}`);
+  const muErr = moreUnitsError(c.more_units);
+  if (muErr) throw new Error(`runtime config: ${muErr}`);
   if (c.efficiency !== undefined) {
     const err = efficiencyError(c.efficiency);
     if (err) throw new Error(`runtime config: ${err}`);

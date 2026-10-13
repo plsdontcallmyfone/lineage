@@ -63,6 +63,7 @@ export function validateRecipe(r: Recipe): void {
     req(m.direction === "lower" || m.direction === "higher", `metric ${m.name}: direction`);
     req(typeof m.min_effect === "number" && m.min_effect > 0 && m.min_effect < 1, `metric ${m.name}: min_effect in (0,1)`);
     if (!m.deterministic) req((m.rounds ?? 0) >= 5, `metric ${m.name}: noisy metrics need rounds >= 5`);
+    req(m.fixed_command === undefined || (typeof m.fixed_command === "string" && m.fixed_command.trim().length > 0 && m.deterministic), `metric ${m.name}: fixed_command is a command of a deterministic metric`);
   }
   const p = r.patch;
   req(p && Array.isArray(p.allowed_paths) && p.allowed_paths.length > 0, "patch.allowed_paths required");

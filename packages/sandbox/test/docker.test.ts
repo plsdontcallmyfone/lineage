@@ -42,6 +42,26 @@ d("sandbox (docker)", () => {
     }
   });
 
+  test("calibration records fixed_value for a metric that declares fixed_command, and nothing for one that does not", async () => {
+    // the same valgrind run on a program that never calls the library: process start only
+    const VG = "valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null";
+    const metrics = loaded.recipe.metrics.filter((m) => m.deterministic).map((m) => (m.name === "encode_ir" ? { ...m, fixed_command: `${VG} /bin/true` } : m));
+    const withFixed = { ...loaded, recipe: { ...loaded.recipe, metrics } };
+    const deps = await prepareDeps(loaded);
+    const c = await calibrate({ loaded: withFixed, deps, seed: "aa", runs: 1 });
+    const enc = c.calibration.metrics.encode_ir!;
+    expect(enc.enabled).toBe(true);
+    expect(enc.fixed_value).toBeGreaterThan(0);
+    expect(enc.fixed_value!).toBeLessThan(enc.base_value!);
+    expect(c.calibration.metrics.decode_ir!.fixed_value).toBeUndefined();
+    // a fixed_command that fails records nothing and leaves the metric enabled
+    const broken = { ...loaded, recipe: { ...loaded.recipe, metrics: metrics.map((m) => (m.fixed_command ? { ...m, fixed_command: "exit 3" } : m)) } };
+    const c2 = await calibrate({ loaded: broken, deps, seed: "aa", runs: 1 });
+    expect(c2.calibration.metrics.encode_ir).toMatchObject({ enabled: true, base_value: enc.base_value });
+    expect(c2.calibration.metrics.encode_ir!.fixed_value).toBeUndefined();
+    expect(c2.transcript.notes.some((n) => n.includes("fixed_command gave no value"))).toBe(true);
+  }, 600_000);
+
   test("calibration and a full replay are deterministic across runs", async () => {
     const deps = await prepareDeps(loaded);
     const c = await calibrate({ loaded, deps, seed: "aa", runs: 2 });

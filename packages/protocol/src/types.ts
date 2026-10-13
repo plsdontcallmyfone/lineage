@@ -17,6 +17,13 @@ export interface MetricSpec {
   rounds?: number;
   /** Relative tolerance for deterministic agreement across replays. Defaults to config det_tolerance. */
   tolerance?: number;
+  /**
+   * The same run stopped before the first call into the library (for a benchmark harness, the metric
+   * command with `--inputs-only`): process start, imports and input generation. Calibration measures
+   * it once with the metric's parser and records `fixed_value`, so the share of the metric that is not
+   * the library's own work is a recorded fact (docs/plans/AGENT-EFFICIENCY.md 6.1, 8.1). Never a target.
+   */
+  fixed_command?: string;
 }
 
 export interface PatchRules {
@@ -86,7 +93,8 @@ export interface Calibration {
   stable: string[];
   known_failures: string[];
   quarantined: string[];
-  metrics: Record<string, { enabled: boolean; cv: number; base_value?: number; reason?: string }>;
+  /** fixed_value: what the metric's fixed_command measured at calibration (absent when the recipe declares none or it failed) */
+  metrics: Record<string, { enabled: boolean; cv: number; base_value?: number; reason?: string; fixed_value?: number }>;
   median_eval_seconds: number;
   /** LINEAGE_SEED the calibration measured with (SPEC 6.1 qualification replays reuse it). */
   seed?: Hex;

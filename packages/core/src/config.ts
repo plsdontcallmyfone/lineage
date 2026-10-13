@@ -1,3 +1,4 @@
+import { parseMoreUnitsSettings, type MoreUnitsSettings } from "./more-units.ts";
 import { parseDrySettings, type DrySettings } from "./unit-dry.ts";
 import { readFileSync } from "node:fs";
 import { parsePrepayConfig, type PrepayConfig } from "@units/chain";
@@ -110,6 +111,8 @@ export interface NetworkConfig {
   swarm: SwarmSettings;
   /** When a unit has run dry (unit-dry.ts, docs/plans/AGENT-EFFICIENCY.md 8.1). Absent: the defaults there. */
   dry: DrySettings;
+  /** More units per repository from proposals (more-units.ts, plan 8.2). Absent: the defaults there. */
+  more_units: MoreUnitsSettings;
   /** Guard limits (SPEC 10.1 rule 6): default max regression of a non-target metric, a fraction. Optional, default 0.01; seeds guard config version 1. */
   guard_max_regression: number;
   /** When guard config version 1 takes effect (ms); Core seeds it at max(this, its clock) on first start. Optional; absent or null = guards off until an admin sets a version. */
@@ -305,6 +308,7 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   }
   try {
     out.dry = parseDrySettings(raw.dry);
+    out.more_units = parseMoreUnitsSettings(raw.more_units);
   } catch (e) {
     throw new Error(`network config: ${(e as Error).message}`);
   }

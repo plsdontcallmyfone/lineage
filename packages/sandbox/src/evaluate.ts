@@ -599,6 +599,18 @@ export async function calibrate(input: { loaded: LoadedRecipe; deps: DepsLayer; 
         ? { enabled: true, cv: c, base_value: median(vals) }
         : { enabled: false, cv: c, base_value: median(vals), reason: `not deterministic: cv ${c.toExponential(2)} above tolerance` };
     }
+    // the part of a metric that is not the library's work (MetricSpec.fixed_command): one run of the same
+    // harness stopped before the first library call, recorded beside the base value. A failed run records
+    // nothing and disables nothing: the metric itself is unaffected.
+    const fixedOf = det.filter((m) => m.fixed_command && metrics[m.name]?.enabled);
+    if (fixedOf.length) {
+      const fx = await measure(ctx, { base, cand: null }, fixedOf.map((m) => ({ ...m, name: `${m.name}.fixed`, command: m.fixed_command! })));
+      for (const m of fixedOf) {
+        const v = fx[`${m.name}.fixed`]?.base ?? [];
+        if (v.length) metrics[m.name]!.fixed_value = median(v);
+        else ctx.transcript.notes.push(`metric ${m.name}: fixed_command gave no value`);
+      }
+    }
     const aa = await measure(ctx, { base, cand: null }, noisy);
     for (const m of noisy) {
       const s = aa[m.name]?.base ?? [];

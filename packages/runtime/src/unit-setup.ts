@@ -7,7 +7,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import { SpendLedger, type SpendEntry } from "../../worker/src/discovery.ts";
 import { claudeRoute, routedSdk } from "../../worker/src/proposers/claude-route.ts";
 import type { Meter } from "../../worker/src/proposers/types.ts";
-import { DRAFT_MODEL, RecipeDrafter, submitProposal } from "../../worker/src/recipe-proposer.ts";
+import { DRAFT_MODEL, RecipeDrafter, describeUnits, ensureRecipe, submitProposal, type MoreContext } from "../../worker/src/recipe-proposer.ts";
 import { RecipeBook } from "../../worker/src/recipes.ts";
 
 // Unit setup (SPEC 6.2, 3.2): a hosted agent launched on a repository that has no unit yet gets one
@@ -127,6 +127,8 @@ export interface DraftJob {
   key: AgentKey;
   capUsd: number;
   meter: Pick<Meter, "model" | "sandbox">;
+  /** set for an ADDITIONAL unit (more-units.ts): the repository's active units; commit, class and image are theirs */
+  more?: { units: string[] };
   log: (m: string) => void;
 }
 
@@ -197,7 +199,26 @@ export function unitSetupWork(o: { core: string; state_dir: string; model?: stri
       }
       const props = await anon.get("/v1/recipe-proposals");
       if (props.status === 200 && Array.isArray(props.body)) for (const p of props.body as { name: string; status: string }[]) if (p.status !== "rejected") taken.add(p.name);
-      const withFiles = same.filter((s) => book.has(s.recipe_id)).sort((a, b) => a.recipe.name.length - b.recipe.name.length || a.recipe.name.localeCompare(b.recipe.name));
+      let withFiles = same.filter((s) => book.has(s.recipe_id)).sort((a, b) => a.recipe.name.length - b.recipe.name.length || a.recipe.name.localeCompare(b.recipe.name));
+      // an additional unit (more-units.ts): the format reference, the commit, the class and the image are those of
+      // the repository's own units, whatever the class; the drafter is told what they measure and what was achieved
+      let more: MoreContext | undefined;
+      if (job.more) {
+        const existing = await describeUnits(anon, job.more.units);
+        const own: typeof same = [];
+        for (const id of job.more.units) {
+          const v = await anon.get(`/v1/lineages/${id}`);
+          if (v.status === 200 && (await ensureRecipe(book, anon, v.body.recipe_id as string).catch(() => false))) own.push({ recipe_id: v.body.recipe_id as string, recipe: v.body.recipe as Recipe });
+        }
+        if (!existing.length || !own.length) return { kind: "blocked", reason: `the recipes of the units of ${label} could not be read from this network` };
+        const r0 = own[0]!.recipe;
+        if (r0.requires?.arch !== arch) return { kind: "blocked", reason: `the units of ${label} are measured on ${r0.requires?.arch}, and this runtime's sandbox is ${arch}` };
+        job = { ...job, commit: r0.commit, class: r0.class };
+        withFiles = own;
+        const cfg = await anon.get("/v1/config").catch(() => null);
+        const share = Number(cfg?.body?.network?.more_units?.max_fixed_share);
+        more = { units: existing, maxFixedShare: share > 0 && share <= 1 ? share : 0.1 };
+      }
       if (!withFiles.length)
         return { kind: "blocked", reason: `this network has no ${CLASS_LABEL[job.class] ?? job.class} unit yet, so no verifier is qualified to calibrate one for ${label}` };
       const ex = book.get(withFiles[0]!.recipe_id);
@@ -217,6 +238,7 @@ export function unitSetupWork(o: { core: string; state_dir: string; model?: stri
         dir,
         target: { name, repo: job.repo, commit: job.commit, class: job.class, arch, image: withFiles[0]!.recipe.image },
         example: { recipe_yml: readFileSync(join(ex.dir, "recipe.yml"), "utf8"), overlay },
+        more,
         maxTrials: o.max_trials ?? UNIT_SETUP_DEFAULTS.max_trials,
         onSandbox: (s) => job.meter.sandbox(s),
         log: job.log,
@@ -243,7 +265,7 @@ export function plain(s: string, max = 280): string {
   return t.length <= max ? t : `${t.slice(0, max - 3).trimEnd()}...`;
 }
 
-const hhmm = (ms: number) => `${new Date(ms).toISOString().slice(11, 16)} UTC`;
+export const hhmm = (ms: number) => `${new Date(ms).toISOString().slice(11, 16)} UTC`;
 
 export interface SetupHost {
   core: CoreClient;

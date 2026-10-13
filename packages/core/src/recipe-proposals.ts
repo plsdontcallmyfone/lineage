@@ -1,5 +1,6 @@
 import type { Core } from "./core.ts";
 import { bad, conflict, forbidden, notFound } from "./errors.ts";
+import { MORE_UNITS_DEFAULTS, duplicateUnit, headroomError, type MoreUnitsSettings } from "./more-units.ts";
 import { H, assignmentSeed, assignReplayers, canonicalJson, median, recipeId, relDiff, satisfies, type Calibration, type Capabilities, type Eligible, type Recipe } from "./protocol.ts";
 
 // Agent-proposed recipes (SPEC 6.2). Any registered agent may propose a recipe for a new target
@@ -217,6 +218,12 @@ export function mergeCalibrations(recipe: Recipe, recipe_id: string, seed: strin
       if (bases.some((b) => typeof b !== "number")) return { ok: false, reason: `metric ${m.name} has no base value` };
       for (const b of bases) if (relDiff(b!, bases[0]!) > tol) return { ok: false, reason: `metric ${m.name} base values differ beyond ${tol}` };
       metrics[m.name] = { enabled: true, cv: Math.max(...vals.map((v) => v!.cv)), base_value: median(bases as number[]) };
+      // the part that is not the library (MetricSpec.fixed_command): recorded only when every replay measured it and they agree
+      const fixed = vals.map((v) => v!.fixed_value);
+      if (m.fixed_command && fixed.every((f): f is number => typeof f === "number" && f > 0)) {
+        for (const f of fixed) if (relDiff(f, fixed[0]!) > tol) return { ok: false, reason: `metric ${m.name} fixed values differ beyond ${tol}` };
+        metrics[m.name]!.fixed_value = median(fixed);
+      }
     } else {
       const all = vals.every((v) => v!.enabled);
       const bases = vals.map((v) => v!.base_value).filter((b): b is number => typeof b === "number");
@@ -264,6 +271,19 @@ export class RecipeProposals {
     return typeof v === "number" && v > 0 ? v : DEFAULTS[k];
   }
 
+  private more(): MoreUnitsSettings {
+    return (this.c.cfg as unknown as { more_units?: MoreUnitsSettings }).more_units ?? MORE_UNITS_DEFAULTS;
+  }
+
+  /** The recipes of a repository's active units (plan AGENT-EFFICIENCY 8.2: a proposal for it is an additional unit). */
+  private unitsOf(repo: string): Recipe[] {
+    return this.c.db
+      .query<{ json: string }, []>("SELECT r.json FROM recipes r JOIN lineages l ON l.recipe_id = r.recipe_id WHERE l.status = 'active' ORDER BY l.created_at")
+      .all()
+      .map((r) => JSON.parse(r.json) as Recipe)
+      .filter((r) => r.repo === repo);
+  }
+
   /** Images vetted for a class: those of recipes with an active lineage of that class and arch. */
   private vettedImages(cls: string, arch: string): Set<string> {
     const out = new Set<string>();
@@ -304,6 +324,15 @@ export class RecipeProposals {
       if (this.c.db.query("SELECT 1 FROM lineages WHERE recipe_id = ?").get(rid)) throw conflict("lineage_exists", "this recipe already has a lineage");
       if (this.c.db.query("SELECT 1 FROM recipe_proposals WHERE (recipe_id = ? OR name = ?) AND status IN ('waiting','calibrating','accepted')").get(rid, recipe.name))
         throw conflict("proposal_exists", "an open or accepted proposal has this recipe or name");
+      // an additional unit of a repository (plan 8.2): refused before any verifier is drawn when the repository
+      // is at its limit, or when the draft measures nothing its units do not already measure on the same paths
+      const have = this.unitsOf(recipe.repo);
+      if (have.length) {
+        const pending = this.c.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM recipe_proposals WHERE repo = ? AND status IN ('waiting','calibrating')").get(recipe.repo)!.n;
+        if (have.length + pending >= this.more().max_per_repo) throw conflict("too_many_units", `this repository has ${have.length} active unit${have.length === 1 ? "" : "s"}${pending ? ` and ${pending} proposed` : ""}; at most ${this.more().max_per_repo}`);
+        const dup = duplicateUnit(recipe, have);
+        if (dup) throw conflict("duplicate_unit", `the draft duplicates an existing unit: ${dup.why}`);
+      }
       const open = this.c.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM recipe_proposals WHERE proposer = ? AND status IN ('waiting','calibrating')").get(agent)!.n;
       if (open >= this.param("max_open_per_agent")) throw conflict("too_many_proposals", "too many open proposals");
       const id = H("recipe-proposal", agent, rid);
@@ -477,6 +506,17 @@ export class RecipeProposals {
       this.c.db.query("UPDATE recipe_proposals SET status = 'rejected', reason = ?, decided_at = ? WHERE proposal_id = ?").run(m.reason, now, p.proposal_id);
       this.c.emitEvent("recipe_proposal.rejected", { proposal_id: p.proposal_id, reason: m.reason });
       return;
+    }
+    // an additional unit must show headroom (plan 8.2): the part of each instruction-count metric that is not
+    // the library is recorded and small at generation 0. The first unit of a repository is not held to it.
+    if (this.unitsOf(recipe.repo).length) {
+      const why = headroomError(recipe, m.calibration, this.more().max_fixed_share);
+      if (why) {
+        const reason = `an additional unit must show headroom: ${why}`;
+        this.c.db.query("UPDATE recipe_proposals SET status = 'rejected', reason = ?, decided_at = ? WHERE proposal_id = ?").run(reason, now, p.proposal_id);
+        this.c.emitEvent("recipe_proposal.rejected", { proposal_id: p.proposal_id, reason });
+        return;
+      }
     }
     this.c.addRecipe({ recipe, recipe_id: p.recipe_id });
     const snap = this.c.addSnapshot({ repo: recipe.repo, commit: recipe.commit, deps_digest: m.deps_digest });

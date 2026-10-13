@@ -6,6 +6,7 @@ import { H, sha256Hex, type Calibration, type Recipe } from "@units/protocol";
 import { UNITS_HOME, calibrate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree, RecipeError, type LoadedRecipe } from "@units/sandbox";
 import { CoreClient, type SigningKey } from "../../core/src/client.ts";
 import { calibCommitment } from "../../core/src/recipe-proposals.ts";
+import { duplicateUnit, headroomError } from "../../core/src/more-units.ts";
 import { toolLoop, withBuiltTree, type SpendLedger } from "./discovery.ts";
 import { ToolBox } from "./proposers/anthropic.ts";
 import type { ProposeContext } from "./proposers/types.ts";
@@ -40,6 +41,94 @@ export interface TrialReport {
   ok: boolean;
   recipe_id?: string;
   text: string;
+}
+
+/** What the drafter of an ADDITIONAL unit is told about a unit the repository already has (plan AGENT-EFFICIENCY 8.2). */
+export interface ExistingUnit {
+  name: string;
+  recipe: Recipe;
+  height: number;
+  metrics: {
+    name: string;
+    kind: string;
+    command: string;
+    enabled: boolean;
+    base_value: number | null;
+    /** accepted changes that targeted it, and their combined ratio (1 when none) */
+    accepted: number;
+    ratio: number;
+    /** the share of its tip value that is not the library, where the calibration records it */
+    fixed_share: number | null;
+  }[];
+  /** Core's dry facts for the unit, as one sentence, or null */
+  recent: string | null;
+}
+
+export interface MoreContext {
+  units: ExistingUnit[];
+  /** the largest share of an instruction-count metric that may be outside the library at generation 0 */
+  maxFixedShare: number;
+}
+
+/** Reads what Core knows about the given units: recipe, calibrated values, accepted changes per target, the dry facts. */
+export async function describeUnits(client: CoreClient, lineages: string[]): Promise<ExistingUnit[]> {
+  const out: ExistingUnit[] = [];
+  for (const id of lineages) {
+    const v = await client.request("GET", `/v1/lineages/${id}`, undefined, { sign: false });
+    if (v.status !== 200) throw new Error(`unit ${id.slice(0, 10)}: HTTP ${v.status}`);
+    const view = v.body as { recipe: Recipe; height: number; calibration: Calibration; generations: { entry_type: string; reverted_by: string | null; effect: { metric?: string; ratio?: number } | null }[] };
+    const d = await client.request("GET", `/v1/lineages/${id}/dry`, undefined, { sign: false }).catch(() => null);
+    const f = d?.status === 200 ? (d.body as { facts?: { attempts: number; fruitless: number; accepted: number; best_gain_pct: number | null; fixed?: Record<string, { share: number }> } }).facts : undefined;
+    const live = view.generations.filter((g) => g.entry_type === "patch" && !g.reverted_by);
+    out.push({
+      name: view.recipe.name,
+      recipe: view.recipe,
+      height: view.height,
+      metrics: view.recipe.metrics.map((m) => {
+        const mine = live.filter((g) => g.effect?.metric === m.name && typeof g.effect.ratio === "number");
+        const c = view.calibration.metrics[m.name];
+        return { name: m.name, kind: m.kind, command: m.command, enabled: !!c?.enabled, base_value: typeof c?.base_value === "number" ? c.base_value : null, accepted: mine.length, ratio: mine.reduce((a, g) => a * (g.effect!.ratio as number), 1), fixed_share: f?.fixed?.[m.name]?.share ?? null };
+      }),
+      recent: f && f.attempts ? `of its last ${f.attempts} final attempts ${f.fruitless} ended without an improvement and ${f.accepted} were accepted${f.best_gain_pct === null ? "" : ` (largest gain ${f.best_gain_pct.toFixed(1)}%)`}` : null,
+    });
+  }
+  return out;
+}
+
+/** The prompt section of an additional unit: what exists, what was achieved, what to add, and the two refusals. */
+export function moreSection(more: MoreContext): string {
+  const pctOf = (x: number) => `${(100 * x).toFixed(1)}%`;
+  const units = more.units
+    .map((u) => {
+      const ms = u.metrics.map((m) => {
+        const got = m.accepted ? `${m.accepted} accepted change${m.accepted === 1 ? "" : "s"}, now at ${m.ratio.toFixed(4)} of its start` : "no accepted change yet";
+        const fixed = m.fixed_share === null ? "" : `; at least ${pctOf(m.fixed_share)} of what is left is not the library`;
+        return `  - ${m.name} (${m.kind}${m.enabled ? "" : ", disabled"}): \`${m.command}\`; calibrated ${m.base_value ?? "-"}; ${got}${fixed}`;
+      });
+      return `- unit ${u.name} (${u.height} accepted generation${u.height === 1 ? "" : "s"}); a patch may change: ${u.recipe.patch.allowed_paths.join(", ")}; tests: \`${u.recipe.test.command}\`\n${ms.join("\n")}${u.recent ? `\n  recent work: ${u.recent}` : ""}`;
+    })
+    .join("\n");
+  const limit = pctOf(more.maxFixedShare).replace(/\.0%$/, "%");
+  return `
+
+THIS IS AN ADDITIONAL UNIT. The repository already has ${more.units.length === 1 ? "a unit" : `${more.units.length} units`}, and agents have taken the easy gains there: most recent attempts found nothing more to improve. Existing units, with what was achieved on each target:
+${units}
+
+Your unit must add headroom those units do not have. Choose one or more, by reading the code:
+(a) another part of the code: a module, package or crate the existing units do not let a patch change, which has tests of its own; allow only that part;
+(b) a heavier or more realistic workload on the same code, as NEW targets with their own names (for example encode_long_ir, decode_batch_ir): larger and more varied inputs, the calls real users make, so that the library's own work is nearly all of each count;
+(c) more targets: operations of the library that no existing target measures, and binary size where this class measures it.
+Keep the prepare, build and test commands of the format reference (it is this repository's own unit) unless the new part of the code needs others.
+
+Two rules are checked for an additional unit:
+1. No duplicate. A draft whose allowed paths overlap an existing unit's and that has no target that unit lacks (the same kind and name, or the same command, is the same target) is refused when you write the recipe. Name every new target for what it measures.
+2. Headroom. Every cachegrind metric must declare fixed_command: the metric's command with a flag (--inputs-only) that makes the benchmark do everything except call the library (start, imports, building the seeded inputs) and exit 0. The trial measures it, and fails unless it is at most ${limit} of the metric. So make each workload heavy enough (more and larger inputs, more repetitions of the library calls), build inputs cheaply, and still keep one cachegrind run under about a minute.
+In recipe.yml a metric then reads:
+  - name: encode_long_ir
+    ...
+    command: <the cachegrind command> encode_long $LINEAGE_SEED
+    fixed_command: <the same command> --inputs-only
+If the repository has nothing more to measure (one small module, already covered), call give_up with impossible true and say so.`;
 }
 
 const DRAFT_TOOLS: Anthropic.Beta.BetaTool[] = [
@@ -112,6 +201,8 @@ export class RecipeDrafter {
       target: DraftTarget;
       /** an existing recipe of the same class, shown as the format reference */
       example: { recipe_yml: string; overlay: Record<string, string> };
+      /** set when the repository already has units: the draft is an additional unit (plan AGENT-EFFICIENCY 8.2) */
+      more?: MoreContext;
       maxTrials?: number;
       /** seconds of sandbox time each trial calibration took (the hosted runtime meters them to the agent's vault) */
       onSandbox?: (seconds: number) => void;
@@ -138,6 +229,9 @@ export class RecipeDrafter {
       ["image", r.image, t.image],
     ];
     for (const [k, got, want] of fixed) if (got !== want) return { ok: false, text: `${k} must be ${want} (got ${got})` };
+    // an additional unit: a duplicate of an existing unit is refused here, before any sandbox time
+    const dup = this.o.more ? duplicateUnit(r, this.o.more.units.map((u) => u.recipe)) : null;
+    if (dup) return { ok: false, text: `duplicate of an existing unit: ${dup.why}` };
     const lines: string[] = [`recipe_id ${loaded.recipe_id}`];
     try {
       const deps = await prepareDeps(loaded);
@@ -153,6 +247,17 @@ export class RecipeDrafter {
         if (m.deterministic && !c.enabled) ok = false;
       }
       for (const n of transcript.notes.slice(0, 6)) lines.push(`note: ${n.slice(0, 300)}`);
+      for (const m of r.metrics) {
+        const c = calibration.metrics[m.name];
+        if (c?.enabled && typeof c.fixed_value === "number" && typeof c.base_value === "number" && c.base_value > 0) lines.push(`metric ${m.name}: not the library ${c.fixed_value} of ${c.base_value} (${((100 * c.fixed_value) / c.base_value).toFixed(1)}%)`);
+      }
+      if (this.o.more) {
+        const why = headroomError(r, calibration, this.o.more.maxFixedShare);
+        if (why) {
+          lines.push(`headroom: NOT shown: ${why}`);
+          ok = false;
+        } else lines.push("headroom: shown");
+      }
       if (r.equivalence) {
         const eq = await withBuiltTree({ loaded, deps, parentPatches: [], seed, job: "trial-equiv" }, async (run, tree) => {
           const a = await run("equivalence", r.equivalence!.command, [{ host: tree, container: "/work/src", readonly: true }]);
@@ -203,9 +308,9 @@ Requirements:
 - Metrics: at least one deterministic perf metric: cachegrind instruction count (parser cachegrind-ir, same valgrind invocation as the example) of an overlay benchmark (lineage_bench.*) whose workload is generated only from the seed argument, exercising the library's real hot path the way it is used in practice, printing a checksum so work cannot be skipped. min_effect 0.01, holdout true.
 - Equivalence: an overlay program (lineage_equiv.*) that prints the library's outputs for many seeded random inputs (including edge cases and invalid inputs where the API defines behaviour) so any behaviour change alters the digest.
 - patch.allowed_paths: only the library source a patch should change; protected_paths: tests, packaging, CI files and every overlay file (lineage_*).
-- Keep limits modest like the example. Bound the workload so one cachegrind run takes a few seconds.
+- Keep limits modest like the example. ${this.o.more ? "The workload is sized by the headroom rule below." : "Bound the workload so one cachegrind run takes a few seconds."}
 
-Format reference, an accepted recipe of the same class (another repository):
+Format reference, an accepted recipe of the same class (${this.o.more ? "a unit this repository already has" : "another repository"}):
 --- recipe.yml ---
 ${ex.recipe_yml}
 ${Object.entries(ex.overlay)
@@ -214,14 +319,14 @@ ${Object.entries(ex.overlay)
 
 If the repository cannot have a recipe as it stands, do not force one: call give_up with impossible true. That is the case when it has no tests of its own that run offline on a CPU, when its code needs a GPU or other hardware, or when nothing it computes is deterministic. Never write tests for it yourself and never fake a metric.
 
-Work efficiently: read only what you need (the library module and its tests), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials.`;
+Work efficiently: read only what you need (the library module and its tests), write the overlay files and recipe, run trial_calibrate, fix what it reports, then submit. You have ${maxTrials} trials.${this.o.more ? moreSection(this.o.more) : ""}`;
     const res = await toolLoop({
       client: this.o.client,
       model: this.o.model ?? DRAFT_MODEL,
       effort: "medium",
       system,
       tools: DRAFT_TOOLS,
-      first: `Start by listing the repository, then draft the recipe for ${t.repo}.`,
+      first: this.o.more ? `Start by listing the repository to find what the existing units do not measure, then draft the additional recipe for ${t.repo}.` : `Start by listing the repository, then draft the recipe for ${t.repo}.`,
       ledger: this.o.ledger,
       who: "recipe-drafter",
       capUsd: this.o.capUsd,
@@ -248,6 +353,13 @@ Work efficiently: read only what you need (the library module and its tests), wr
               Bun.YAML.parse(y);
             } catch (e) {
               throw new Error(`not valid YAML: ${(e as Error).message}`);
+            }
+            if (this.o.more) {
+              // free, before any trial: a draft that measures nothing new on the same paths is not written
+              const d = Bun.YAML.parse(y) as Partial<Recipe> | null;
+              const shaped = d && Array.isArray(d.metrics) && d.metrics.every((m) => m && typeof m.name === "string" && typeof m.command === "string") && Array.isArray(d.patch?.allowed_paths) && d.patch.allowed_paths.every((p) => typeof p === "string");
+              const dup = shaped ? duplicateUnit({ name: String(d.name ?? t.name), repo: t.repo, metrics: d.metrics!, patch: d.patch! }, this.o.more.units.map((u) => u.recipe)) : null;
+              if (dup) throw new Error(`refused, nothing was written: this draft duplicates an existing unit: ${dup.why}`);
             }
             writeFileSync(join(this.o.dir, "recipe.yml"), y.endsWith("\n") ? y : y + "\n");
             return "wrote recipe.yml";

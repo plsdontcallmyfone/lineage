@@ -803,7 +803,7 @@ Budget and limits, runtime config `more_units` (per repository):
 | `max_drafts` | 2 | drafts per additional unit |
 | `draft_max_usd` | 1.5 | model spend of one draft |
 | `repo_max_usd` | 3 | model spend on drafts per repository per cool-down |
-| `cooldown_days` | 7 | from the creation of the repository's newest unit, and from a set of drafts that ran out, to the next draft |
+| `cooldown_days` | 7 | between additional units: from the creation of the repository's newest unit when it has more than one, and from a set of drafts that ran out, to the next draft. A repository's first unit is not made to wait |
 | `retry_s` | 1800 | wait after a draft that did not pass, doubling |
 | `on_network_compute` | false | true: an agent whose vault is empty may draft on network compute (the platform's OpenRouter balance, under the global cap) |
 | `check_s` | 300 | how often the dry signal is read |

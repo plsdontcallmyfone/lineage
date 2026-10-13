@@ -21,6 +21,7 @@ import { sha256Hex } from "../../protocol/src/hash.ts";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
 import { UnitSetup, unitSetupWork, type RepoSetup, type UnitSetupWork } from "./unit-setup.ts";
+import { MoreUnits, type RepoMore } from "./more-units.ts";
 import { LEAD_PLAN_SYSTEM, leadPlanUser, parseLeadPlan, parseSlotKey, slotKey, SwarmLedger, type LeadPlan, type LedgerState, type RosterSeat, type SwarmConfig } from "./swarm.ts";
 import { ROLE_PARAGRAPHS, swarmSeats } from "../../souls/src/swarm.ts";
 import type { SeatHooks } from "../../worker/src/seat.ts";
@@ -237,6 +238,8 @@ export class Runtime {
   private purged: { agents: Set<string>; mints: Set<string> } | null = null;
   /** agents whose repository has no unit yet: the reading, the draft and the public reason (unit-setup.ts) */
   private setup!: UnitSetup;
+  /** repositories whose units have all run dry: one agent drafts another unit (more-units.ts) */
+  private more!: MoreUnits;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
     const sink = deps.log ?? ((m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
@@ -265,11 +268,31 @@ export class Runtime {
       budget: (agent, cap) => this.budget(agent, { cap }),
       run: (agent, maxUsd, job) => this.runSetup(agent, maxUsd, job),
     }, deps.unitSetup ?? unitSetupWork({ core: cfg.core, state_dir: cfg.state_dir, model: cfg.unit_setup?.model, max_trials: cfg.unit_setup?.max_trials }));
+    this.more = new MoreUnits(cfg.more_units, {
+      core: this.client,
+      log: (m) => this.log(m),
+      now: () => this.now(),
+      save: () => this.save(),
+      store: () => ((this.state as { more_units?: Record<string, RepoMore> }).more_units ??= {}),
+      agents: () => Object.entries(this.state.agents).map(([agent, st]) => ({ agent, status: st.status, target_repo: st.target_repo })),
+      keyOf: (agent) => this.store.keyFor(agent),
+      awake: (agent) => this.vaults.get(agent)?.awake === true,
+      busy: (agent) => this.busy(agent),
+      freeSlot: () => !this.stopping && this.running.size < this.slots(),
+      settingUp: (agent) => this.setup.settingUp(agent),
+      budget: (agent, cap) => this.budget(agent, { cap }),
+      covered: (agent) => this.covered(agent),
+      networkBudget: (agent, cap) => {
+        const b = this.networkBudget(agent);
+        return b.usd === null ? b : { usd: Math.min(b.usd, cap) };
+      },
+      run: (agent, maxUsd, job, network) => this.runSetup(agent, maxUsd, job, network),
+    }, deps.unitSetup ?? unitSetupWork({ core: cfg.core, state_dir: cfg.state_dir, model: cfg.unit_setup?.model, max_trials: cfg.more_units?.max_trials ?? cfg.unit_setup?.max_trials }));
   }
 
   /** A recipe draft as an attempt of `agent` (unit-setup.ts): it holds a slot and its model and sandbox use are metered to the agent's vault. */
-  private runSetup(agent: string, maxUsd: number, job: (meter: Pick<Meter, "model" | "sandbox">) => Promise<void>): void {
-    const a: Attempt = { agent, maxUsd, via: "openrouter", totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
+  private runSetup(agent: string, maxUsd: number, job: (meter: Pick<Meter, "model" | "sandbox">) => Promise<void>, network = false): void {
+    const a: Attempt = { agent, maxUsd, via: "openrouter", ...(network ? { network: true } : {}), totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
     this.attempts.set(agent, a);
     this.usageOf(agent).attempts++;
     this.lastStarted.set(agent, this.now());
@@ -1735,6 +1758,7 @@ export class Runtime {
       this.state.provider_balance = this.deps.providerBalance ? { openrouter: { ...this.deps.providerBalance.state, configured: this.deps.providerBalance.configured } } : undefined;
       await this.refreshAgents();
       await this.setup.tick();
+      await this.more.tick();
       this.syncDesktops();
       this.meterSeatDesktops();
       await this.reportSpend();
