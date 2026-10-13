@@ -398,3 +398,89 @@ on-chain roster is wanted.
 5. **Fold the bind into the launch approval (no signature after launch, solo launches too)?**
    Recommended: yes, in phase 2 after a fork proof.
 6. **Tweet wording `swarm <n>`?** Recommended: yes, with the size capped by the setting.
+
+## 11. Build status: phase 0 (swarms build lane, 2026-10-13)
+
+The owner approved this spec on 2026-10-13 with: option A (no program change), 4 seats at the start
+(`max_members`, a setting), credits at launch 10 USD per seat (the network's own prepay minimum times
+the seats, read from Core, never repeated in code), and screens: the first seat's desktop free, seats
+2 and up charged to the swarm's vault at cost.
+
+Phase 0 is built behind Core's feature flag `swarms`, **off everywhere**. Nothing is deployed, no
+mainnet transaction was sent, no program was touched.
+
+### What is where
+
+| Part | Where |
+|---|---|
+| The soul's `swarm` block, its checks, default lead, role paragraphs | `packages/souls/src/swarm.ts` (+ `schema.ts`, `safety.ts`) |
+| The flag and the settings | `packages/core/src/features.ts`, `config.ts` (`SwarmSettings`), `config/network.json` (`features.swarms`, `swarm`) |
+| Core's seat dimension, routes, views, admin settings | `packages/core/src/swarms.ts`; hooks in `sessions.ts`, `collab.ts`, `live.ts`, `hosted.ts`, `souls.ts`, `http.ts`; tables in `purge.ts` RULES; routes in `scripts/docs/api-notes.ts` |
+| The ledger, seat keys, the lead's plan | `packages/runtime/src/swarm.ts` |
+| Seats as workers of the one key, budgets, slots, desktops, reports | `packages/runtime/src/runtime.ts`, `providers.ts` (model per seat), `provenance.ts`, `state.ts` |
+| A seat's attempt (placement, stacked and serialized commits) | `packages/worker/src/seat.ts`, `worker.ts` |
+| A desktop per seat, its stream id, its running time | `packages/desktop/src/agent-desktops.ts`, `pool.ts`, `publish.ts` |
+| Pages | `apps/web/src/swarm.ts`, `pages/token-swarm.ts` (+ hunks in `token.ts`, `explorer.ts`, `agent-profile.ts`, `commits.ts`), `apps/web/wallet/swarm-step.ts` (+ hunks in `main.ts`, `pages.ts`, `prepay.ts`) |
+| Tests | `packages/souls/test/swarm.test.ts`, `packages/core/test/swarms.test.ts`, `packages/runtime/test/swarm.test.ts`, `apps/web/test/swarm-step.test.ts`, `tests/ui/swarms.spec.ts` |
+| The local proof | `scripts/swarms/proof.ts`, results in `scripts/swarms/PROOF-LAST.json`, spend in `scripts/swarms/RUNS.md` |
+
+### While the flag is off
+
+A soul with a `swarm` block is refused as an unknown field (the answer before this build). The
+`x-units-seat` header is ignored. Every per-agent limit is what it was. None of the swarm routes
+exists and none of the swarm tables is created. The runtime asks Core for `/v1/swarms/config` once a
+minute, gets `feature_off`, and keeps every agent solo: the same keys, budgets, attempt order,
+desktops and usage records. The coin page and the Explorer ask for no swarm route (they read
+`network.features.swarms` from the config they already load); the launch form asks once for
+`/v1/swarms/config`, gets a miss and shows no Agents field. Proven by the untouched existing tests,
+by `swarms: the flag is off` (Core), `Core's flag off` (runtime), `launch form, swarms off` (web) and
+the default run of `tests/ui/swarms.spec.ts` against the mainnet site's live data.
+
+### What differs from sections 1 to 9, and why
+
+- **Core keeps no seat on a candidate row.** The seat is in the runtime's signed provenance record
+  only (`record.seat`), which Core already publishes only once the candidate is final. Nothing about
+  the hot candidate path changes, and author-blindness needs no new rule.
+- **A seat's public state is narrower than section 6 lists.** While it works: its unit and target
+  (what its intent and session already say). Its result: its newest FINAL candidate. "No candidate"
+  per attempt is not shown, because it would tell a viewer which sessions led to a commit.
+- **Credits per seat are asked by the launch form, not enforced by Core's prepay check.** The
+  deployed program does not enforce the minimum either; a swarm funded below it runs fewer seats by
+  the reserve rule. Core's prepay module (live on mainnet) was not touched.
+- **The measured burn line on the Funding step is left out.** Its figure (1.57 USD an hour per seat)
+  is from a plan document, not from Core, the chain or a config file. The form shows the credits per
+  agent, the total and the screen charge, all from Core.
+- **The one repair turn of rule 4 is not built.** A seat's change that no longer merges onto the tip
+  plus the stack as they are at commit time ends the attempt without a candidate. The check is a real
+  merge (cherry-pick in the attempt's own repository), so it fails only on a true conflict.
+- **The lead's planning call runs only for a Claude lead** (the runtime's single-call model client
+  routes Claude models only). Another lead model places seats from counts, restricted by the ledger.
+  It is made again only when the ledger changed.
+- **Roster changes after launch, tweet wording, the bind folded into the launch** stay phase 2 as
+  written. Core refuses any change of the block after the first soul version.
+- **The pages' switch is the config file's flag.** `UNITS_FEATURE_SWARMS=1` turns the API on for one
+  process, but the coin page and the Explorer read `features.swarms` from `GET /v1/config`, which
+  shows the file's value.
+
+### Opening on mainnet at size 2 (the owner's decision; nothing here was done)
+
+1. In `config/mainnet/state.json`, under `network_overrides`, add (top-level keys replace the ones of
+   `config/network.json`, so both blocks are written whole):
+   `"features": { "agent_pools": false, "github_fee_claims": false, "swarms": true }` and
+   `"swarm": { "max_members": 2, "seat_desktop_usd_per_h": 0.1656, "seat_desktop_free_seats": 1, "swarm_epoch_max_usd": null, "seat_epoch_max_usd": null, "slot_fairness": "coin", "lead_plan": true, "lead_plan_max_usd": null }`.
+   Keep the two other flags at whatever they are on that day.
+2. Commit, push, and ship one release: `UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> code`.
+   Core, the runtime and the app come from the same release; the order of their restarts does not
+   matter (the runtime follows Core's flag within a minute, the pages read it on load). The deploy log
+   prints `network.json: features swarms on (largest swarm 2)`.
+3. Check: `GET /v1/swarms/config` answers `enabled: true`, `max_members 2`, `min_usd_per_seat` equal
+   to the instance's `prepay.min_usd`; the launch form's step "The agent" shows the Agents field with
+   sizes 1 and 2; the runtime log says `swarms: on`.
+4. Later, to 4: `POST /v1/admin/swarms/config { "max_members": 4 }` with the admin key (no deploy), or
+   the same edit of the state file with the next release.
+5. To close again: set `swarms` false and ship. Swarms already launched keep their soul; the runtime
+   runs each as a solo agent on seat 1's model from the next attempt.
+
+Capacity to look at first: every seat takes one of the runtime's `e2b_max` desktops (50 on the
+official instance) and one attempt slot; the form offers only as many seats as the runtime reports
+free.

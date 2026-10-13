@@ -27,7 +27,12 @@ async function asSwarmCoin(page: Page, mint: string) {
   // the other coins' avatars live on the deployed site's Core, not on the swarm's: answered with a blank image here
   await page.route("**/api/media/**", (r) => r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64") }));
   await page.route(`**/market/tokens/${mint}`, (r) => swap(r, (j) => (j.agent = SWARM)));
-  await page.route(/\/market\/tokens(\?[^/]*)?$/, (r) => swap(r, (j) => (j.tokens ?? []).forEach((t: any) => t.mint === mint && (t.agent = SWARM))));
+  await page.route(/\/market\/tokens(\?[^/]*)?$/, (r) => swap(r, (j) =>
+    (j.tokens ?? []).forEach((t: any) => {
+      if (t.mint === mint) t.agent = SWARM;
+      t.session = null; // the listed coins' sessions live on the deployed site's Core, not on the swarm's
+    }),
+  ));
 }
 
 test.describe("swarms are off (the default): the pages are what they were", () => {

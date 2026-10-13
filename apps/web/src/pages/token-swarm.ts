@@ -40,6 +40,7 @@ const STYLE = `
 .sw-seats .tk-row-main{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
 .sw-model{display:inline-flex;align-items:center;gap:5px;color:var(--ts);font-size:12.5px}
 .sw-record .tk-row-sub{white-space:normal}
+.sw-record{max-height:420px;overflow-y:auto}
 .sw-seats .tk-row-sub{white-space:normal}
 .sw-seats .sw-res{grid-column:2;grid-row:1 / span 2;text-align:right;font:500 12px/1.4 var(--sans);color:var(--tt);font-variant-numeric:tabular-nums;white-space:nowrap}
 .sw-res.ok{color:var(--good)}
@@ -66,8 +67,12 @@ const targetText = (t: string | string[]) => (Array.isArray(t) ? t.join(", ") : 
 const ROLE: Record<SeatView["role"], string> = { lead: "Lead", builder: "Builder" };
 
 /** A seat's state in a few words: what the runtime reports, in the words the page shows. */
+/** The runtime's statement about a seat, or null when it is older than three minutes (the runtime reports about once a minute). */
+const fresh = (s: SeatView) => (s.runtime && Date.now() - s.runtime.reported_at <= 180_000 ? s.runtime : null);
+
 export function seatState(s: SeatView): { text: string; cls: string } {
-  const r = s.runtime;
+  const r = fresh(s);
+  if (s.runtime && !r) return { text: s.session ? "Working" : "Not reporting", cls: s.session ? "working" : "" };
   if (!r) return { text: s.session ? "Working" : "Not started", cls: s.session ? "working" : "" };
   if (r.state === "working") return { text: "Working", cls: "working" };
   if (r.state === "asleep") return { text: "Asleep", cls: "" };
@@ -77,7 +82,8 @@ export function seatState(s: SeatView): { text: string; cls: string } {
 
 /** What a seat is on now: its target and unit while an attempt runs, else its state with the runtime's reason. */
 function seatNow(s: SeatView): Raw {
-  const r = s.runtime;
+  const r = fresh(s);
+  if (s.runtime && !r && !s.session) return html`Its computer has not reported in the last minutes`;
   if (r?.state === "working" && r.target) return html`Working on <b>${r.target}</b>${r.unit ? html` in ${lineageName(r.unit)}` : ""}`;
   if (s.session && (!r || r.state === "working")) return html`Working in ${lineageName(s.session.lineage_id)}`;
   if (!r) return html`No report from its computer yet`;
@@ -134,11 +140,12 @@ export function swarmPane(sw: SwarmView): Raw {
 export function swarmBuilding(sw: SwarmView): Raw {
   const by = new Map<string, SeatView[]>();
   for (const s of sw.seats) {
-    const unit = s.runtime?.state === "working" ? (s.runtime.unit ?? s.session?.lineage_id) : s.session?.lineage_id;
+    const r = fresh(s);
+    const unit = r?.state === "working" ? (r.unit ?? s.session?.lineage_id) : s.session?.lineage_id;
     if (unit) (by.get(unit) ?? by.set(unit, []).get(unit)!).push(s);
   }
   if (!by.size) return html`<ul class="sw-units" id="sw-units"><li><span>No unit in work right now.</span></li></ul>`;
-  return html`<ul class="sw-units" id="sw-units">${[...by].map(([unit, seats]) => html`<li><a class="link" href="/units/${unit}">${lineageName(unit)}</a> <span>${seats.map((s) => `${s.name}${s.runtime?.target ? ` on ${s.runtime.target}` : ""}`).join(", ")}</span></li>`)}</ul>`;
+  return html`<ul class="sw-units" id="sw-units">${[...by].map(([unit, seats]) => html`<li><a class="link" href="/units/${unit}">${lineageName(unit)}</a> <span>${seats.map((s) => `${s.name}${fresh(s)?.target ? ` on ${fresh(s)!.target}` : ""}`).join(", ")}</span></li>`)}</ul>`;
 }
 
 /** The agent profile's seat list: one profile for the swarm, its agents under it (empty for a solo agent or while swarms are off). */
