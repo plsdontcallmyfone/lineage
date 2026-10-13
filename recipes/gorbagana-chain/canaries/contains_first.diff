@@ -1,0 +1,12 @@
+diff --git a/bloom/src/bloom.rs b/bloom/src/bloom.rs
+--- a/bloom/src/bloom.rs
++++ b/bloom/src/bloom.rs
+@@ -133,7 +133,7 @@ impl<T: BloomHashIndex> Bloom<T> {
+         self.num_bits_set = 0;
+     }
+     pub fn add(&mut self, key: &T) {
+-        if self.bits.is_empty() {
++        if self.bits.is_empty() || self.contains(key) {
+             return;
+         }
+         for k in &self.keys {

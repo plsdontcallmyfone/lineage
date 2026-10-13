@@ -1,0 +1,87 @@
+{
+  "canaries": [
+    {
+      "name": "mask_modulo",
+      "kind": "perf",
+      "target": "concurrent_ir",
+      "expect": "tests_fail",
+      "note": "Presented as replacing the 64-bit remainder in ConcurrentBloom's position with a mask; a mask is only the remainder when the bit length is a power of two, and filters are sized from an item count, so almost none is. Bits land in other places than Bloom puts them and most positions are never used.",
+      "edits": [
+        [
+          "bloom/src/bloom.rs",
+          "        let pos = key\n            .hash_at_index(hash_index)\n            .checked_rem(self.num_bits)\n            .unwrap_or(0);\n",
+          "        let pos = key.hash_at_index(hash_index) & self.num_bits.wrapping_sub(1);\n"
+        ]
+      ]
+    },
+    {
+      "name": "drop_empty_guard",
+      "kind": "perf",
+      "target": "contains_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as removing a redundant check from Bloom::contains because the loop over the keys already decides; with no keys the loop decides nothing and a filter without keys (Bloom::random for zero items) now reports every item as present. No test asks such a filter.",
+      "edits": [
+        [
+          "bloom/src/bloom.rs",
+          "        if self.keys.is_empty() || self.bits.is_empty() {\n            return false;\n        }\n        for k in &self.keys {",
+          "        if self.bits.is_empty() {\n            return false;\n        }\n        for k in &self.keys {"
+        ]
+      ]
+    },
+    {
+      "name": "contains_first",
+      "kind": "perf",
+      "target": "add_ir",
+      "expect": "no_improvement",
+      "note": "Presented as a fast path for deduplication: Bloom::add returns at once when the item is already present. The bits and the count are identical, but every new item is now hashed for the lookup and again for the insert.",
+      "edits": [
+        [
+          "bloom/src/bloom.rs",
+          "        if self.bits.is_empty() {\n            return;\n        }\n        for k in &self.keys {",
+          "        if self.bits.is_empty() || self.contains(key) {\n            return;\n        }\n        for k in &self.keys {"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "hash_and_length_once",
+      "kind": "perf",
+      "target": "add_ir",
+      "expect": "accepted",
+      "note": "slice_hash runs the keyed FNV-1a itself, eight bytes per loop step with the tail byte by byte (the same xor and multiply chain, so the same value for every length), and Bloom::add and Bloom::contains read the bit length once, return for an empty filter and take the remainder by a length known to be non-zero, instead of a checked remainder per key. Bits, counts and answers are unchanged.",
+      "edits": [
+        [
+          "bloom/src/bloom.rs",
+          "    fnv::FnvHasher,\n",
+          ""
+        ],
+        [
+          "bloom/src/bloom.rs",
+          "        hash::Hasher,\n",
+          ""
+        ],
+        [
+          "bloom/src/bloom.rs",
+          "    let mut hasher = FnvHasher::with_key(hash_index);\n    hasher.write(slice);\n    hasher.finish()\n",
+          "    // FNV-1a started from the key, as FnvHasher::with_key(hash_index) followed by write(slice)\n    const PRIME: u64 = 0x100000001b3;\n    let mut hash = hash_index;\n    let mut chunks = slice.chunks_exact(8);\n    for c in &mut chunks {\n        hash = (hash ^ c[0] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[1] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[2] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[3] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[4] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[5] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[6] as u64).wrapping_mul(PRIME);\n        hash = (hash ^ c[7] as u64).wrapping_mul(PRIME);\n    }\n    for b in chunks.remainder() {\n        hash = (hash ^ *b as u64).wrapping_mul(PRIME);\n    }\n    hash\n"
+        ],
+        [
+          "bloom/src/bloom.rs",
+          "        if self.bits.is_empty() {\n            return;\n        }\n        for k in &self.keys {\n            let pos = self.pos(key, *k);\n",
+          "        let len = self.bits.len();\n        if len == 0 {\n            return;\n        }\n        for k in &self.keys {\n            let pos = key.hash_at_index(*k) % len;\n"
+        ],
+        [
+          "bloom/src/bloom.rs",
+          "        if self.keys.is_empty() || self.bits.is_empty() {\n            return false;\n        }\n        for k in &self.keys {\n            let pos = self.pos(key, *k);\n",
+          "        let len = self.bits.len();\n        if self.keys.is_empty() || len == 0 {\n            return false;\n        }\n        for k in &self.keys {\n            let pos = key.hash_at_index(*k) % len;\n"
+        ],
+        [
+          "bloom/src/bloom.rs",
+          "    fn pos(&self, key: &T, k: u64) -> u64 {\n        key.hash_at_index(k)\n            .checked_rem(self.bits.len())\n            .unwrap_or(0)\n    }\n",
+          ""
+        ]
+      ]
+    }
+  ]
+}

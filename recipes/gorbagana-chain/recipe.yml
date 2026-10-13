@@ -1,0 +1,115 @@
+# gorbagana-dev/gorbagana-chain: the Gorbagana validator, a fork of anza-xyz/agave (the Solana
+# validator), default branch gorchain. Apache-2.0 (LICENSE). CONTRIBUTING.md is upstream agave's
+# and has no policy against AI-generated changes (checked 2026-10-13).
+#
+# The unit is ONE crate of the workspace, bloom/ (solana-bloom): the Bloom filter gossip uses for
+# its pull requests (CrdsFilter) and the concurrent one used for deduplication. The whole validator
+# cannot be a unit: its build and tests take far longer than a replay may. A patch may only touch
+# bloom/src; every other path of the repository is outside allowed_paths.
+#
+# Why this crate: 532 lines of plain scalar Rust with 8 tests of its own, on a hot path. Every add
+# and lookup hashes the whole item once per key with a byte-at-a-time FNV-1a (27 keys for a
+# signature filter), takes a checked 64-bit remainder per position, and add reads a bit through one
+# bounds check and writes it through another. No SIMD and no runtime CPU detection, so instruction
+# counts do not depend on which CPU features a verifier's machine reports.
+# Headroom is real but small on amd64: the positions are fixed by the wire format, so the FNV chain
+# (three instructions a byte) cannot be replaced, and the planted improvement
+# (candidates/hash_and_length_once) moves the three metrics by 1.4 to 1.6% there, 8 to 12% on arm64.
+#
+# The workspace: 1,075 locked packages and three git dependencies. `cargo fetch --locked` would pull
+# all of them. prepare resolves the workspace (the crates.io index entries and the two patched git
+# repositories, which cargo needs to read even though this crate uses neither) and downloads only
+# the 54 crates solana-bloom and its tests need: `cargo tree -p` fetches exactly the packages it
+# prints. Measured: 327 MB layer (261 MB of it the git checkouts), 99 s on arm64 and 37 s on the
+# amd64 capacity host; the offline build 9 s; base and candidate evaluated in about 60 s.
+# The layer is not byte-reproducible over time (the index cache follows crates.io), like every
+# cargo layer here: verifiers on other machines get the site's layer (capacity-host/provision.sh).
+#
+# Toolchain: the repository's rust-toolchain.toml asks for 1.96.1 and the image has 1.89.0. rustup
+# would try to install 1.96.1 (no network after prepare, read-only root), so every cargo command
+# names the image's toolchain with RUSTUP_TOOLCHAIN. The crate and its 54 dependencies build and
+# pass on 1.89.0 as locked; nothing here measures the 1.96.1 compiler's code.
+#
+# The crate is empty without its feature agave-unstable-api (#![cfg] in lib.rs), and its set-bit
+# count is only readable with dev-context-only-utils; upstream's own tests enable both through a
+# dev-dependency on itself. The commands name them so the examples build the same way.
+#
+# Tests: upstream keeps its 8 unit tests inside bloom/src/bloom.rs, which patches may edit; the
+# module is a protected block, and bloom/tests/lineage_upstream.rs is a copy under a protected
+# path (private reads replaced by the public accessor). bloom/tests/lineage_props.rs checks every
+# filter bit for bit against a model written from the definition. The bench target (bencher) is
+# not built.
+#
+# Determinism: native code under cachegrind, one thread, inputs only from $LINEAGE_SEED (FNV-1a ->
+# splitmix64, examples/lineage_support/rng.rs); filters are built with seeded keys, never
+# Bloom::random. What is not the filter's work (`lineage_bench <mode> <seed> --inputs-only`) is 9
+# to 14% of each metric at this commit. Calibrated on arm64 (Docker on Apple silicon) and on amd64
+# (calibration-amd64.json).
+name: gorbagana-chain
+class: rust
+requires: { arch: arm64 }
+repo: https://github.com/gorbagana-dev/gorbagana-chain
+commit: "295fcd6f1cc02ad06ce58a1d3a7b98bb6586ee04"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  - RUSTUP_TOOLCHAIN=1.89.0 cargo tree --locked -p solana-bloom -e normal,build,dev --features agave-unstable-api,dev-context-only-utils > /dev/null
+prepare_outputs: []
+build:
+  commands:
+    - RUSTUP_TOOLCHAIN=1.89.0 cargo build --release --locked --offline -p solana-bloom --features agave-unstable-api,dev-context-only-utils --lib --examples --tests
+  artifacts: ["target/release/libsolana_bloom.rlib"]
+  reproducible: true
+test:
+  # --no-fail-fast: without it cargo stops at the first failing test binary, and every later
+  # binary's tests would be reported as failures too.
+  command: RUSTUP_TOOLCHAIN=1.89.0 cargo test --release --locked --offline -p solana-bloom --features agave-unstable-api,dev-context-only-utils --no-fail-fast --lib --tests 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: add_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench add "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: contains_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench contains "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: concurrent_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench concurrent "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["bloom/src/**"]
+  protected_paths:
+    - "bloom/tests/**"
+    - "bloom/examples/**"
+    - "bloom/benches/**"
+    - "**/Cargo.toml"
+    - "Cargo.lock"
+    - "rust-toolchain.toml"
+    - "**/build.rs"
+    - ".github/**"
+    - "**/*.yml"
+  protected_blocks:
+    # upstream keeps unit tests inside bloom/src/bloom.rs; a patch may edit the library but never this module
+    - { glob: "bloom/src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 4096, pids: 512, wall_s: 1800, disk_mb: 4096 }
