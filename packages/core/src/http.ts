@@ -16,6 +16,7 @@ import { sessionsOf } from "./sessions.ts";
 import { journalOf } from "./journal.ts";
 import { jsonlResponse, learningsOf, schemaDoc } from "./learnings.ts";
 import { readDump, recordDump, sharedFindingsOf } from "./shared-findings.ts";
+import { unitDryOf } from "./unit-dry.ts";
 import { socialOf } from "./social.ts";
 import { conversationsOf } from "./conversations.ts";
 import { guardConfigOf } from "./guard-config.ts";
@@ -197,6 +198,9 @@ export function buildRoutes(core: Core): Route[] {
     }),
     route("GET", "/v1/chain", "none", () => (core.chainMode ? (core.chainView?.() ?? { mode: "devnet", read_at: null }) : { mode: "sim" })),
     route("GET", "/v1/lineages", "none", () => core.listLineages()),
+    // units that run dry (src/unit-dry.ts, docs/plans/AGENT-EFFICIENCY.md 8.1): GET /v1/units/dry[?repo=] and /v1/units/:id/dry (unit-alias.ts)
+    route("GET", "/v1/lineages/dry", "none", (c) => unitDryOf(core).list({ repo: q(c, "repo") })),
+    route("GET", "/v1/lineages/:id/dry", "none", (c) => unitDryOf(core).one(c.params.id!)),
     route("GET", "/v1/lineages/:id", "none", (c) => core.lineageView(c.params.id!)),
     route("GET", "/v1/lineages/:id/tree", "none", (c) => core.tree(c.params.id!, q(c, "gen"))),
     route("GET", "/v1/lineages/:id/file", "none", (c) => core.live.file(c.params.id!, q(c, "gen"), q(c, "path"))),

@@ -1,3 +1,4 @@
+import { parseDrySettings, type DrySettings } from "./unit-dry.ts";
 import { readFileSync } from "node:fs";
 import { parsePrepayConfig, type PrepayConfig } from "@units/chain";
 
@@ -107,6 +108,8 @@ export interface NetworkConfig {
   features: { agent_pools: boolean; github_fee_claims: boolean; swarms: boolean };
   /** Swarm settings (docs/plans/SWARMS.md 4, 5; swarms.ts). Read only while features.swarms is on; the admin edits them with POST /v1/admin/swarms/config. */
   swarm: SwarmSettings;
+  /** When a unit has run dry (unit-dry.ts, docs/plans/AGENT-EFFICIENCY.md 8.1). Absent: the defaults there. */
+  dry: DrySettings;
   /** Guard limits (SPEC 10.1 rule 6): default max regression of a non-target metric, a fraction. Optional, default 0.01; seeds guard config version 1. */
   guard_max_regression: number;
   /** When guard config version 1 takes effect (ms); Core seeds it at max(this, its clock) on first start. Optional; absent or null = guards off until an admin sets a version. */
@@ -297,6 +300,11 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   out.features = { agent_pools: feats.agent_pools === true, github_fee_claims: feats.github_fee_claims === true, swarms: feats.swarms === true };
   try {
     out.swarm = parseSwarmSettings(raw.swarm);
+  } catch (e) {
+    throw new Error(`network config: ${(e as Error).message}`);
+  }
+  try {
+    out.dry = parseDrySettings(raw.dry);
   } catch (e) {
     throw new Error(`network config: ${(e as Error).message}`);
   }
