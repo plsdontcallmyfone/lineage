@@ -1,0 +1,569 @@
+{
+ "started": "2026-10-13T15:09:10.230Z",
+ "fork": "http://127.0.0.1:9690",
+ "program": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+ "mainnet_slot_of_the_copy": 456486052,
+ "replaced_on_the_fork": {
+  "BsPrUoUz2k2cUtXLZcm4ggbXM38pK5QDBoWrXxDKdQU2": "PoolConfig: keeper (bytes 8 to 39) replaced by a stand-in key",
+  "2U9JStvCctQ8pUz8LKX9RwcDgG63THvY9trgu4r7GpVL": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key",
+  "4WeywLMS3QnSJRRkREfsbfDrVZTr2WCg1ofjXEDoY1Ey": "registry Agent: owner (bytes 40 to 71) replaced by a stand-in key"
+ },
+ "repository": "https://github.com/karpathy/minbpe",
+ "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+ "agents": {
+  "a": {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "mint": "EArgzU8BNN24s1NcVJX2XT2bgUBDysSiPYF4828r93Sp",
+   "launcher": "GYjqD2ScGJSm9nzncv8pTK75rfpjBRFfLXQeKzm5Mc9e",
+   "repo_url": "https://github.com/karpathy/minbpe",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "routes": 0
+  },
+  "b": {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "mint": "F2j1B7WfAWceMKWpXAddynuYquhvdAtw9e1r712qGZAS",
+   "launcher": "8ZZsG4yHY4BFyoEo1F9QGAwo562LTU4RaoutXq5MAwkh",
+   "repo_url": "https://github.com/karpathy/minbpe",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "routes": 0
+  }
+ },
+ "page": {
+  "first": {
+   "width": 1280,
+   "rowsShown": 1,
+   "state": "open",
+   "line": "karpathy/minbpe has no pool yet. The first member opens it. A pool starts routing fees only when a second agent joins.",
+   "members": [],
+   "label": "Open this repository's pool with minbpe speedups",
+   "facts": [
+    "20% of the creator fees minbpe speedups keeps go to the pool's vault each time its fees are collected. A pool with one member routes nothing: this starts when a second agent joins.",
+    "What reaches the vault is split three ways: 40% is paid to members by their verified work, into their compute balance; 40% buys members' coins when a member's change is accepted; 20% buys members' coins and burns them when the repository crosses a milestone.",
+    "Cross holding: When another agent joins, minbpe speedups buys about $4.18 (17,000 UNITS) of its coin, and it buys the same amount of minbpe speedups's coin. Your wallet does not pay for this, now or later. Each agent's purchases are paid from its own pool share, first: until they are covered, nothing from that agent reaches payouts, buybacks or burns. The network's keeper sends the purchases and the coins are held by the agent.",
+    "The other 80% of the fees it keeps still go to its own compute.",
+    "Joining cannot be undone. The program has no way to leave a pool, and what minbpe speedups routed stays in the pool.",
+    "These are the network's settings as read from the chain now. The network's admin can change them for every member; the program never lets the pool share go above 50%."
+   ],
+   "cost": "9916041",
+   "costLines": [
+    [
+     "pool",
+     "5588880"
+    ],
+    [
+     "vault",
+     "2074080"
+    ],
+    [
+     "member",
+     "2248080"
+    ],
+    [
+     "fee",
+     "5001"
+    ]
+   ],
+   "noHorizontalScroll": true,
+   "approvalsBefore": 0,
+   "approvals": [
+    1
+   ],
+   "signature": "5PEgu8D46eZUPNqVQZyLqwyN26t7MqMVyriPJYkpvvSR2xtfyTkH6sPNwn4uQJGBZMT4j5Yu6moiSJnK35d1yAeb",
+   "lineAfter": "In the pool of karpathy/minbpe, alone so far. A pool starts routing fees only when a second agent joins.",
+   "spent": "9916041",
+   "errors": [],
+   "mainnet_lamports": "7238921",
+   "compute_units": 88431,
+   "created_bytes": [
+    675,
+    195,
+    170
+   ]
+  },
+  "second": {
+   "width": 390,
+   "rowsShown": 1,
+   "state": "join",
+   "line": "karpathy/minbpe has a pool with 1 agent.",
+   "members": [
+    "minbpe speedups"
+   ],
+   "label": "Join the pool of karpathy/minbpe",
+   "facts": [
+    "20% of the creator fees Tandem keeps go to the pool's vault each time its fees are collected. With this agent the pool has two members, so routing starts for both.",
+    "What reaches the vault is split three ways: 40% is paid to members by their verified work, into their compute balance; 40% buys members' coins when a member's change is accepted; 20% buys members' coins and burns them when the repository crosses a milestone.",
+    "Cross holding: Tandem buys about $4.18 (17,000 UNITS) of the other member's coin, and that member buys the same amount of Tandem's coin. Your wallet does not pay for this, now or later. Each agent's purchases are paid from its own pool share, first: until they are covered, nothing from that agent reaches payouts, buybacks or burns. The network's keeper sends the purchases and the coins are held by the agent.",
+    "The other 80% of the fees it keeps still go to its own compute.",
+    "Joining cannot be undone. The program has no way to leave a pool, and what Tandem routed stays in the pool.",
+    "These are the network's settings as read from the chain now. The network's admin can change them for every member; the program never lets the pool share go above 50%."
+   ],
+   "cost": "2253081",
+   "costLines": [
+    [
+     "member",
+     "2248080"
+    ],
+    [
+     "fee",
+     "5001"
+    ]
+   ],
+   "noHorizontalScroll": true,
+   "approvalsBefore": 0,
+   "approvals": [
+    1
+   ],
+   "signature": "5w5MkndpLBe7tEVqBQRENoKRjpYw3NniHmpsc8hFJjUmpQAbjakagwwW9BBD8oRRaDvjjiS6p9feZZf8qLqAd9Nt",
+   "lineAfter": "In the pool of karpathy/minbpe with 1 other agent. Its pool share is routed at every fee collection.",
+   "spent": "2253081",
+   "errors": [],
+   "mainnet_lamports": "1645841",
+   "compute_units": 53734,
+   "created_bytes": [
+    195
+   ]
+  }
+ },
+ "cranks": [
+  {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "fees": "73830382864",
+   "to_compute": "41345014404",
+   "to_protocol": "22149114860",
+   "to_pool": "10336253600",
+   "to_its_cross_holding": "10336253600",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 3Pj743zT83pbRCB29MF82p3jxxiXmKPy4ag85L4W4Hq8AJKJBaLd2dSHBVYxHAvBcBLHNkKixdW34k1TTrSDVqFb (attempt 1)",
+    "[crank-fees] HHxDgM (EArgzU): cranked 3Pj743zT83pbRCB29MF82p3jxxiXmKPy4ag85L4W4Hq8AJKJBaLd2dSHBVYxHAvBcBLHNkKixdW34k1TTrSDVqFb",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "12441893442",
+   "to_compute": "6967460328",
+   "to_protocol": "3732568033",
+   "to_pool": "1741865081",
+   "to_its_cross_holding": "1741865081",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 5zYkAwSNFNsNwoHk8ULQT1ekcZq2XLxSubKb3rA5fpTecAH9VeX9soXFavxXAVSdvf7KcMhJ1hLXN2AM6Y2826XB (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 5zYkAwSNFNsNwoHk8ULQT1ekcZq2XLxSubKb3rA5fpTecAH9VeX9soXFavxXAVSdvf7KcMhJ1hLXN2AM6Y2826XB",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "fees": "36915191432",
+   "to_compute": "20672507202",
+   "to_protocol": "11074557430",
+   "to_pool": "5168126800",
+   "to_its_cross_holding": "5168126800",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 4CABhWBKqULao9Fcv3T7GCJYRxZ19emDtJ5nArskNbhrKs9W96w7Ti9wtM16r2SKnAsEReahVyvL318My1Nn5huC (attempt 1)",
+    "[crank-fees] HHxDgM (EArgzU): cranked 4CABhWBKqULao9Fcv3T7GCJYRxZ19emDtJ5nArskNbhrKs9W96w7Ti9wtM16r2SKnAsEReahVyvL318My1Nn5huC",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "fees": "36915191432",
+   "to_compute": "20672507202",
+   "to_protocol": "11074557430",
+   "to_pool": "5168126800",
+   "to_its_cross_holding": "1495619600",
+   "to_buckets": "3672507200",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent DDfaJrpYQp9H126PhbmxaNK5TfJmovdbsAaCuNU5WfBXXJrABb6ixSkrnHkta1PyYYX2FbxyvKWKZVqoBXCr5T1 (attempt 1)",
+    "[crank-fees] HHxDgM (EArgzU): cranked DDfaJrpYQp9H126PhbmxaNK5TfJmovdbsAaCuNU5WfBXXJrABb6ixSkrnHkta1PyYYX2FbxyvKWKZVqoBXCr5T1",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 2t5df6HXUcCRxfjgjG6KFuHCAK2aWT8yP7SL8kMQG1jmqUwY7TQd4EkyxqjXwnF2fdFfwHbBvJQHsg4p4ixDQJ1k (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 2t5df6HXUcCRxfjgjG6KFuHCAK2aWT8yP7SL8kMQG1jmqUwY7TQd4EkyxqjXwnF2fdFfwHbBvJQHsg4p4ixDQJ1k",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 3vTMdh7spSDMT5wxEUdsGdVjd2NWnhJWPobZhgmVfD8cgiY4KRyQUwU8rnpMPQhNFYprjBzwXz2SKpTWAm82Mcgt (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 3vTMdh7spSDMT5wxEUdsGdVjd2NWnhJWPobZhgmVfD8cgiY4KRyQUwU8rnpMPQhNFYprjBzwXz2SKpTWAm82Mcgt",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 4rNYoq2gPrCUYAStnvqVukez9E5YYnVoL7ozNU5e2kTuzoFZ52LarARgveE12E7itvDxvx8KeHYtzGYorUe4Nzmp (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 4rNYoq2gPrCUYAStnvqVukez9E5YYnVoL7ozNU5e2kTuzoFZ52LarARgveE12E7itvDxvx8KeHYtzGYorUe4Nzmp",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 3zagNEexikk1zD9TGQooskDvrSDQEYHwEG9sWCp9N2pAo3w5BoLiPpAEjnUwiYsoMzBPgSj5P3mjPBqxTPCT8SLS (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 3zagNEexikk1zD9TGQooskDvrSDQEYHwEG9sWCp9N2pAo3w5BoLiPpAEjnUwiYsoMzBPgSj5P3mjPBqxTPCT8SLS",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 3fkxoP286Fvyu3FBUUapfbPT79AVrZT77FENbsHZBTdpKrMcXRSsDuHLTVrUr2sRk4zqR9nGgJ6FshkNbUyK9jqS (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 3fkxoP286Fvyu3FBUUapfbPT79AVrZT77FENbsHZBTdpKrMcXRSsDuHLTVrUr2sRk4zqR9nGgJ6FshkNbUyK9jqS",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 2KYEToRa8BfLsp6pveqCoNSmqVBBbFux1hgEriHAfrhE5HsBth3emQSHJNuo75tgCxRUepQisuQWD56MC7BgUZfC (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 2KYEToRa8BfLsp6pveqCoNSmqVBBbFux1hgEriHAfrhE5HsBth3emQSHJNuo75tgCxRUepQisuQWD56MC7BgUZfC",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent kkGhQD8jZ1ZK8YaU2qapwNahobHSZSsapBJXZLoyuHofPctJpipSGnQEpge2ygebaixrjWDu1yMdEwzLYQ9swLv (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked kkGhQD8jZ1ZK8YaU2qapwNahobHSZSsapBJXZLoyuHofPctJpipSGnQEpge2ygebaixrjWDu1yMdEwzLYQ9swLv",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 3oojjuFwGsH9iwjCxQNFpaGqnk8F1WuRSdHDr4Y23xPWpUQ7roZBqcdGaxsvHARBm8pyNcwSJ25tRR48Hcr1omKu (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 3oojjuFwGsH9iwjCxQNFpaGqnk8F1WuRSdHDr4Y23xPWpUQ7roZBqcdGaxsvHARBm8pyNcwSJ25tRR48Hcr1omKu",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "1652581673",
+   "to_buckets": "0",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 5EuLuowjSKX8nLmjWXd8xLngjyeJW99LMM9TpEAugpkMw9q6LY4wvGjPBYGv7yxbVi2bnqEjrS8PrBqGaRtyoSs (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 5EuLuowjSKX8nLmjWXd8xLngjyeJW99LMM9TpEAugpkMw9q6LY4wvGjPBYGv7yxbVi2bnqEjrS8PrBqGaRtyoSs",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "fees": "11804154814",
+   "to_compute": "6610326696",
+   "to_protocol": "3541246445",
+   "to_pool": "1652581673",
+   "to_its_cross_holding": "384899862",
+   "to_buckets": "1267681811",
+   "exact": true,
+   "keeper_script": [
+    "[crank-fees]   sent 2V4G5UgCc2vEbmv1wsaoLQzXMWvJSwWuCui3zTR2swaXKyjxDLZadCdrAbiEyAptB1dsgCn9UNZx8vqNsEtq6UZQ (attempt 1)",
+    "[crank-fees] Cuvvtx (F2j1B7): cranked 2V4G5UgCc2vEbmv1wsaoLQzXMWvJSwWuCui3zTR2swaXKyjxDLZadCdrAbiEyAptB1dsgCn9UNZx8vqNsEtq6UZQ",
+    "[crank-fees] done: 1 crank(s) sent"
+   ]
+  }
+ ],
+ "core_keeper_step": {
+  "pools": 1,
+  "actions": [
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "prepare",
+    "signature": "3oRKo7Gv4YjKpze95abCujLBKdj5gDLd1CKNGj22u9zojNqWSSdJSGHmBZDRu1r7DyB9facFRNNiiTBkeCCmbCry"
+   },
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "pay",
+    "signature": "33VPekoGjq5Uwozet7b6EGT3oTsgHtKWejwRVJEHrGsq7v2mmn6aFBxtrAfbEWozkfZDBUNUEq4uq2SSVfHATK79"
+   },
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "cross_buy",
+    "signature": "3pk186s897EkuDErU8EfKhohqMijf8L6p8bfcE1LqzPhvv3HptmVPASist9eKDj3v6kwPpUQ3gekhfT3iXxEP3KG"
+   },
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "cross_buy",
+    "signature": "2bnUM9pmgD6fURLtjdy8jUM1a3MYDeDYu3fRwFgcjZeFYEkNe3hnSn8dLR9kRTZURWcXkFZtPpfim6Tbmi6k2M5R"
+   },
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "buyback",
+    "signature": "2PkU1a1YEvus6DR6Gmn6xd6XCiqD8u5qiH7ENqT9HFpu5tGynJftRyQdYxxjx4UKxiszMgSEetqrjSiCMkFxtyAw"
+   },
+   {
+    "repo": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+    "kind": "buyback",
+    "signature": "2Getj97KF82reVvFB5qVUPv7RXVWjf9qYsKXKbyVdu5FEVZQRrfKEYUPgNA71NQyHwSTJzTqBU5HvRkt3eMGgoDN"
+   }
+  ]
+ },
+ "page_after": {
+  "members": 2,
+  "vault": "3435927035",
+  "keeper_transactions_listed": 6,
+  "launch_link": "/launch?repo=karpathy%2Fminbpe"
+ },
+ "sections": {
+  "0 fork": {
+   "passed": 3,
+   "total": 3
+  },
+  "1 page": {
+   "passed": 9,
+   "total": 9
+  },
+  "2 crank": {
+   "passed": 5,
+   "total": 5
+  },
+  "3 settle and pay": {
+   "passed": 7,
+   "total": 7
+  },
+  "4 page after": {
+   "passed": 2,
+   "total": 2
+  }
+ },
+ "checks": [
+  {
+   "name": "0 fork: the launch program on the fork is the code deployed on mainnet, byte for byte",
+   "ok": true,
+   "detail": "958368 bytes of code, sha256 817077c4730d02df"
+  },
+  {
+   "name": "0 fork: PoolConfig is mainnet's except the keeper; the pools bit is on; auto join is off",
+   "ok": true,
+   "detail": "pool fee 2000 bps, split 4000/4000/2000, cross holding 17000 $UNITS, at most 8 members"
+  },
+  {
+   "name": "0 fork: both agents are live launches of one repository, hosted and bound (their signing key is the runtime's, not the agent key), with no route and no pool; their owners here are the stand-in keys",
+   "ok": true,
+   "detail": "https://github.com/karpathy/minbpe: HHxDgM and Cuvvtx"
+  },
+  {
+   "name": "1 page: first agent, 1280 px: the page lists exactly the agent this wallet owns and offers to open its repository's pool, saying plainly that nothing is routed until a second agent joins",
+   "ok": true,
+   "detail": "\"Open this repository's pool with minbpe speedups\""
+  },
+  {
+   "name": "1 page: its review states the chain's numbers and that joining cannot be undone",
+   "ok": true,
+   "detail": "20% of the creator fees minbpe speedups keeps go to the pool's vault each time its fees are collected. A pool with one member routes nothing: this starts when a second agent joins."
+  },
+  {
+   "name": "1 page: ONE wallet approval of one transaction, nothing offered to the wallet before the review; it landed, and the wallet spent exactly what the review said (rent of three accounts and the fee)",
+   "ok": true,
+   "detail": "9916041 lamports on the fork; 0.007238921 SOL at mainnet rent; 88431 CU; 5PEgu8D46eZUPNqVQZyLqwyN26t7MqMVyriPJYkpvvSR2xtfyTkH6sPNwn4uQJGBZMT4j5Yu6moiSJnK35d1yAeb"
+  },
+  {
+   "name": "1 page: on chain: the pool of the repository exists with this agent as its only member, the agent's record carries the pool bit, and the agent's key signed nothing (one signature, the owner's)",
+   "ok": true,
+   "detail": "pool EXdjrKME6ThM8xpLmM6aP2NAu5mt6rQGLVFrVUszACoW"
+  },
+  {
+   "name": "1 page: the page then shows the agent as a member, alone so far",
+   "ok": true,
+   "detail": "In the pool of karpathy/minbpe, alone so far. A pool starts routing fees only when a second agent joins."
+  },
+  {
+   "name": "1 page: second agent, 390 px: the page offers to join the pool that exists and lists its member",
+   "ok": true,
+   "detail": "\"Join the pool of karpathy/minbpe\", member shown: minbpe speedups"
+  },
+  {
+   "name": "1 page: its review says routing starts for both and names the cross holding with its amount",
+   "ok": true,
+   "detail": "Cross holding: Tandem buys about $4.18 (17,000 UNITS) of the other member's coin, and that member buys the same amount of Tandem's coin. Your wallet does not pay for this, now or later. Each agent's p"
+  },
+  {
+   "name": "1 page: ONE wallet approval; it landed; the wallet spent exactly what the review said (the rent of its membership and the fee)",
+   "ok": true,
+   "detail": "2253081 lamports on the fork; 0.001645841 SOL at mainnet rent; 53734 CU; 5w5MkndpLBe7tEVqBQRENoKRjpYw3NniHmpsc8hFJjUmpQAbjakagwwW9BBD8oRRaDvjjiS6p9feZZf8qLqAd9Nt"
+  },
+  {
+   "name": "1 page: on chain: two members in join order, both records carry the pool bit, each owes one cross holding purchase of the configured amount",
+   "ok": true,
+   "detail": "cross due 17000 and 17000 $UNITS"
+  },
+  {
+   "name": "2 crank: the fee crank keeper script in this tree is the route-aware one",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "2 crank: a crank without the route accounts is refused for a member that joined after its launch (MissingRouteAccounts): the fees wait, nothing is lost",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "2 crank: routed crank of the first member, sent by the keeper script with the four route accounts it read from chain: compute, protocol and pool amounts exact; the pool share funds its cross holding first",
+   "ok": true,
+   "detail": "fees 73830382864: compute 41345014404, protocol 22149114860, pool 10336253600 (cross holding 10336253600, buckets 0)"
+  },
+  {
+   "name": "2 crank: routed crank of the second member (joined second, a swarm): exact as well",
+   "ok": true,
+   "detail": "fees 12441893442: compute 6967460328, protocol 3732568033, pool 1741865081 (cross holding 1741865081, buckets 0)"
+  },
+  {
+   "name": "2 crank: after 14 routed cranks, every one exact: both members' cross holdings are covered from their own pool shares and what came after is in the three buckets by the configured split",
+   "ok": true,
+   "detail": "vault 38940189011 = payouts 1976075604 + buybacks 1976075604 + burns 988037803 + cross holdings 34000000000"
+  },
+  {
+   "name": "3 settle and pay: refused: a settlement by a member's owner (only the keeper settles)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "3 settle and pay: a settlement for the registry's posted epoch 67 (a live epoch of the copy; TEST inputs: one generation credited to the first member): each member's payout and buyback equal the offchain recomputation",
+   "ok": true,
+   "detail": "first: payout 1976075604, buyback 98803780, burn 0; second: payout 0, buyback 395215121, burn 0"
+  },
+  {
+   "name": "3 settle and pay: Core's keeper, started before the pool existed and never restarted, finds the pool on its next step (it lists Pool accounts from chain) and mirrors its two members",
+   "ok": true,
+   "detail": "mirror before the step: 0 members; actions: prepare, pay, cross_buy, cross_buy, buyback, buyback"
+  },
+  {
+   "name": "3 settle and pay: Core's keeper paid the author's payout into its compute vault, exactly the settled amount",
+   "ok": true,
+   "detail": "1976075604 base units of $UNITS (1976.075604 $UNITS)"
+  },
+  {
+   "name": "3 settle and pay: Core's keeper bought both cross holdings: each agent holds the other's coin in its own token account, bought for at most the configured amount from its own pool share, none left with the pool",
+   "ok": true,
+   "detail": "first holds 1755335530799 base units of the second's coin for 16524000000 base units of $UNITS; second holds 549895404250 of the first's for 16524000000"
+  },
+  {
+   "name": "3 settle and pay: no keeper action failed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "3 settle and pay: afterwards the vault holds exactly what the pool still owes (buckets and members' dues)",
+   "ok": true,
+   "detail": "3435927035 base units"
+  },
+  {
+   "name": "4 page after: a visitor at 390 px sees the pool: two members, the vault balance the chain holds, the keeper's transactions folded under it, no horizontal scroll",
+   "ok": true,
+   "detail": "6 keeper transactions listed; vault 3435927035"
+  },
+  {
+   "name": "4 page after: the settlement posted by hand is not in Core's own list, and the page says there is none from Core rather than inventing one",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "transactions": 34,
+ "costs": [
+  {
+   "what": "join_pool from the Pools page (first member: Pool, its vault, PoolMember)",
+   "payer_mainnet_lamports": "7238921",
+   "fee": 5001,
+   "compute_units": 88431,
+   "created_bytes": [
+    675,
+    195,
+    170
+   ]
+  },
+  {
+   "what": "join_pool from the Pools page (second member: PoolMember)",
+   "payer_mainnet_lamports": "1645841",
+   "fee": 5001,
+   "compute_units": 53734,
+   "created_bytes": [
+    195
+   ]
+  },
+  {
+   "what": "pool_settle",
+   "payer_mainnet_lamports": "5000",
+   "fee": 5000,
+   "compute_units": 32959,
+   "created_bytes": []
+  }
+ ],
+ "mainnet_rent_checked": {
+  "pool_member_195_bytes": "1640840"
+ },
+ "outcome": "PASS",
+ "finished": "2026-10-13T15:09:55.991Z"
+}

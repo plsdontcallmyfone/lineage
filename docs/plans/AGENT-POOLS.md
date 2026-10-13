@@ -352,3 +352,33 @@ fee crank (`scripts/mainnet/crank-fees.ts`) reads `AgentLaunch.routes` and the `
 chain on every pass and appends the four route accounts; Core's keeper lists `Pool` accounts from
 chain on every step, so a new pool is settled, paid and bought for on its next pass with no
 restart. Proof: `scripts/mainnet/pool-join-fork.ts` (section 11.4).
+
+**11.4 Results (2026-10-13).** No mainnet transaction, no deploy, no program change.
+
+- Mainnet, read only: `scripts/mainnet/pool-join-simulate.ts` PASS 13/13
+  (`POOL-JOIN-SIMULATE-LAST.json`). `join_pool` for each of the two live agents of karpathy/minbpe,
+  built by the page's builder with the owner read from the registry as the only signer, simulated on
+  mainnet with signature checks off: it would land (88,431 and 76,429 compute units of a 160,000
+  limit, 626 bytes), the same transaction from another wallet is refused (`Unauthorized`), and the
+  wallet would lose 0.007238921 SOL as a pool's first member: 0.004079240 for the pool, 0.001513840
+  for its vault, 0.001640840 for the membership, 0.000005001 fee. Both agents are hosted and bound
+  (their signing key is the runtime's); both owners are their launchers and hold enough SOL.
+- Fork of mainnet with the live program and accounts: `scripts/mainnet/pool-join-fork.ts` PASS 26/26,
+  34 transactions (`POOL-JOIN-FORK-LAST.json`). Stand-in keys for the two owners and the keeper.
+  Both joins went through the Pools page itself, headless, on a dashboard and a Core built from the
+  tree: the first agent opened the pool at 1280 px, the second joined at 390 px, one approval of one
+  transaction each, the wallet's loss equal to the review's figure to the lamport (0.007238921 and
+  0.001645841 SOL at mainnet rent). A crank without the route accounts is refused and the keeper
+  script `crank-fees.ts` cranked both members with the route accounts it read from chain: 14 routed
+  cranks, compute, protocol and pool amounts exact each time, each member's pool share covering its
+  17,000 $UNITS cross holding before anything reached the buckets. One settlement posted with the
+  keeper key and TEST inputs (the run's Core holds no verified work); then Core's own keeper step,
+  from a Core started before the pool existed: it found the pool, paid the payout into the author's
+  compute vault (1,976.075604 $UNITS, exact), bought both cross holdings into the agents' own token
+  accounts and two buybacks, no action failed, and the vault equals what the pool still owes.
+- Unit tests: join builder 4, page state and review 18, pool card 4. Headless UI
+  `tests/ui/pools-join.spec.ts` 6/6 at 1280 and 390 on a local build over live mainnet data with a
+  watch-only wallet at a real owner's address (review reached, nothing offered to the wallet).
+- Not proven: a real wallet extension's approval; a settlement from Core's own records of verified
+  work by pool members (none exist yet); a member whose coin has graduated (its routed crank needs a
+  v0 transaction the keeper script does not build yet).

@@ -1,0 +1,208 @@
+{
+ "at": "2026-10-13T14:53:34.431Z",
+ "network": "mainnet",
+ "sent": 0,
+ "pool_config": {
+  "keeper": "9fxuo7e8eZsJP4rjB8fnYxqH1Nu9snEV8c3C2f6w1GZo",
+  "autoJoin": false,
+  "paused": false,
+  "maxMembers": 8,
+  "poolFeeBps": 2000,
+  "payoutBps": 4000,
+  "buybackBps": 4000,
+  "burnBps": 2000,
+  "authorBuybackBps": 2000,
+  "buybackPerGenBps": 2500,
+  "burnPerMilestoneBps": 5000,
+  "crossHoldQuote": "17000000000",
+  "maxBuyQuote": "340000000000"
+ },
+ "features": 3,
+ "quote_usd": 0.0002580155286943642,
+ "agents": [
+  {
+   "agent": "HHxDgMPdYJ5SCXNdsvtaQnng3PAPXrPtZGY2xYc4eDtX",
+   "mint": "EArgzU8BNN24s1NcVJX2XT2bgUBDysSiPYF4828r93Sp",
+   "repo": "https://github.com/karpathy/minbpe",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "owner": "GYjqD2ScGJSm9nzncv8pTK75rfpjBRFfLXQeKzm5Mc9e",
+   "launcher": "GYjqD2ScGJSm9nzncv8pTK75rfpjBRFfLXQeKzm5Mc9e",
+   "owner_is_launcher": true,
+   "hosted": true,
+   "signing_key_rotated": true,
+   "routes": 0,
+   "pool_exists": false,
+   "members": [],
+   "page_state": "open",
+   "signers_required": 1,
+   "wire_bytes": 626,
+   "compute_limit": 160000,
+   "simulated": {
+    "err": null,
+    "units": 88431,
+    "last": "Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq consumed 88131 of 159700 compute units"
+   },
+   "non_owner_refused": true,
+   "cost_lamports": {
+    "total": "7238921",
+    "pool": "4079240",
+    "vault": "1513840",
+    "member": "1640840",
+    "fee": "5001"
+   },
+   "owner_balance_lamports": "247029719",
+   "review": [
+    {
+     "key": "share",
+     "text": "20% of the creator fees HHxDgM keeps go to the pool's vault each time its fees are collected. A pool with one member routes nothing: this starts when a second agent joins."
+    },
+    {
+     "key": "split",
+     "text": "What reaches the vault is split three ways: 40% is paid to members by their verified work, into their compute balance; 40% buys members' coins when a member's change is accepted; 20% buys members' coins and burns them when the repository crosses a milestone."
+    },
+    {
+     "key": "cross",
+     "text": "Cross holding: When another agent joins, HHxDgM buys about $4.39 (17,000 UNITS) of its coin, and it buys the same amount of HHxDgM's coin. Your wallet does not pay for this, now or later. Each agent's purchases are paid from its own pool share, first: until they are covered, nothing from that agent reaches payouts, buybacks or burns. The network's keeper sends the purchases and the coins are held by the agent."
+    },
+    {
+     "key": "compute",
+     "text": "The other 80% of the fees it keeps still go to its own compute."
+    },
+    {
+     "key": "undo",
+     "text": "Joining cannot be undone. The program has no way to leave a pool, and what HHxDgM routed stays in the pool."
+    },
+    {
+     "key": "settings",
+     "text": "These are the network's settings as read from the chain now. The network's admin can change them for every member; the program never lets the pool share go above 50%."
+    }
+   ]
+  },
+  {
+   "agent": "CuvvtxbrrWhsqM1uj6ahUvEPTJrb78zfrUr4NVqGUpAo",
+   "mint": "F2j1B7WfAWceMKWpXAddynuYquhvdAtw9e1r712qGZAS",
+   "repo": "https://github.com/karpathy/minbpe",
+   "repo_id": "a7a07b033d8327a8e9772cdf7ad392f6e505757dcdeec78c61dd0715dac8ca05",
+   "owner": "8ZZsG4yHY4BFyoEo1F9QGAwo562LTU4RaoutXq5MAwkh",
+   "launcher": "8ZZsG4yHY4BFyoEo1F9QGAwo562LTU4RaoutXq5MAwkh",
+   "owner_is_launcher": true,
+   "hosted": true,
+   "signing_key_rotated": true,
+   "routes": 0,
+   "pool_exists": false,
+   "members": [],
+   "page_state": "open",
+   "signers_required": 1,
+   "wire_bytes": 626,
+   "compute_limit": 160000,
+   "simulated": {
+    "err": null,
+    "units": 76429,
+    "last": "Program 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq consumed 76129 of 159700 compute units"
+   },
+   "non_owner_refused": true,
+   "cost_lamports": {
+    "total": "7238921",
+    "pool": "4079240",
+    "vault": "1513840",
+    "member": "1640840",
+    "fee": "5001"
+   },
+   "owner_balance_lamports": "216870650",
+   "review": [
+    {
+     "key": "share",
+     "text": "20% of the creator fees Cuvvtx keeps go to the pool's vault each time its fees are collected. A pool with one member routes nothing: this starts when a second agent joins."
+    },
+    {
+     "key": "split",
+     "text": "What reaches the vault is split three ways: 40% is paid to members by their verified work, into their compute balance; 40% buys members' coins when a member's change is accepted; 20% buys members' coins and burns them when the repository crosses a milestone."
+    },
+    {
+     "key": "cross",
+     "text": "Cross holding: When another agent joins, Cuvvtx buys about $4.39 (17,000 UNITS) of its coin, and it buys the same amount of Cuvvtx's coin. Your wallet does not pay for this, now or later. Each agent's purchases are paid from its own pool share, first: until they are covered, nothing from that agent reaches payouts, buybacks or burns. The network's keeper sends the purchases and the coins are held by the agent."
+    },
+    {
+     "key": "compute",
+     "text": "The other 80% of the fees it keeps still go to its own compute."
+    },
+    {
+     "key": "undo",
+     "text": "Joining cannot be undone. The program has no way to leave a pool, and what Cuvvtx routed stays in the pool."
+    },
+    {
+     "key": "settings",
+     "text": "These are the network's settings as read from the chain now. The network's admin can change them for every member; the program never lets the pool share go above 50%."
+    }
+   ]
+  }
+ ],
+ "checks": [
+  {
+   "check": "the chain's pools bit is on and PoolConfig is not paused",
+   "ok": true,
+   "detail": "features 3, pool fee 2000 bps, split 4000/4000/2000, cross holding 17000000000 base units, auto join false, at most 8 members"
+  },
+  {
+   "check": "HHxDgM (karpathy/minbpe): the page would offer a join (state open or join)",
+   "ok": true,
+   "detail": "open"
+  },
+  {
+   "check": "HHxDgM (karpathy/minbpe): join_pool signed by the owner's wallet alone would land on mainnet now (one signature required, sigVerify off)",
+   "ok": true,
+   "detail": "88431 compute units of a 160000 limit; 626 bytes"
+  },
+  {
+   "check": "HHxDgM (karpathy/minbpe): it stays within 62.5% of its compute limit",
+   "ok": true,
+   "detail": "88431 of 160000"
+  },
+  {
+   "check": "HHxDgM (karpathy/minbpe): the same join from a wallet that is not the agent's owner is refused",
+   "ok": true,
+   "detail": "Program log: AnchorError thrown in programs/units-launch/src/pool.rs:228. Error Code: Unauthorized. Error Number: 6000. Error Message: signer is not authorized."
+  },
+  {
+   "check": "HHxDgM (karpathy/minbpe): the page's cost (rent of the new accounts and the fee) equals what the simulation took from the wallet, to the lamport",
+   "ok": true,
+   "detail": "7238921 lamports; wallet 247029719 to 239790798"
+  },
+  {
+   "check": "HHxDgM (karpathy/minbpe): the owner's wallet holds enough SOL for it",
+   "ok": true,
+   "detail": "0.247029719 SOL held, 0.007238921 needed"
+  },
+  {
+   "check": "Cuvvtx (karpathy/minbpe): the page would offer a join (state open or join)",
+   "ok": true,
+   "detail": "open"
+  },
+  {
+   "check": "Cuvvtx (karpathy/minbpe): join_pool signed by the owner's wallet alone would land on mainnet now (one signature required, sigVerify off)",
+   "ok": true,
+   "detail": "76429 compute units of a 160000 limit; 626 bytes"
+  },
+  {
+   "check": "Cuvvtx (karpathy/minbpe): it stays within 62.5% of its compute limit",
+   "ok": true,
+   "detail": "76429 of 160000"
+  },
+  {
+   "check": "Cuvvtx (karpathy/minbpe): the same join from a wallet that is not the agent's owner is refused",
+   "ok": true,
+   "detail": "Program log: AnchorError thrown in programs/units-launch/src/pool.rs:228. Error Code: Unauthorized. Error Number: 6000. Error Message: signer is not authorized."
+  },
+  {
+   "check": "Cuvvtx (karpathy/minbpe): the page's cost (rent of the new accounts and the fee) equals what the simulation took from the wallet, to the lamport",
+   "ok": true,
+   "detail": "7238921 lamports; wallet 216870650 to 209631729"
+  },
+  {
+   "check": "Cuvvtx (karpathy/minbpe): the owner's wallet holds enough SOL for it",
+   "ok": true,
+   "detail": "0.216870650 SOL held, 0.007238921 needed"
+  }
+ ],
+ "outcome": "PASS"
+}
