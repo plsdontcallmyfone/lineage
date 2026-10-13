@@ -1,0 +1,29 @@
+{
+  "_note": "Values of the two config accounts and the feature bits that open agent pools and GitHub fee claims on the OFFICIAL mainnet launch program (scripts/mainnet/launch-features.ts; docs/MAINNET-RUNBOOK.md 'Launch program upgrade: pools and claims'). The owner confirms them: --send on mainnet refuses while owner_confirmed is false or a key below is null. claim.attestor is the public key of the attestor key generated on the site server (UNITS_FEE_CLAIMS_ATTESTOR_KEY); pool.keeper is the public key of the pool keeper key generated on the site server (UNITS_POOL_KEEPER_KEY). Amounts are base units of $UNITS (6 decimals) as decimal strings. The claim values are the owner's (2026-10-13): one fixed share of 20%, a 30 day notice before a redirect, 24 hours before another wallet takes over an escrow, attestations valid 600 s. The pool values are what devnet runs (read from devnet's PoolConfig on 2026-10-13): 20% of the agent share routed, split 40% payout, 40% buyback, 20% burn, up to 8 agents, joining by the agent's owner only. cross_hold_quote and max_buy_quote are devnet TEST amounts (0.5 and 1,000 coins of a test coin): the owner sets them for the real $UNITS.",
+  "owner_confirmed": false,
+  "claim": {
+    "attestor": null,
+    "minBps": 2000,
+    "maxBps": 2000,
+    "changeDelayS": 2592000,
+    "rebindDelayS": 86400,
+    "maxAttestationTtlS": 600,
+    "paused": false
+  },
+  "pool": {
+    "keeper": null,
+    "autoJoin": false,
+    "paused": false,
+    "maxMembers": 8,
+    "poolFeeBps": 2000,
+    "payoutBps": 4000,
+    "buybackBps": 4000,
+    "burnBps": 2000,
+    "authorBuybackBps": 2000,
+    "buybackPerGenBps": 2500,
+    "burnPerMilestoneBps": 5000,
+    "crossHoldQuote": "500000",
+    "maxBuyQuote": "1000000000"
+  },
+  "features": ["pools", "github"]
+}

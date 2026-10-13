@@ -395,8 +395,11 @@ server, as root:
     INSTANCE=mainnet CORE_URL=https://<site> /opt/units-main/current/scripts/deploy/fee-crank-setup.sh
 
 A deploy leaves the units in place. Watch the payer's SOL: `journalctl -u units-main-fee-crank.service -n 20`
-shows the last runs, and a crank that cannot pay its fee shows there as a failed simulation. Agents
-with a fee route or a pool membership are skipped (their crank needs the route accounts).
+shows the last runs, and a crank that cannot pay its fee shows there as a failed simulation. An agent
+with a fee route or a pool membership gets its route accounts after the crank's eight while the chain's
+feature bit is on (since the launch upgrade rehearsal, 2026-10-13: the script before it skipped such an
+agent; "Launch program upgrade: pools and claims" below). Not sent: a routed agent whose coin has also
+graduated (the crank no longer fits a legacy transaction).
 
 ## Launch from a tweet
 
@@ -584,6 +587,238 @@ Config and fixes them for good.
   fee, contest time and refund time it was opened with), pause (stops open, claim and pay; refund
   keeps working), withdraw from the fee vault only, hand the role over. No admin instruction moves
   an escrow, and none returns one early.
+
+## Launch program upgrade: pools and claims
+
+Owner 2026-10-13: "rehearse on a copy of mainnet, show the result, then upgrade and open claims and
+pools". This section is the rehearsal's result and the commands. **Nothing below was sent to mainnet.**
+Proof: `scripts/mainnet/launch-upgrade-fork.ts` on a fork of mainnet holding the live accounts as they
+are, PASS 70/70 with 41 transactions measured, record in `scripts/mainnet/LAUNCH-UPGRADE-FORK-LAST.json`
+(copy of mainnet at slot 456,434,363). The dev wallet's key was not read: on the fork a throwaway key
+stands in the ProgramData's upgrade authority and `LaunchConfig.admin`, another in
+`LaunchConfig.runtime_authority`; every other byte is mainnet's.
+
+### What is deployed and what replaces it
+
+| | File | Bytes | sha256 |
+|---|---|---|---|
+| Live on mainnet (read with `solana program dump`, 2026-10-13) | equals `onchain/target/mainnet/units_launch.so` | 685,224 | `593dff1c876f83b4e59003cdeff4159c4a6a46cdefa9dc71a853dc175f045008` |
+| The upgrade | `onchain/target/pools-mainnet/units_launch.so` | 958,368 | `817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8` |
+
+Both were rebuilt on 2026-10-13 and came out byte for byte: the source before pools and claims
+(`53f8ea8^`, in a scratch copy) gives the live file, and today's `main` gives the upgrade
+(`cargo build-sbf --manifest-path programs/units-launch/Cargo.toml --features mainnet --sbf-out-dir target/launch-upgrade-rehearsal`,
+identical to `target/pools-mainnet`). The program source has not changed since that build
+(last commit `37f018a`; the later claims rework keyed by repository id, `e402e05`, changed Core and the
+pages only). So the upgrade is the build the audit scope names, the one devnet runs at its own ids, and
+the one `packages/chain`, Core and the Launch page on `main` expect.
+
+### Account layouts: no migration
+
+The whole difference between the two sources is `lib.rs` (the crank's slices, twelve new instructions,
+two renamed fields), `pool.rs` and `claim.rs` (new).
+
+| Account | Change | Existing accounts |
+|---|---|---|
+| `LaunchConfig` (319 bytes) | `reserved: u128` becomes `features: u8` + `reserved: [u8; 15]`: the same 16 bytes at the same offset (260) | the live account holds 16 zero bytes there: read as `features` 0 |
+| `AgentLaunch` (554 bytes) | `reserved: Pubkey` becomes `routes: u8` + `reserved: [u8; 31]`: the same 32 bytes | every live record (5 on 2026-10-13) holds 32 zero bytes there: `routes` 0 |
+| `UsageEpoch`, `DebitReceipt`, `BountyConfig`, `Bounty`, `BountyLedger`, `BountyReceipt` | none | unchanged |
+| new: `ClaimConfig`, `FeeRoute`, `ClaimEscrow`, `PoolConfig`, `Pool`, `PoolMember`, `CrossHolding` | created by the new instructions | none exist |
+
+No account changes size, no discriminator changes, no migration instruction exists or is needed. On the
+fork all 19 live accounts of the program were byte for byte the same after the upgrade, the client
+decoders read each, and the upgraded program loaded and rewrote every live `AgentLaunch`
+(`refresh_awake`). One behaviour change in an existing instruction: `set_launch_config` no longer
+writes zero over those 16 bytes, so a config change keeps the feature bits. `crank_pump_fees` keeps its
+eight accounts and its discriminator; with the bits off, or for an agent with no route and no
+membership, it makes the split it makes today. The launch transaction costs 103 compute units more
+(the same transaction with the same keys simulated before and after: 230,673 and 230,776).
+
+New instructions: `set_features`, `set_claim_config`, `set_fee_route`, `apply_fee_route`,
+`claim_github_fees`, `set_pool_config`, `join_pool`, `pool_settle`, `pool_pay`, `pool_buy`,
+`pool_cross_buy`.
+
+### Cost, at mainnet rent (base fees, no priority fee)
+
+| Item | SOL | |
+|---|---|---|
+| ProgramData grows by 273,144 bytes (685,269 to 958,413) | 1.387571520 | locked for good (3.481816760 to 4.869388280) |
+| The buffer while the upgrade is in flight | 4.869388280 | temporary: returns to the dev wallet in the upgrade transaction |
+| Writing the buffer: 947 writes and the account's creation, 949 signatures | 0.004745000 | spent (an interrupted and resumed write cost the same) |
+| `extend`, `upgrade` | 0.000010000 | spent |
+| **Peak the dev wallet must hold** | **6.261714800** | |
+| **Spent in the end by the upgrade** | **1.392326520** | |
+| `set_claim_config` + `set_pool_config` (creates two accounts of 70 and 74 bytes), `set_features` | 0.002042000 | spent |
+
+The CLI funds a buffer with the rent of the ProgramData it becomes (45 bytes of header plus the code),
+which is why the buffer holds the same 4.869388280 as the final ProgramData. With the bounty escrow
+program's deploy (4.870165520 at its peak, 2.435519640 locked, 0.003510200 to initialize): one after
+the other in either order the dev wallet needs 6.27 SOL at most at any moment and both leave
+3.833398360 SOL spent; the two buffers at the same time need 11.131880320 SOL. The dev wallet held
+18.361740469 SOL when the rehearsal read it.
+
+Later, paid by whoever sends them (measured on the fork): `set_fee_route` 0.003865800 the first time
+for a repository (route, escrow, its token account) and 0.002722800 for a redirect to a new one,
+`join_pool` 0.007238920 for a pool's first member and 0.001645840 for the next, a claim two
+signatures. A launch with the route tick and the pool box: 4 transactions (1,164, 914, 1,139 and 496
+bytes), 0.281248272 SOL on the fork with 10 USD of credits.
+
+### Order, and what each window means
+
+1. **Upgrade** (steps A to D). Nothing changes for anyone: `features` is 0. Proven on the fork with the
+   upgraded program: the fee crank keeper script as committed today cranked all five live agents (70%
+   to the vault, the rest to the treasury, to the unit); `post_usage` and `debit_compute` continued the
+   live sequence; the Launch page's builders launched with SOL only (the pool purchase) and from the
+   wallet's own `$UNITS` (`pool-launch-fork.ts` 21/21); the runtime binding ran. For the slot of the
+   `extend` and the slot of the `upgrade` the program cannot be called (the loader's rule; the
+   ProgramData's slot moved at both): a transaction landing in one of those two slots fails and is
+   retried by its sender. Stop here as long as needed.
+2. **Server**: the release with the route-aware keeper script, the keys, the flags (step E). The pages
+   show nothing new: the Launch page offers the tick only when the profile flag, the chain bit, a
+   `ClaimConfig` with one fixed share and Core's route are all there.
+3. **`configs`** (step F): creates the two config accounts. Changes nothing: a route or a membership is
+   still refused (`FeatureOff`).
+4. **`features`** (step G): the tick and the pool box appear on the Launch page, `/claim` and `/pools`
+   work.
+
+What breaks if step 4 comes before step 2: nothing for agents without a route or a membership (their
+eight-account crank is unchanged, proven with the bits on). But an agent whose owner sets a route or
+joins a pool by hand is then SKIPPED by the keeper script the server runs today (its simulation fails
+with `MissingRouteAccounts` and it sends nothing): that agent's fees wait at pump.fun, not lost, until
+the route-aware script (`scripts/mainnet/crank-fees.ts` on `main` since this lane) is on the server.
+No claim is possible before Core holds the attestor key. So: server first, bits last.
+
+The switch back is `set_features` 0 (`launch-features.ts features --set none --send`): every agent is
+cranked with eight accounts again and nothing is routed; routes, memberships and what already accrued
+stay, and accrued fees remain claimable.
+
+### Steps
+
+```sh
+set -a; . ~/.config/units/rpc.env; set +a      # UNITS_MAINNET_RPC; never printed, `solana config` untouched
+RPC="$UNITS_MAINNET_RPC"; DEV=<the dev wallet's keypair file>; DEVPUB=6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3
+P=2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq; SO=onchain/target/pools-mainnet/units_launch.so
+BUF=~/.config/units/mainnet/launch-upgrade-buffer.json     # the buffer's address; keep the file until step D landed
+
+# ---- A. preflight (reads only)
+shasum -a 256 $SO                          # 817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8, 958368 bytes
+solana program show -u "$RPC" $P           # Authority 6UhUBo..., Data Length 685224, Balance 3.48181676
+solana balance -u "$RPC" $DEVPUB           # 6.27 SOL or more, plus the priority fees chosen
+solana program show -u "$RPC" --buffers --buffer-authority $DEVPUB     # no buffer left from an earlier attempt
+bun scripts/mainnet/launch-features.ts status --mainnet               # NOT the pools and claims build; features 0; no configs
+# optional, the rehearsal again on a fresh copy of mainnet (ports 9690-9693, 9700-9730; about 4 minutes):
+#   D=$(mktemp -d); mkdir -p $D/keys $D/ledger
+#   MAINNET_FORK_KEYS=$D/keys bun scripts/mainnet/launch-upgrade-fork.ts --prepare $D
+#   scripts/mainnet/fork.sh $D/ledger $(cat $D/fork-args) &
+#   MAINNET_FORK_KEYS=$D/keys LAUNCH_UPGRADE_FORK_DIR=$D UNITS_NETWORK=mainnet bun scripts/mainnet/launch-upgrade-fork.ts
+
+# ---- B. write the buffer (4.869388280 SOL into the buffer, 0.004745 SOL of fees; 13 s on the fork, minutes on mainnet)
+solana-keygen new --no-bip39-passphrase -s -o $BUF
+solana program write-buffer -u "$RPC" -k $DEV --buffer $BUF --buffer-authority $DEV $SO     # add --with-compute-unit-price <micro-lamports>, and --use-rpc if writes do not land
+solana program dump -u "$RPC" $(solana-keygen pubkey $BUF) /tmp/launch-buffer.so && shasum -a 256 /tmp/launch-buffer.so    # the same 817077c4...: do not go on otherwise
+
+# ---- C. extend the program's space by exactly 958368 - 685224 = 273144 bytes (1.387571520 SOL, locked; the code does not change)
+solana program extend -u "$RPC" -k $DEV $P 273144
+solana program show -u "$RPC" $P           # Data Length 958368, Balance 4.86938828
+
+# ---- D. upgrade (one transaction; the buffer's 4.869388280 SOL returns to the dev wallet)
+solana program upgrade -u "$RPC" -k $DEV --upgrade-authority $DEV $(solana-keygen pubkey $BUF) $P
+bun scripts/mainnet/launch-features.ts status --mainnet     # "the pools and claims build (sha256 817077c4...)", upgrade authority 6UhUBo..., features 0 (none)
+solana program show -u "$RPC" --buffers --buffer-authority $DEVPUB     # empty
+# then: journalctl -u units-main-fee-crank.service -n 20 on the server after its next run (every 10 minutes): cranks as before
+
+# ---- E. the server (no chain transaction; see "Off chain" below), then the two public keys into scripts/mainnet/launch-features-params.json
+
+# ---- F. the two config accounts (0.002037000 SOL; changes nothing while features is 0)
+bun scripts/mainnet/launch-features.ts configs --mainnet --key $DEV            # the plan: prints both configs, sends nothing
+bun scripts/mainnet/launch-features.ts configs --mainnet --key $DEV --send
+# check: ClaimConfig minBps 2000, maxBps 2000, changeDelayS 2592000, rebindDelayS 86400, maxAttestationTtlS 600, the attestor's key;
+#        PoolConfig poolFeeBps 2000, payout 4000, buyback 4000, burn 2000, maxMembers 8, autoJoin false, the keeper's key
+
+# ---- G. open both (0.000005 SOL)
+bun scripts/mainnet/launch-features.ts features --mainnet --key $DEV --send    # features 0 (none) to 3 (pools,github)
+#   one at a time: --set github, later --set pools,github.   Back: --set none
+```
+
+`launch-features.ts` refuses to send when the endpoint is mainnet without `--mainnet`, the key is not
+`LaunchConfig.admin`, the deployed program is not the upgrade build, `owner_confirmed` is false in
+`scripts/mainnet/launch-features-params.json`, the attestor or the keeper is not set, or a bit is asked
+for whose config account does not exist. Each of those refusals was exercised on the fork.
+
+The values in `launch-features-params.json`: the claim block is the owner's (one share of 20%:
+`min_bps` = `max_bps` = 2000; redirect notice 30 days; another wallet takes over an escrow after 24
+hours; attestations live 600 s). The pool block is what devnet runs (read from devnet's `PoolConfig` on
+2026-10-13): 20% of the agent share routed, split 40% payout, 40% buyback, 20% burn, at most 8 agents,
+joining by the agent's owner. **Two of devnet's pool values are test amounts and need the owner's
+figure for the real `$UNITS`**: `cross_hold_quote` 0.5 coins (what a member's slice spends on each other
+member's coin) and `max_buy_quote` 1,000 coins (the cap of one pool purchase). Devnet's own
+`ClaimConfig` still holds 1000 to 3000 bps, 600 s and 120 s: it is not the model for the claim block.
+
+### If a step stops
+
+- **The write is interrupted** (connection, a closed terminal): run the same `write-buffer` command
+  again with the same `--buffer $BUF`. It writes only what is missing: on the fork a write killed after
+  57 pieces finished with 890 more, 949 signatures in all, the price of an uninterrupted write. The
+  buffer is listed by `solana program show --buffers --buffer-authority $DEVPUB` meanwhile. The program
+  is untouched until step D.
+- **`$BUF` is lost, or the buffer is not wanted**: `solana program close -u "$RPC" -k $DEV <buffer address> --recipient $DEVPUB --authority $DEV`
+  returns its whole balance (rehearsed); start B again with a new file.
+- **`upgrade` before `extend`** is refused ("account data too small for instruction") and changes
+  nothing (rehearsed).
+- **`extend` landed, `upgrade` did not**: the old code keeps running in the larger space (rehearsed);
+  send D again.
+- **After the upgrade something is wrong**: the bits are off, so behaviour is today's. The way back to
+  the old code is another upgrade from a buffer of `onchain/target/mainnet/units_launch.so` (it fits
+  the larger space; not rehearsed).
+
+### Off chain (step E; nothing here was done, no deploy by this lane)
+
+1. **Keys, generated on the server**, mode 600, owner the instance's Core account, in
+   `/etc/units-main-core/`: the attestor (`claims-attestor.json`) and the pool keeper
+   (`pools-keeper.json`), each with `solana-keygen new --no-bip39-passphrase -s -o <file>`. Their PUBLIC
+   keys go into `launch-features-params.json` (`claim.attestor`, `pool.keeper`). The keeper key pays
+   fees and the rent of the pool's token accounts: give it SOL (0.1 SOL covers a first pool many times;
+   a pool's first purchases cost about 0.007 SOL of rent on the fork).
+2. **Core's environment**, `/etc/units-main/core-github.env` (mode 600, root; the file the deploy kit's
+   Core unit reads for an instance, beside `core.env` which every deploy rewrites; read from
+   `scripts/deploy/instance.ts`, not checked on the server): `UNITS_FEE_CLAIMS_ATTESTOR_KEY=/etc/units-main-core/claims-attestor.json`,
+   `UNITS_POOL_KEEPER_KEY=/etc/units-main-core/pools-keeper.json`, `UNITS_POOL_KEEPER_EVERY_S=600`, and
+   the GitHub OAuth app's `UNITS_GITHUB_OAUTH_CLIENT_ID` and `UNITS_GITHUB_OAUTH_CLIENT_SECRET` copied
+   from `~/.config/units/github-oauth.env` (two lines; never into the repository, a log or a command
+   line). The app's callback is `https://app.units.gg/v1/fee-claims/oauth/callback` (Core builds it
+   from `UNITS_SITE_URL`); no scope.
+3. **Flags**: `features.agent_pools` and `features.github_fee_claims` true for Core through the
+   official state file (`config/mainnet/state.json` `network_overrides.features`, which
+   `scripts/deploy/site-config.ts` lays over `config/network.json` for a mainnet instance), and true in
+   `config/profile.json` `profiles.mainnet.features` for the pages.
+4. **The gate** needs no change: `scripts/deploy/gate.ts` already passes `GET /v1/fee-claims/*`
+   (the OAuth start and callback among them), `GET /v1/github/repos/*`, `GET /v1/pools*`, their `/api/`
+   forms and the three POSTs under `/api/fee-claims/` (checked with its `classify`).
+5. **Deploy** the release (Core, the web server and pages, the indexer; the fee crank timer picks up
+   the new `scripts/mainnet/crank-fees.ts` from the release), by the deploy lane's commands.
+6. **Check after the deploy and before step G**: `GET https://app.units.gg/v1/fee-claims/providers`
+   answers with `oauth` set (provider `github`) and `attestor` equal to the public key in the params
+   file; `GET /v1/pools` answers an empty list instead of `feature_off`; Core's log says
+   `fee claims: on, attestor <key>` and `agent pools: on, keeper <key>`.
+7. **After step G**: the Launch page shows "Route 20% of this agent's fees to the owners of
+   owner/repo" and the pool box; one sign-in on `/claim` with a GitHub account that administers a
+   routed repository (docs/plans/GITHUB-FEE-CLAIMS.md 11.8 step 5 asks for this once on devnet first).
+
+### Not proven by the rehearsal
+
+- Anything on the server, the GitHub sign-in against github.com, Core's attestation endpoint and its
+  pool keeper against mainnet (the fork signed attestations and settlements with stand-in keys through
+  the same builders).
+- Priority fees and landing about 950 write transactions on mainnet (the fork has no congestion).
+- A transaction landing in the slot of the `extend` or the `upgrade` (stated from the loader's rule).
+- The dev wallet's own signature (a stand-in key signed on the fork).
+- A routed agent whose coin has ALSO graduated to PumpSwap: its crank is 1,313 bytes as a legacy
+  transaction, over the limit, so the keeper script says so and does not send it. It needs a v0
+  transaction with the launch lookup table. No agent coin has graduated yet.
+- The Launch page's compute limit for the launch transaction (421,000) against its own rule of 62.5%
+  at most: the units vary with the keys, about 235,000 to 265,000 over this lane's launches on the
+  fork, and three of eighteen went over 263,125. They landed (the limit itself is far away) and the upgrade adds 103
+  units; the rule and the limit are the page's, from before this upgrade.
 
 ## Later admin actions
 
