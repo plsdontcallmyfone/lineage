@@ -233,6 +233,61 @@ describe("swarms: the flag is on", () => {
     expect(v.seats[0].last).toBeNull();
   });
 
+  test("a list of launcher wallets: only a listed wallet's launch is a swarm, the form's answer is per wallet, the list is never published", async () => {
+    const { env: e } = await world(true);
+    const listed = generateAgentKey().id;
+    const other = generateAgentKey().id;
+    // no list: every wallet may
+    const open = await expectOk(e.anon.get(`/v1/swarms/config?wallet=${other}`));
+    expect(open.launch).toEqual({ restricted: false, open: true });
+    expect(open.max_now).toBe(open.settings.max_members);
+    expect((await e.admin.c.post("/v1/admin/swarms/config", { launchers: ["not a wallet"] })).body.error).toBe("bad_swarm_settings");
+    expect((await e.admin.c.post("/v1/admin/swarms/config", { launchers: [listed, listed] })).body.error).toBe("bad_swarm_settings");
+    const set = await expectOk(e.admin.c.post("/v1/admin/swarms/config", { launchers: [listed], max_members: 2 }));
+    expect(set.launchers).toEqual([listed]);
+    // the form's answer: open for the listed wallet, closed (size one) for any other and for none; the runtime's settings are in every answer
+    const forListed = await expectOk(e.anon.get(`/v1/swarms/config?wallet=${listed}`));
+    expect(forListed.launch).toEqual({ restricted: true, open: true });
+    expect(forListed.max_now).toBe(2);
+    for (const q of [`?wallet=${other}`, ""]) {
+      const c = await expectOk(e.anon.get(`/v1/swarms/config${q}`));
+      expect(c.launch).toEqual({ restricted: true, open: false });
+      expect(c.max_now).toBe(1);
+      expect(c.settings.max_members).toBe(2);
+    }
+    // the list is in no public answer
+    for (const p of [`/v1/swarms/config?wallet=${other}`, "/v1/swarms/config", "/v1/config"]) expect(JSON.stringify(await expectOk(e.anon.get(p)))).not.toContain(listed);
+    // a launch from each wallet with a two-seat soul stored first (Core has not read the launch yet, as with the launch form)
+    const mk = async (launcher: string) => {
+      const k = generateAgentKey();
+      const soul = soulOf(k, [OPUS, HAIKU]);
+      expect((await putSoul(e, k, soul)).status).toBe(200);
+      await expectOk(e.admin.c.post("/v1/admin/launches", { agent: k.id, mint: generateAgentKey().id, launcher, target_repo: RECIPE.repo, hosted: true, identity_mode: "purchased" }));
+      const c = new CoreClient(e.base, k, () => e.clock.now());
+      (c as { seat?: number }).seat = 2;
+      return { k, id: k.id, seat2: c };
+    };
+    const yes = await mk(listed);
+    const no = await mk(other);
+    expect((await expectOk(e.anon.get(`/v1/agents/${yes.id}/swarm`))).size).toBe(2);
+    expect((await expectOk(e.anon.get(`/v1/agents/${no.id}/swarm`))) as unknown).toEqual({ agent: no.id, size: 1, seats: null });
+    expect((await expectOk(e.anon.get("/v1/swarms"))).swarms.map((x: { agent: string }) => x.agent)).toEqual([yes.id]);
+    // the other wallet's agent has a solo agent's limits, whatever seat its requests name
+    for (let i = 0; i < SESSION_LIMITS.live_sessions_per_agent; i++) await expectOk(no.seat2.post("/v1/sessions", sessionBody(e)));
+    expect((await no.seat2.post("/v1/sessions", sessionBody(e))).body.error).toBe("too_many_sessions");
+    // once Core knows the launcher, a swarm soul for another wallet's agent is refused outright
+    const late = generateAgentKey();
+    await expectOk(e.admin.c.post("/v1/admin/launches", { agent: late.id, mint: generateAgentKey().id, launcher: other, target_repo: RECIPE.repo, hosted: true, identity_mode: "purchased" }));
+    const refused = await putSoul(e, late, soulOf(late, [OPUS, HAIKU]));
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe("swarm_not_open");
+    expect((await putSoul(e, late, soulOf(late, null))).status).toBe(200);
+    // the list removed: every wallet may, and the soul stored meanwhile is a swarm from then on
+    expect((await expectOk(e.admin.c.post("/v1/admin/swarms/config", { launchers: null }))).launchers).toBeNull();
+    expect((await expectOk(e.anon.get(`/v1/swarms/config?wallet=${other}`))).launch).toEqual({ restricted: false, open: true });
+    expect((await expectOk(e.anon.get(`/v1/agents/${no.id}/swarm`))).size).toBe(2);
+  });
+
   test("every swarm table is classified for a purge", () => {
     for (const t of ["swarm_settings", "swarm_sessions", "swarm_heartbeats", "swarm_seat_state"]) expect(RULES[t]).toBeDefined();
   });

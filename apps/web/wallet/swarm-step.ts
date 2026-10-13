@@ -35,21 +35,36 @@ export const SW = {
 };
 
 let loading: Promise<void> | null = null;
-/** Reads Core's swarm settings once; a miss (the flag is off) leaves the form as it was. */
-export function loadSwarmCfg(then: () => void): void {
-  if (SW.loaded || loading) return;
-  loading = fetch("/api/swarms/config?optional=1")
+/** the wallet the settings were last read for ("" for none connected) */
+let loadedFor: string | null = null;
+/** Whether Core's answer lets this form offer several agents: swarms are on, and open to the wallet it was asked for. */
+export const swarmOffered = (j: any): boolean => !!j && !j._miss && j.enabled === true && !!j.settings && j.launch?.open !== false;
+/**
+ * Reads Core's swarm settings, once per connected wallet; a miss (the flag is off) leaves the form as
+ * it was. Core may open swarms to listed launcher wallets only (`launch.open` false for any other):
+ * the form then shows no Agents field, and a size picked for another wallet falls back to one.
+ */
+export function loadSwarmCfg(then: () => void, wallet: string | null = null): void {
+  const who = wallet ?? "";
+  if ((SW.loaded && loadedFor === who) || loading) return;
+  const had = !!SW.cfg;
+  loading = fetch(`/api/swarms/config?optional=1${who ? `&wallet=${encodeURIComponent(who)}` : ""}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => {
-      SW.cfg = j && !j._miss && j.enabled === true && j.settings ? (j as SwarmCfg) : null;
+      SW.cfg = swarmOffered(j) ? (j as SwarmCfg) : null;
     })
     .catch(() => {
       SW.cfg = null;
     })
     .finally(() => {
       SW.loaded = true;
+      loadedFor = who;
       loading = null;
-      if (SW.cfg) then();
+      if (!SW.cfg) {
+        SW.size = 1;
+        SEATS.n = 1;
+      }
+      if (SW.cfg || had) then();
     });
 }
 

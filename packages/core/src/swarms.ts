@@ -132,6 +132,30 @@ export class Swarms {
     }
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // who may launch a swarm (settings.launchers)
+
+  private gate: { list: Set<string> | null } | null = null;
+  /** The launcher wallets a swarm may come from, or null: every wallet. Read once, again after the admin's next edit. */
+  private launchers(): Set<string> | null {
+    if (!this.gate) {
+      const l = this.settings().launchers;
+      this.gate = { list: l === null ? null : new Set(l) };
+    }
+    return this.gate.list;
+  }
+
+  /** May `wallet` launch a swarm now? Every wallet while no list is set; with a list, a listed one only. */
+  launchOpenTo(wallet: string | null | undefined): boolean {
+    const l = this.launchers();
+    return l === null || (typeof wallet === "string" && l.has(wallet));
+  }
+
+  /** The launcher wallet of a launched agent as Core read it, or null (not read yet, or not a launched agent). */
+  private launcherOf(agent: string): string | null {
+    return this.c.db.query<{ launcher: string | null }, [string]>("SELECT launcher FROM agents WHERE agent_id = ? AND kind = 'launched'").get(agent)?.launcher ?? null;
+  }
+
   /** POST /v1/admin/swarms/config: a patch of the settings (a field set to its config value again by sending that value). */
   setConfig(body: unknown) {
     requireFeature(this.core, "swarms");
@@ -144,18 +168,23 @@ export class Swarms {
       throw bad("bad_swarm_settings", (e as Error).message);
     }
     this.c.db.query("INSERT OR REPLACE INTO swarm_settings (id, body, updated_at) VALUES (1, ?, ?)").run(JSON.stringify(patch), this.c.now());
+    this.gate = null;
     this.c.emitEvent("swarm.settings", { changed: Object.keys(body) });
-    return this.config();
+    // the admin's own answer names the list; the public route never does
+    return { ...this.config(), launchers: this.settings().launchers };
   }
 
   /**
    * GET /v1/swarms/config: what the launch form and the hosted runtime need. `min_usd_per_seat` is the
    * network's own prepaid credits minimum (prepay.min_usd): a swarm's launch carries it once per seat.
    * `seats_free` is the hosted runtime's last report of its desktop room (null when it never said).
+   * `launch`: whether a list of launcher wallets is in force (`restricted`) and whether `wallet` (the
+   * form's connected wallet, `?wallet=`) may launch a swarm now (`open`). The list itself is not served.
    */
-  config() {
+  config(wallet?: string | null) {
     requireFeature(this.core, "swarms");
-    const s = this.settings();
+    const { launchers, ...s } = this.settings();
+    const open = this.launchOpenTo(wallet);
     const prepay = (this.c.cfg as { prepay?: { min_usd?: string; attempt_max_usd?: number } | null }).prepay ?? null;
     const g = runtimeSpendOf(this.core).global();
     const e2b = (g?.body as { desktops?: { e2b?: { running: number | null; max: number | null } | null } | null } | undefined)?.desktops?.e2b ?? null;
@@ -165,9 +194,10 @@ export class Swarms {
       settings: s,
       min_usd_per_seat: prepay?.min_usd ?? null,
       seat_reserve_usd: prepay?.attempt_max_usd ?? null,
+      launch: { restricted: launchers !== null, open },
       capacity: { seats_free: free, reported_at: g?.reported_at ?? null },
-      // the largest size the form offers now: the setting, lowered to the screens the runtime says are free
-      max_now: free === null ? s.max_members : Math.max(1, Math.min(s.max_members, free)),
+      // the largest size the form offers now: the setting, lowered to the screens the runtime says are free; one for a wallet that may not launch a swarm
+      max_now: !open ? 1 : free === null ? s.max_members : Math.max(1, Math.min(s.max_members, free)),
     };
   }
 
@@ -189,7 +219,7 @@ export class Swarms {
     }
     if (!head) return null;
     const hit = this.cache.get(agent);
-    if (hit && hit.digest === head.digest) return hit.seats;
+    if (hit && hit.digest === head.digest) return this.gated(agent, hit.seats);
     const row = this.latestSoul(agent)!;
     let seats: SwarmSeat[] | null = null;
     try {
@@ -200,7 +230,16 @@ export class Swarms {
     if (seats && seats.length < 2) seats = null; // a block of one seat is a solo agent
     if (this.cache.size > 5000) this.cache.clear();
     this.cache.set(agent, { digest: row.digest, seats });
-    return seats;
+    return this.gated(agent, seats);
+  }
+
+  /** With a list of launcher wallets in force, only an agent Core read as launched by one of them is a swarm; any other is solo. */
+  private gated(agent: string, seats: SwarmSeat[] | null): SwarmSeat[] | null {
+    if (!seats) return null;
+    const l = this.launchers();
+    if (l === null) return seats;
+    const by = this.launcherOf(agent);
+    return by !== null && l.has(by) ? seats : null;
   }
 
   seats(agent: string): number {
@@ -224,6 +263,7 @@ export class Swarms {
    * The swarm rules of a soul version about to be stored (Souls.put), beyond its shape:
    *  - flag off: the block is an unknown field, unless it is carried unchanged from the version before;
    *  - at most `max_members` seats, every seat's model a priced entry of the registry;
+   *  - with a list of launcher wallets in force (settings.launchers), not for an agent launched by another wallet;
    *  - after the first version the block does not change: a memory fold signed by the runtime key
    *    carries it over as it is (roster changes by the owner's wallet statement are a later phase).
    */
@@ -237,6 +277,10 @@ export class Swarms {
     }
     if (!next) return;
     if (!this.on()) throw new ApiError(400, "bad_soul", "soul.swarm: unknown field");
+    // a list of launcher wallets in force: refused for an agent Core already read as launched by another wallet. An agent
+    // Core has not read yet (the form stores the soul right after the launch landed) is taken; `roster` decides once it is read
+    const by = this.launcherOf(doc.agent);
+    if (by !== null && !this.launchOpenTo(by)) throw new ApiError(403, "swarm_not_open", "a coin with several agents cannot be launched from this wallet yet");
     const s = this.settings();
     if (next.members.length > s.max_members) throw new ApiError(400, "bad_soul", `soul.swarm.members: at most ${s.max_members} seats (swarm.max_members)`);
     for (const m of next.members) {

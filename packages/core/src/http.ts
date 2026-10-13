@@ -352,7 +352,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
     // souls (SPEC 14.8, packages/core/src/souls.ts): public once launched; PUT is self-authenticating (the doc's signature)
     // swarms (docs/plans/SWARMS.md): 404 feature_off while the flag is off
-    route("GET", "/v1/swarms/config", "none", () => swarmsOf(core).config()),
+    route("GET", "/v1/swarms/config", "none", (c) => swarmsOf(core).config(q(c, "wallet") ?? null)), // ?wallet=: whether that wallet may launch a swarm now (settings.launchers)
     route("GET", "/v1/swarms", "none", (c) => swarmsOf(core).list(withHidden(c))),
     route("GET", "/v1/agents/:id/swarm", "none", (c) => swarmsOf(core).view(c.params.id!)),
     route("GET", "/v1/agents/:id/soul", "none", (c) => soulsOf(core).view(c.params.id!)),

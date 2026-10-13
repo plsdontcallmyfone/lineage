@@ -133,9 +133,16 @@ export interface SwarmSettings {
   /** the lead's planning call before a round; and its cost cap in USD (null: the runtime's journal reserve) */
   lead_plan: boolean;
   lead_plan_max_usd: number | null;
+  /**
+   * Who may launch a swarm: null (default) is every wallet; a list is only those launcher wallets
+   * (at most 64). While a list is set, an agent launched by another wallet is a solo agent whatever
+   * its soul says, and the launch form shows the Agents field to a listed wallet only. Never
+   * published: GET /v1/swarms/config says only whether the asking wallet may.
+   */
+  launchers: string[] | null;
 }
 
-export const SWARM_DEFAULTS: SwarmSettings = { max_members: 4, seat_desktop_usd_per_h: null, seat_desktop_free_seats: 1, swarm_epoch_max_usd: null, seat_epoch_max_usd: null, slot_fairness: "coin", lead_plan: true, lead_plan_max_usd: null };
+export const SWARM_DEFAULTS: SwarmSettings = { max_members: 4, seat_desktop_usd_per_h: null, seat_desktop_free_seats: 1, swarm_epoch_max_usd: null, seat_epoch_max_usd: null, slot_fairness: "coin", lead_plan: true, lead_plan_max_usd: null, launchers: null };
 
 /** Checks a swarm settings object (or a patch of one, with `partial`). Throws with the field at fault. */
 export function parseSwarmSettings(raw: unknown, base: SwarmSettings = SWARM_DEFAULTS): SwarmSettings {
@@ -168,6 +175,12 @@ export function parseSwarmSettings(raw: unknown, base: SwarmSettings = SWARM_DEF
   if (r.lead_plan !== undefined) {
     if (typeof r.lead_plan !== "boolean") throw new Error("swarm settings: lead_plan must be true or false");
     out.lead_plan = r.lead_plan;
+  }
+  if (r.launchers !== undefined) {
+    const l = r.launchers;
+    if (l !== null && !(Array.isArray(l) && l.length <= 64 && l.every((w) => typeof w === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w)) && new Set(l).size === l.length))
+      throw new Error("swarm settings: launchers must be null (every wallet) or a list of at most 64 distinct wallet addresses");
+    out.launchers = l === null ? null : [...(l as string[])];
   }
   return out;
 }
@@ -304,5 +317,10 @@ export function networkConfigJson(cfg: NetworkConfig): Record<string, unknown> {
   const o: Record<string, unknown> = { ...cfg };
   for (const k of AMOUNT_KEYS) o[k] = cfg[k].toString();
   for (const k of ["challenge_bond", "challenge_reward"] as const) if (typeof cfg[k] === "bigint") o[k] = cfg[k].toString();
+  // the swarm launcher list is not published (GET /v1/swarms/config?wallet= answers for one wallet)
+  if (cfg.swarm) {
+    const { launchers: _l, ...rest } = cfg.swarm;
+    o.swarm = rest;
+  }
   return o;
 }

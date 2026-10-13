@@ -310,4 +310,52 @@ describe("the runtime and swarms", () => {
       e.close();
     }
   }, 60_000);
+
+  test("Core's list of launcher wallets: an agent of another wallet runs solo whatever its soul declares, and as a swarm once the list is gone", async () => {
+    const e = await world(true);
+    try {
+      const unit = 10n ** BigInt(e.cfg.token_decimals);
+      const listed = generateAgentKey().id;
+      await expectOk(e.admin.c.post("/v1/admin/swarms/config", { launchers: [listed] }));
+      const mk = async (launcher: string) => {
+        const k: AgentKey = generateAgentKey();
+        const doc = { ...newSoul({ agent: k.id, seed: SEED, persona: persona(), created_at: 1_790_000_000, origin: { by: "launcher" as const, model: null, prompt_version: null } }), model: OPUS, swarm: buildSwarm([{ name: "W 1", model: OPUS }, { name: "W 2", model: HAIKU }], 1) };
+        await expectOk(e.anon.request("PUT", `/v1/agents/${k.id}/soul`, { doc, sig: signSoul(k, doc) }, { sign: false }));
+        await expectOk(e.admin.c.post("/v1/admin/launches", { agent: k.id, mint: generateAgentKey().id, launcher, target_repo: RECIPE.repo, hosted: true, identity_mode: "purchased" }));
+        await expectOk(e.admin.c.post("/v1/admin/agent-fees", { agent: k.id, amount: (100n * unit).toString() }));
+        return { key: k, id: k.id, c: new CoreClient(e.base, k, () => e.clock.now()) };
+      };
+      const yes = await mk(listed);
+      const no = await mk(generateAgentKey().id);
+      const cfg = rtConfig(e);
+      const asked: string[] = [];
+      const logs: string[] = [];
+      let now = Date.now();
+      const rt = new Runtime(cfg, {
+        backend: new SimBackend(e.base, e.runtimeKey), runtimeKey: e.runtimeKey, log: (m) => logs.push(m), telemetry: false, now: () => now,
+        proposer: (agent, seat) => (asked.push(`${agent === yes.id ? "yes" : "no"}:${seat ?? "-"}`), { name: "none", propose: async () => null }),
+        route: async (_agent, seat) => ({ via: "openrouter", model: seat === undefined || seat === 1 ? OPUS : HAIKU, why: null, rate: null }),
+      });
+      await rt.start();
+      await bind(rt, cfg, yes);
+      await bind(rt, cfg, no);
+      expect(rt.seatsOf(yes.id)!.length).toBe(2);
+      expect(rt.seatsOf(no.id)).toBeNull();
+      expect(logs.filter((l) => l.includes("Core lists it as one agent; it runs solo")).length).toBe(1);
+      await rt.tick();
+      await rt.idle();
+      expect(asked.filter((x) => x.startsWith("yes")).sort()).toEqual(["yes:1", "yes:2"]);
+      expect(asked.filter((x) => x.startsWith("no"))).toEqual(["no:-"]);
+      expect(rt.spendReport().agents[no.id]!.seats).toBeUndefined();
+      // the list removed: the runtime follows Core within its next roster read
+      await expectOk(e.admin.c.post("/v1/admin/swarms/config", { launchers: null }));
+      now += 61_000;
+      await rt.tick();
+      expect(rt.seatsOf(no.id)!.length).toBe(2);
+      await rt.idle();
+      await rt.stop({ flush: false });
+    } finally {
+      e.close();
+    }
+  }, 60_000);
 });

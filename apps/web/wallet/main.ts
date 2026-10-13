@@ -2046,7 +2046,7 @@ function furthest(): number {
 
 /** The swarm fields of step "The agent" (swarm-step.ts): nothing while Core's swarms flag is off. */
 function renderSwarm() {
-  loadSwarmCfg(() => renderSwarm());
+  loadSwarmCfg(() => renderSwarm(), S.account?.address ?? null); // per wallet: Core may open swarms to listed launcher wallets only
   set("w-swarm", swarmFields(S.soul?.doc?.persona.name ?? val("l_name")));
 }
 

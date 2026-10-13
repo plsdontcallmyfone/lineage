@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 (globalThis as any).dispatchEvent ??= () => true;
 const { M } = await import("../wallet/models.ts");
 const { depositBase, depositUsd, minUsd, P, SEATS } = await import("../wallet/prepay.ts");
-const { leadSeat, onSwarmInput, SW, swarmBlock, swarmFields, swarmProblem, swarmReview, withSwarm } = await import("../wallet/swarm-step.ts");
+const { leadSeat, loadSwarmCfg, onSwarmInput, SW, swarmBlock, swarmFields, swarmOffered, swarmProblem, swarmReview, withSwarm } = await import("../wallet/swarm-step.ts");
 
 // The launch form's swarm fields (apps/web/wallet/swarm-step.ts; docs/plans/SWARMS.md 6): nothing while
 // Core's swarms flag is off, and with it on a roster in the signed soul and Core's credits minimum
@@ -86,5 +86,64 @@ describe("launch form, swarms on", () => {
     expect(minUsd()).toBe("37.5");
     SEATS.n = 4;
     expect(minUsd()).toBe("50");
+  });
+});
+
+describe("launch form, swarms open to listed launcher wallets only", () => {
+  const answer = (open: boolean) => ({ enabled: true, settings: { max_members: 2, seat_desktop_usd_per_h: 0.1656, seat_desktop_free_seats: 1 }, min_usd_per_seat: "10", max_now: open ? 2 : 1, capacity: { seats_free: null }, launch: { restricted: true, open } });
+
+  test("Core's answer decides: a miss, the flag off and a wallet that is not listed all leave the form as it was", () => {
+    expect(swarmOffered(answer(true))).toBe(true);
+    expect(swarmOffered(answer(false))).toBe(false);
+    expect(swarmOffered({ _miss: { status: 404 } })).toBe(false);
+    expect(swarmOffered(null)).toBe(false);
+    // an answer from a Core without the field (no list exists there) offers the field
+    const { launch: _l, ...old } = answer(true);
+    expect(swarmOffered(old)).toBe(true);
+  });
+
+  test("the settings are read for the connected wallet, again when it changes, and a size picked for a listed wallet falls back to one", async () => {
+    setup(false);
+    const LISTED = "LiSTEDwa11et1111111111111111111111111111111";
+    const asked: string[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (u: string) => {
+      asked.push(String(u));
+      return new Response(JSON.stringify(answer(String(u).includes(`wallet=${LISTED}`))), { headers: { "content-type": "application/json" } });
+    }) as never;
+    const settle = () => new Promise((r) => setTimeout(r, 5));
+    try {
+      let rendered = 0;
+      // no wallet connected: not offered
+      loadSwarmCfg(() => rendered++, null);
+      await settle();
+      expect(asked).toEqual(["/api/swarms/config?optional=1"]);
+      expect(SW.cfg).toBeNull();
+      expect(swarmFields("Wren").s).toBe("");
+      // the same wallet again: no second request
+      loadSwarmCfg(() => rendered++, null);
+      await settle();
+      expect(asked.length).toBe(1);
+      // the listed wallet connects: asked for it, the field appears
+      loadSwarmCfg(() => rendered++, LISTED);
+      await settle();
+      expect(asked[1]).toBe(`/api/swarms/config?optional=1&wallet=${LISTED}`);
+      expect(SW.cfg).not.toBeNull();
+      expect(rendered).toBe(1);
+      expect(swarmFields("Wren").s).toContain('name="l_sw_size"');
+      onSwarmInput(input("l_sw_size", "2"), null);
+      expect(SEATS.n).toBe(2);
+      expect(minUsd()).toBe("20");
+      // another wallet: the field goes, the size and the credits minimum are one agent's again
+      loadSwarmCfg(() => rendered++, "0therWa11et11111111111111111111111111111111");
+      await settle();
+      expect(SW.cfg).toBeNull();
+      expect(rendered).toBe(2);
+      expect(SW.size).toBe(1);
+      expect(minUsd()).toBe("10");
+      expect(swarmBlock("Wren")).toBeNull();
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 });

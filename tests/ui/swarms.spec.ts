@@ -14,6 +14,25 @@ import { expect, NO_COINS, test, type Page } from "./support/fixtures.ts";
 // states, the record) is Core's real answer.
 
 const SWARM = process.env.UI_SWARM_AGENT ?? "";
+/** A repository the Core under test has a unit for (the local proof serves keis/base58). */
+const REPO = process.env.UI_SWARM_REPO ?? "https://github.com/keis/base58";
+
+/**
+ * The launch form opens a later step only once the steps before it are complete (wallet/main.ts
+ * renderWizard): the coin is named and the repository checked before "The agent" can be reached.
+ */
+async function toAgentStep(page: Page) {
+  await page.locator('[name="l_name"]').fill("Swarm Check");
+  await page.locator('[name="l_symbol"]').fill("SWRM");
+  const next = page.locator('[data-act="lz-next"]');
+  await expect(next).toBeEnabled();
+  await next.click();
+  await page.locator('[name="l_repo"]').fill(REPO);
+  await page.locator("#w-work .lz-rec, #w-work .banner").first().waitFor({ timeout: 90_000 });
+  await expect(next).toBeEnabled({ timeout: 90_000 });
+  await next.click();
+  await expect(page.locator("#lz-nav .lz-step", { hasText: "The agent" })).toBeEnabled();
+}
 
 /** The first listed coin, served with the swarm's agent id (the swarm run only). */
 async function asSwarmCoin(page: Page, mint: string) {
@@ -134,13 +153,17 @@ test.describe("swarms are on: one coin, several agents", () => {
   });
 
   test("the launch form: size, a row per agent, credits per agent and the cost before signing", async ({ page }) => {
+    test.setTimeout(480_000); // the agent's soul is written before Funding opens (up to a few minutes)
     const cfg = await page.request.get("/api/swarms/config").then((r) => r.json());
     const net = await page.request.get("/api/config").then((r) => r.json());
     const per = Number(net.network.prepay.min_usd);
     const usd = (x: number) => `$${x.toFixed(2)}`;
     await page.goto("/launch");
     await page.locator('[name="l_name"]').waitFor({ timeout: 60_000 });
-    await page.locator("#lz-nav .lz-step", { hasText: "The agent" }).click();
+    // an empty form: only the first step is open
+    await expect(page.locator("#lz-nav .lz-step", { hasText: "The agent" })).toBeDisabled();
+    await toAgentStep(page);
+    const funding = page.locator("#lz-nav .lz-step", { hasText: "Funding" });
     const box = page.locator(".lz-swarm");
     await expect(box).toBeVisible();
     await expect(box.locator('[name="l_sw_size"]')).toHaveCount(cfg.max_now);
@@ -154,7 +177,10 @@ test.describe("swarms are on: one coin, several agents", () => {
     // credits: Core's own minimum once per agent, never a number of the page's
     await expect(box).toContainText(`${usd(per)} for each agent, ${usd(per * n)} for ${n}`);
     if (cfg.settings.seat_desktop_usd_per_h) await expect(box).toContainText(`$${cfg.settings.seat_desktop_usd_per_h} an hour`);
-    await page.locator("#lz-nav .lz-step", { hasText: "Funding" }).click();
+    // Funding opens once this step is complete: the soul is written and the roster is valid
+    await page.locator(".wl-soul .wl-hash").waitFor({ timeout: 300_000 });
+    await expect(funding).toBeEnabled({ timeout: 30_000 });
+    await funding.click();
     await expect(page.locator('[name="l_deposit"]')).toHaveValue(String(per * n));
     await expect(page.locator("#w-prepay")).toContainText(`At least ${usd(per * n)}`);
     await expect(page.locator("#w-prepay")).toContainText(`${usd(per)} for each of the ${n} agents`);
@@ -165,7 +191,7 @@ test.describe("swarms are on: one coin, several agents", () => {
     await page.locator("#lz-nav .lz-step", { hasText: "The agent" }).click();
     await box.locator('label.seg-b:has([name="l_sw_size"][value="1"])').click();
     await expect(box.locator(".lz-seat")).toHaveCount(0);
-    await page.locator("#lz-nav .lz-step", { hasText: "Funding" }).click();
+    await funding.click();
     await expect(page.locator('[name="l_deposit"]')).toHaveValue(String(per));
     await page.locator("#lz-nav .lz-step", { hasText: "The agent" }).click();
     await box.locator(`label.seg-b:has([name="l_sw_size"][value="${n}"])`).click();

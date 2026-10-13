@@ -201,6 +201,8 @@ export class Runtime {
   private planning = new Set<string>();
   /** what the lead's last plan was made from (the ledger's summary), by agent */
   private planned = new Map<string, string>();
+  /** agents whose soul declares seats and which Core lists as one agent (said once in the log) */
+  private soloSaid = new Set<string>();
   /** slot keys whose cached worker was made as a swarm's seat */
   private seated = new Set<string>();
   private poster: AgentPoster | null = null;
@@ -370,7 +372,18 @@ export class Runtime {
     this.rosterAt.set(agent, now);
     const seats = r.status === 200 ? swarmSeats(r.body?.doc) : null;
     // a roster never changes after launch (Core refuses it); seats past the network's size limit do not run
-    const roster = seats && seats.length >= 2 ? seats.slice(0, this.swarmCfg.max_members).map((m) => ({ seat: m.seat, name: m.name, role: m.role, model: m.model })) : null;
+    let roster = seats && seats.length >= 2 ? seats.slice(0, this.swarmCfg.max_members).map((m) => ({ seat: m.seat, name: m.name, role: m.role, model: m.model })) : null;
+    if (roster) {
+      // Core decides which agents are swarms (its list of launcher wallets, swarm.launchers): one it lists as
+      // solo runs solo here too, so the seat numbers this runtime sends are always ones Core knows
+      const v = await this.client.get(`/v1/agents/${agent}/swarm`).catch(() => null);
+      if (!v || (v.status !== 200 && v.status !== 404)) return void this.rosterAt.delete(agent); // no answer: what was known stays, asked again on the next tick
+      if (!(v.status === 200 && Number(v.body?.size) >= 2)) {
+        if (this.rosters.has(agent) || !this.soloSaid.has(agent)) this.log(`${agent.slice(0, 6)}: its soul declares ${roster.length} seats and Core lists it as one agent; it runs solo`);
+        this.soloSaid.add(agent);
+        roster = null;
+      } else this.soloSaid.delete(agent);
+    }
     if (roster && roster.length >= 2) {
       if (!this.rosters.has(agent)) this.log(`${agent.slice(0, 6)} is a swarm of ${roster.length}: ${roster.map((m) => `${m.name} (${m.role}, ${m.model.id})`).join(", ")}`);
       this.rosters.set(agent, roster);
