@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { ensureCoreSchema } from "./core-sync.ts";
+import { supplyApi } from "./supply.ts";
 import { SAMPLE_REACH_S, SAMPLE_S, USD_SCHEMA, usdLookup, usdNear, usdSampleAt, type QuoteUsdReading } from "./usd.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Agent tokens trade on pump.fun
@@ -290,6 +291,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     const v = (db.query("SELECT v FROM meta WHERE k = 'pump_alerts'").get() as { v: string } | null)?.v;
     return v ? (JSON.parse(v) as { checked_at: number; baseline: unknown; alerts: { kind: string; subject: string; detail: string }[] }) : null;
   };
+  // supply, burns, the developer wallet, agent coins and holders (supply.ts); dollars by the rule above
+  const supply = supplyApi(db, { now, usd: usdNow, quote: QUOTE });
   const getTok = (mint: string) => (MINT.test(mint) ? (db.query("SELECT * FROM tokens WHERE mint = ?").get(mint) as TokRow | null) : null);
 
   return async function handle(req: Request): Promise<Response> {
@@ -379,6 +382,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         tokens: toks.map((t) => ({ mint: t.mint, agent: t.agent, symbol: t.symbol, venue: t.venue === "pump" ? "pump" : "meteora", hosted: t.hosted == null ? null : t.hosted === 1,
           hidden: hidden.has(t.mint), fees_claimed_raw: t.fees_claimed, to_compute_raw: t.to_compute, to_protocol_raw: t.to_protocol, debited_raw: t.debited, state_at: t.state_at })),
       });
+    }
+    if (parts[1] === "supply") {
+      const r = supply(parts.slice(2), q);
+      return r ? json(r) : json({ error: "not found" }, 404);
     }
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
 

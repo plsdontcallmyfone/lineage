@@ -12,6 +12,8 @@
 //   PUT  /v1/bounties/:id/terms, /api/bounties/:id/terms   (Core keeps terms only if they hash to the onchain digest)
 //   GET  /api/*, /live/*      dashboard data (CORS *); not /api/admin*, not encoded slashes or //
 //   GET  /market/*            market indexer read API (own class; the indexer's own CORS and preflight)
+//   GET  /market/supply, /market/supply/{burns,developer,coins,holders}   the Analytics page's Supply section: supply, burns,
+//                             the developer wallet's own coins, agent coins and top holders; plain reads in the market class
 //   POST /chain/rpc           devnet JSON-RPC proxy (web keeps its method allowlist); same origin only
 //   POST /chain/faucet        UNITS faucet (web keeps its per-wallet and hourly limits); same origin only
 //                             (an Origin header is required: browsers always send one on POST)

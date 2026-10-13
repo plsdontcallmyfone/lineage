@@ -167,7 +167,9 @@ export function indexerRouteNames(root: string): string[] {
   const src = readFileSync(join(root, "packages/indexer/src/api.ts"), "utf8");
   const top = [...src.matchAll(/parts\[1\] === "([a-z]+)"/g)].map((m) => m[1]!);
   const sub = [...src.matchAll(/case "([a-z]+)":/g)].map((m) => m[1]!);
-  return [...new Set([...top.map((t) => `/market/${t}`), ...sub.map((s) => `/market/tokens/:mint/${s}`)])];
+  // the routes under /market/supply are dispatched in supply.ts (rest[0] === "x")
+  const supply = [...readFileSync(join(root, "packages/indexer/src/supply.ts"), "utf8").matchAll(/rest\[0\] === "([a-z]+)"/g)].map((m) => m[1]!);
+  return [...new Set([...top.map((t) => `/market/${t}`), ...sub.map((s) => `/market/tokens/:mint/${s}`), ...supply.map((s) => `/market/supply/${s}`)])];
 }
 
 /** Where the documented indexer routes and the dispatcher disagree. */

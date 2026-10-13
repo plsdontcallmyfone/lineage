@@ -150,6 +150,11 @@ describe("audit A2: gate", () => {
     expect(classify("GET", "/market/tokens")).toMatchObject({ klass: "market", upstream: "indexer" });
     expect(classify("POST", "/market/tokens")).toEqual({ refuse: 405, why: "method" });
     expect(LIMITS.market.perMin).toBeGreaterThan(0);
+    // the Supply section's reads (packages/indexer/src/supply.ts): the same class and upstream, reads only
+    for (const path of ["/market/supply", "/market/supply/burns", "/market/supply/developer", "/market/supply/coins", "/market/supply/holders"]) {
+      expect(classify("GET", path)).toEqual({ klass: "market", upstream: "indexer", cors: false, stream: false, sameOrigin: false });
+      for (const m of ["POST", "PUT", "DELETE", "PATCH"]) expect(classify(m, path)).toEqual({ refuse: 405, why: "method" });
+    }
   });
 });
 
