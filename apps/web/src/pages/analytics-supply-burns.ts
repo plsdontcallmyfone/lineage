@@ -14,8 +14,8 @@ import { acctLink, addSupplyPart, coins, coinsC, money, share, shortAddr, tile, 
 
 type O = any;
 const usdC = (v: number | null | undefined) => fmtUsd(v, { compact: true });
-const FILTERS: [string, string][] = [["all", "All"], ["developer", "Developer wallet"], ["fee_keeper", "Fee keeper"], ["agent_pool", "Agent pools"], ["other", "Other wallets"]];
-const WHOSE: Record<string, string> = { all: "", developer: "The developer wallet has", fee_keeper: "The fee keeper has", agent_pool: "No agent pool has", other: "No other wallet has" };
+const FILTERS: [string, string][] = [["all", "All"], ["developer", "Developer wallet"], ["fee_keeper", "Fee keeper"], ["agent_pool", "Agent pools"], ["liquidity_pool", "Liquidity pool"], ["other", "Other wallets"]];
+const WHOSE: Record<string, string> = { all: "", developer: "The developer wallet has", fee_keeper: "The fee keeper has", agent_pool: "No agent pool has", liquidity_pool: "pump.fun has", other: "No other wallet has" };
 
 /** The sentence a block shows instead of a chart or a table when it has no burn to show. */
 export function noBurns(o: O, signer: string): string {
@@ -74,12 +74,15 @@ export function burnTable(o: O, b: O, signer: string): Raw {
   const ev: O[] = b.events ?? [];
   if (!ev.length) return html`<p class="an-line">${noBurns(o, signer)}</p>`;
   const who = (e: O) => (e.signer.kind === "address" ? acctLink(e.signer.address) : acctLink(e.signer.address, e.signer.label));
-  return html`<div class="tw"><table class="t sup-t"><thead><tr><th>Time</th><th class="right">Burned</th><th>Signed by</th></tr></thead><tbody>${ev.map(
-    (e) => html`<tr data-signer="${e.signer.kind}"><td>${e.time ? html`<span title="${stamp(e.time * 1000)}">${when(e.time * 1000)}</span>` : html`<span class="faint">time not recorded</span>`}</td>
+  const row = (e: O) => html`<tr data-signer="${e.signer.kind}"><td>${e.time ? html`<span title="${stamp(e.time * 1000)}">${when(e.time * 1000)}</span>` : html`<span class="faint">time not recorded</span>`}</td>
       <td class="right num sup-v">${e.usd !== null ? money(e.usd, e.amount) : html`<b>${coins(e.amount)}</b><em>no dollar price on record then</em>`}</td>
-      <td>${who(e)}<div class="an-sub">${e.via_label ? `through the ${e.via_label}, ` : ""}${txLink(e.signature, "Solscan")}</div></td></tr>`,
-  )}</tbody></table></div>${b.count > ev.length ? html`<div class="panel-note">The ${fmtInt(ev.length)} most recent of ${fmtInt(b.count)}.</div>` : ""}`;
+      <td>${who(e)}<div class="an-sub">${e.via_label ? `through the ${e.via_label}, ` : ""}${txLink(e.signature, "Solscan")}</div></td></tr>`;
+  const table = (rows: O[]) => html`<div class="tw"><table class="t sup-t"><thead><tr><th>Time</th><th class="right">Burned</th><th>Signed by</th></tr></thead><tbody>${rows.map(row)}</tbody></table></div>`;
+  // the newest in view, the earlier ones folded closed like the page's other long tables
+  const older = ev.slice(BURNS_IN_VIEW);
+  return html`${table(ev.slice(0, BURNS_IN_VIEW))}${older.length ? html`<details class="an-fold an-fold-in" id="sup-burn-older"><summary><span>Earlier burns</span><span class="an-count">${older.length}</span></summary>${table(older)}</details>` : ""}${b.count > ev.length ? html`<div class="panel-note">The ${fmtInt(ev.length)} most recent of ${fmtInt(b.count)}.</div>` : ""}`;
 }
+const BURNS_IN_VIEW = 8;
 
 const MOVES: [string, string, string][] = [
   ["bought", "Bought", "coins that came in through a pump.fun or PumpSwap trade"],
@@ -122,6 +125,7 @@ export const BURNS_CSS = `
 .sup-filter .seg-b[aria-pressed="true"]{background:var(--tp);color:var(--bg)}
 .sup-moves{margin:0;padding:0 18px 8px}
 .sup-plain .an-card-body{display:none}
+#sup-dev .an-card-body{flex:none}
 @media (max-width:640px){.sup-t .sup-v em{white-space:normal;text-align:right;max-width:132px}.sup-t td .link{white-space:normal}.sup-t th,.sup-t td{padding-left:10px;padding-right:10px}}
 `;
 
