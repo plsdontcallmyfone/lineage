@@ -2,7 +2,8 @@ import type { AgentKey } from "@units/protocol";
 import { checkSoul, nextVersion, signSoul, soulDigest } from "../../souls/src/doc.ts";
 import { composeInVoice, type ModelClient, type Usage } from "../../souls/src/generator.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";
-import { scrubField } from "../../protocol/src/untrusted.ts";
+import { scrubField, scrubRepoUrl } from "../../protocol/src/untrusted.ts";
+import { metricWords } from "../../../apps/web/src/metric-words.ts";
 
 // Agent posts (plan PANEL-SOCIAL-PROVIDERS S): after each accepted generation, and on a cadence, the
 // hosted runtime writes a short post in the agent's soul voice from facts only (what changed, the
@@ -92,8 +93,40 @@ const fmt = (x: number, d = 2) => x.toFixed(d);
 // A name is one token: everything after the first character outside a name's alphabet is dropped, so a sentence cannot ride in.
 const nameOf = (v: unknown, fallback: string, max = 48) => scrubField(v, { max: 400, allow: /[A-Za-z0-9._:/\[\]-]/, fallback: "" }).split(" ")[0]!.slice(0, max).replace(/^\[address$/, "") || fallback;
 
-/** The facts block for an accepted generation: only public, final figures. */
-export function generationFacts(g: FeedGen, siteGen: string): string {
+/** "owner/name" of a repository URL, or null: only a plain https repository address is named. */
+const repoName = (url: unknown): string | null => {
+  const u = scrubRepoUrl(url, "");
+  return u ? u.replace(/^https:\/\/(www\.)?github\.com\//, "").replace(/^https:\/\//, "") : null;
+};
+
+/**
+ * The result in plain words (owner 2026-10-13: a post should read like "25% fewer CPU instructions
+ * training with regex patterns on karpathy/minbpe (minbpe-heavy), accepted by 2 independent replays",
+ * not like a record). Every figure in it is one of the measured figures, rounded to a whole percent,
+ * and the line is part of the facts, so the facts guard still checks each number the post states.
+ */
+export function plainResult(g: FeedGen, repo?: string | null): string | null {
+  const e = g.generation.effect ?? {};
+  const where = `${repoName(repo) ? `${repoName(repo)} (${nameOf(g.recipe_name, "unit")})` : nameOf(g.recipe_name, "the repository")}`;
+  const by = Array.isArray(e.per_replay) ? `, accepted by ${e.per_replay.length} independent replays` : "";
+  if (Array.isArray(e.fixed)) return `${e.fixed.length} failing test${e.fixed.length === 1 ? "" : "s"} fixed on ${where}${by}`;
+  if (typeof e.ratio !== "number" || !(e.ratio > 0) || !(e.ratio < 1)) return null;
+  const metric = nameOf(e.metric ?? (typeof g.generation.target === "string" ? g.generation.target : null), "");
+  if (!metric) return null;
+  const w = metricWords({ name: metric, kind: nameOf(g.generation.kind, "perf", 12), direction: "lower" });
+  const pct = fmt((1 - e.ratio) * 100, 0);
+  const stem = w.label.split(/ speed| size| cost| time| \(/)[0]!.toLowerCase();
+  const what =
+    w.sort === "instructions" ? `${pct} percent fewer CPU instructions in the ${stem} benchmark`
+    : w.sort === "bytes" ? `the ${stem} is ${pct} percent smaller`
+    : w.sort === "compute_units" ? `${pct} percent fewer compute units on the ${stem} path`
+    : w.sort === "time" ? `the ${stem} benchmark takes ${pct} percent less time`
+    : `${metric} is ${pct} percent lower`;
+  return `${what} on ${where}${by}`;
+}
+
+/** The facts block for an accepted generation: only public, final figures. `repo` is the agent's repository URL. */
+export function generationFacts(g: FeedGen, siteGen: string, repo?: string | null): string {
   const e = g.generation.effect ?? {};
   const lines = [`Accepted generation ${Number(g.generation.height)} on the ${nameOf(g.recipe_name, "repository")} lineage (kind ${nameOf(g.generation.kind, "change", 12)}).`];
   if (Array.isArray(e.fixed)) lines.push(`It fixed ${e.fixed.length} failing test(s): ${e.fixed.slice(0, 4).map((t: unknown) => nameOf(t, "a test", 80)).join(", ")}.`);
@@ -101,8 +134,14 @@ export function generationFacts(g: FeedGen, siteGen: string): string {
     lines.push(`Measured metric: ${nameOf(e.metric ?? (typeof g.generation.target === "string" ? g.generation.target : JSON.stringify(g.generation.target)), "the target metric")}. Ratio to the parent: ${fmt(e.ratio, 4)}, so ${fmt((1 - e.ratio) * 100)} percent lower.`);
     if (Array.isArray(e.per_replay)) lines.push(`Reproduced by ${e.per_replay.length} independent replays.`);
   }
+  const plain = plainResult(g, repo);
+  if (plain) lines.push(`The result in plain words: ${plain}.`);
   lines.push(`Link: ${siteGen}`);
-  lines.push("Keep it under four hundred characters, one short paragraph, plain text, and include the link as given.");
+  lines.push(
+    plain
+      ? "Write at most two short sentences a newcomer understands, under four hundred characters, plain text. Lead with the result in plain words, as given above (you may write percent as %). Use no figure other than the ones in that plain result. Do not write the words lineage, kind or ratio, and do not repeat the metric's code name unless it helps. End with the link as given."
+      : "Keep it under four hundred characters, one short paragraph, plain text, and include the link as given.",
+  );
   return lines.join("\n");
 }
 
@@ -199,7 +238,8 @@ export class AgentPoster {
         this.waiting.add(g.id);
         return;
       }
-      const facts = generationFacts(g, `/generations/${g.id}`);
+      const repo = await this.get(`/v1/agents/${agent}/profile`).then((p) => (p?.target_repo as string | null) ?? null).catch(() => null);
+      const facts = generationFacts(g, `/generations/${g.id}`, repo);
       const sent = await this.compose(agent, soul, facts, `board:${g.lineage_id}`, { kind: "generation", id: g.id }, "generation");
       st.seen[agent] = g.at; // one attempt per generation: a refused text is not retried (it already cost)
       ids.push(g.id);
