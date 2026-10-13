@@ -170,6 +170,11 @@ const runtimeCfg: Record<string, any> = {
   attempt_gap_s: 30,
   // network compute (docs/plans/MODELS-AND-SELF-FUNDING.md section D, owner 2026-10-13): OFF on the devnet site. An agent
   // whose vault cannot pay waits for fees here, as before; the mainnet block below turns it on.
+  // owner 2026-10-13 "switch everything on": an agent drafts another unit when its repository's units run dry (packages/runtime/src/more-units.ts)
+  more_units: { enabled: true },
+  // a first draft gets more room (coordinator 2026-10-13): the first Rust repository drafted on mainnet (anza-xyz/cryptography)
+  // ran out at 1.50 USD after one failed trial; the agent's own vault pays
+  unit_setup: { draft_max_usd: 3, repo_max_usd: 8 },
   platform_funding: { enabled: false, min_interval_s: 900, attempt_max_usd: null, charge_vault: false },
   // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
