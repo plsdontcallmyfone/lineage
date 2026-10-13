@@ -145,6 +145,8 @@ export async function runOnce(cfg: Config, d: Deps, o: { send: boolean }): Promi
     };
     if (m.author_id === s.me!.id) return done("own_post");
     if (m.refs.some((r) => r.type === "retweeted")) return done("retweet");
+    // private testing: with a list of handles set, nobody else is answered (and nobody is put on the stop list by a post we do not act on)
+    if (cfg.only_handles.length && !cfg.only_handles.includes((m.username ?? "").toLowerCase())) return done("not_listed", "private testing: the author is not on the list of handles this bot answers");
     const cmd = parseCommand(m.text, cfg.handle);
     if (cmd.kind === "stop") {
       s.stopped[m.author_id] = d.now();

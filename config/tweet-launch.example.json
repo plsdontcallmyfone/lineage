@@ -6,6 +6,7 @@
   "state_dir": "/var/lib/units/tweet-launch",
   "credentials_file": "/etc/units-tweet-launch/x.env",
   "follow_up": "off",
+  "only_handles": [],
   "per_author_per_day": 2,
   "global_per_hour": 20,
   "global_per_day": 100,

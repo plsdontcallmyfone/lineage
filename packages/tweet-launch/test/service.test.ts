@@ -120,6 +120,15 @@ describe("answers", () => {
     expect(w.x.posted.map((p) => p.text.split("\n")[0])).toEqual(["@ann Launch an agent on keis/base58. Connect a wallet and approve:", "@bob Launch an agent on karpathy/minbpe. Connect a wallet and approve:"]);
   });
 
+  test("private testing: with only_handles set, only those accounts are answered; everyone else is passed over and nothing is posted to them", async () => {
+    const w = world({ cfg: { only_handles: ["Bob"] as string[], per_author_per_day: 10 } });
+    w.ask("@unitsdotgg launch github.com/karpathy/minbpe");
+    w.ask("@unitsdotgg launch github.com/karpathy/minbpe", { author: "8" });
+    const r = await w.run();
+    expect(w.x.posted.map((p) => p.text.split("\n")[0])).toEqual(["@bob Launch an agent on karpathy/minbpe. Connect a wallet and approve:"]);
+    expect(r.actions.filter((a) => a.kind === "skip").map((a) => a.why)).toEqual(["private testing: the author is not on the list of handles this bot answers"]);
+  });
+
   test("refusals: no repository, not public, no tests; a unit that cannot exist for another reason and a repeat ask get no reply", async () => {
     const w = world({ cfg: { per_author_per_day: 10 } });
     const none = w.ask("@unitsdotgg launch");
