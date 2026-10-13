@@ -297,3 +297,63 @@ shows it (`reserve.full`) and the escape hatch of 9.2 is the answer while it las
   instance's activation stops the runtime after the gate restarted: no window there.
 - After a rollback to a release without it: `systemctl disable --now units-bind` (or
   `units-main-bind`); the older gate and runtime do not use it.
+
+## 10. A backup signature that does not expire: what the chain allows (finding, 2026-10-13)
+
+Asked for: in the launch's own approval, a second `rotate_agent_key` built on a durable nonce, kept by
+the server and sent whenever the runtime is back, with the nonce account created and funded in the
+launch transactions.
+
+**That shape cannot work, shown on devnet** (`bun scripts/launch-e2e/nonce-devnet.ts`, record in
+`scripts/launch-e2e/NONCE-DEVNET-LAST.json`, 9 of 9 checks, fees only):
+
+- A nonce account's stored value is set when `InitializeNonceAccount` runs:
+  sha256("DURABLE_NONCE" + the blockhash before the block it landed in) (check 1b, recomputed from
+  the landing block). It does not exist when the wallet signs.
+- A transaction signed in the same approval as the creation can only carry the blockhash known then,
+  so it is an ordinary transaction: once that blockhash aged out it was refused, "Blockhash not found"
+  (check 2).
+- So one approval cannot both create the nonce account and sign over its value. A wallet cannot be
+  asked a second time later without that being the "second thing to sign" this work removes.
+
+**What does work, shown in the same run:** a transaction signed over the stored value of a nonce
+account that already exists landed 90 s after its signing and long after every blockhash of that time
+(3a), advanced the nonce (3b), was refused when sent again (3c), and is not a nonce transaction when
+anything stands before `AdvanceNonceAccount` (3d). The authority alone withdrew the whole balance and
+the account was gone (4).
+
+**The next best design (proposed, NOT built; it needs the owner's word because the platform funds it):**
+
+1. A pool of runtime keys made ahead of time by the runtime side, each with its own nonce account that
+   already exists: created with the pool key as base and as nonce authority, 80 bytes, rent 1,056,640
+   lamports on devnet as read (mainnet: read at the time; about 0.0015 SOL), paid by the platform. The
+   public half, the nonce account and its current value are what the bind service hands out as a
+   reservation, one per agent id, under today's limits and expiry. The private half stays in the key
+   store; a pool key is firewall-guarded and signs nothing until it is the reserved key of exactly one
+   agent.
+2. In the launch's approval the launcher also signs: `AdvanceNonceAccount(nonce, authority = the
+   reserved key)` first, then the compute budget, then `rotate_agent_key(owner, agent, reserved key)`,
+   over the nonce's stored value. The reserved key already signs the rotation, so it being the nonce
+   authority adds no signer, stays read-only and never pays (section 5's rules hold). The launcher pays
+   the fee when it is sent, so the launcher's wallet must still hold a few thousand lamports then.
+3. The co-signer and the firewall accept exactly one more instruction, only as instruction 0: the system
+   program's `AdvanceNonceAccount` on the nonce account recorded for this reservation with this key as
+   authority; everything else as today.
+4. The bind service keeps the wallet-signed durable rotation (per agent id and reservation), and sends
+   it whenever the launch is on chain without its bind, minutes or hours later; a second send fails
+   harmlessly because the nonce moved.
+5. Cleanup needs no launcher: the pool key is the authority, so the runtime side withdraws the rent
+   back to the platform when the agent is bound (the fast path) or the reservation expired unused, and
+   the key and account return to the pool or are retired. If the launcher is to carry the rent, the
+   launch adds a transfer to the platform and the review shows it as a cost row; then it is not
+   refunded by closing, and that should be said plainly on the review.
+6. Open before building: mainnet SOL for the pool (rent per pool key, returned on cleanup), who signs
+   those creations (the runtime authority key is the payer today), the pool's size, and how real
+   wallets treat a nonce transaction inside a batch (not checked yet: no wallet documentation was read
+   for this section and no real wallet was run).
+
+What a kept never-expiring rotation can do: move this one agent's record to this one reserved key, if
+and only if the signer is the record's owner. It cannot be used for another agent (the rotation names
+the record), with another key (it names the key), or twice (the nonce). The owner voids it by rotating
+or by the nonce being advanced; it is deleted once the agent is bound. Nothing acts for the agent
+until that owner-signed rotation has landed on chain: this is not off-chain delegation.
