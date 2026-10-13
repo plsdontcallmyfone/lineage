@@ -1,0 +1,43 @@
+# Installed by scripts/deploy/remote.sh with every release, NOT enabled by it. Launch from a tweet
+# (packages/tweet-launch, docs/plans/TWEET-LAUNCH.md, docs/MAINNET-RUNBOOK.md "Launch from a tweet"):
+# one pass of the reply bot. It reads the mentions of the account, answers a mention that says
+# "launch" with a link to the launch page filled in for the repository, and launches nothing. Its own
+# account (units-tweet-launch, made by scripts/deploy/tweet-launch-setup.sh) is the only one that can
+# read the X credentials. It does not start without /etc/units-tweet-launch/config.json, posts
+# nothing unless that config says "enabled": true, and stops while
+# /var/lib/units/tweet-launch/STOP exists.
+[Unit]
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): the kit's rule for every unit; no unit of the old name exists
+Conflicts=lineage-tweet-launch.service
+After=lineage-tweet-launch.service
+Description=units: launch from a tweet (answer mentions with a launch link)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/units-tweet-launch/config.json
+
+[Service]
+Type=oneshot
+User=units-tweet-launch
+Group=units-tweet-launch
+WorkingDirectory=/opt/units/current
+Environment=HOME=/var/lib/units/tweet-launch BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin GIT_TERMINAL_PROMPT=0
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/units/tweet-launch
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+StandardOutput=journal
+StandardError=journal
+MemoryMax=512M
+TimeoutStartSec=540
+# exit 2: not run (kill switch, STOP file, no credentials); the journal line says which
+SuccessExitStatus=2
+ExecStart=/usr/local/bin/bun packages/tweet-launch/src/main.ts --config /etc/units-tweet-launch/config.json --send

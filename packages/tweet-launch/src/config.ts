@@ -61,7 +61,7 @@ export const DEFAULTS: Config = {
   poll_max_results: 50,
   poll_max_pages: 3,
   link_hours: 72,
-  read_max_kb: 200_000,
+  read_max_kb: 50_000,
   read_cache_hours: 24,
   read_repos: true,
   refresh_margin_s: 300,

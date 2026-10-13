@@ -21,7 +21,8 @@ own, and the dev wallet never creates a token. So the bot does not launch anythi
    the launch there. The page is the same wizard with fields filled; nothing is sent without that
    approval, and every field can still be changed.
 4. When the launch has landed, the page hands the link's id to Core with the agent and coin it
-   created. The bot sees it, checks it, and posts the agent's page in the thread.
+   created. The bot sees it and checks it. A second post with the coin's page is a setting, off by
+   default (section 3).
 
 Considered and not built: a Solana Action (blink) link that wallets unfurl inside X. It is also
 non-custodial, but the launch is three transactions under one approval with keys made in the page
@@ -30,32 +31,45 @@ wizard stays the design.
 
 ## 2. What a mention must contain
 
-- The account's handle and, as the first word after it, `launch` (any case): `@unitsdotgg launch`.
-  A mention without that word is ignored without a reply. `@unitsdotgg stop` puts the author on the
-  bot's do-not-answer list (the opt-out X's automation rules ask for); it is confirmed with no reply.
+Trigger and wording approved by the owner on 2026-10-12.
+
+- The account's tag and, anywhere after it, the word `launch` (any case): `@unitsdotgg launch`. A
+  mention without that word gets no reply. The bot never answers anyone who did not tag it, never
+  likes, follows, sends a DM or posts on its own. `@unitsdotgg stop` puts the author on the bot's
+  do-not-answer list (the opt-out X's automation rules ask for), with no reply.
 - A GitHub repository link, looked for in this order: the mention itself, the post it replies to,
   the post it quotes. In each, the expanded links X returns are read first, then the text. The first
   `github.com/<owner>/<name>` wins; GitHub's own pages (`/orgs`, `/topics`, `/features` and the like)
-  are not repositories. Links to a file or a pull request resolve to their repository.
-- Optional fields after `launch`: `name: <text>`, `ticker: <A to Z, 0 to 9, up to 10>`,
-  `vibe: <text>` (quotes allowed). Name: at most 32 bytes. The ticker is never derived from the name:
-  with no `ticker:` the field stays empty and the person types it. A field that fails the wizard's
-  own rule or the `textSafety` check of `packages/souls/src/safety.ts` is left out of the link; the
-  rest of the link is still given.
+  are not repositories. A link to a file or a pull request gives its repository. The name is written
+  as GitHub spells it.
+- Optional, after `launch`: `name <Name>` and `ticker <TICKER>` (a colon is allowed), and
+  `vibe: <text>`. They fill the wizard. Name: at most 32 bytes. Ticker: A to Z and 0 to 9, up to 10;
+  it is never derived from the name: with no `ticker` the field stays empty and the person types it.
+  A field that breaks the wizard's own rule or the `textSafety` check of
+  `packages/souls/src/safety.ts` is left out of the link; the rest of the link is still given.
 
-Refusals, one line each, no link:
+The texts, word for word (`src/replies.ts`):
 
 | Case | Reply |
 |---|---|
-| no repository found | `I could not find a GitHub repository link in your post, the post you replied to or the one you quoted.` |
-| not public or does not exist (GitHub API 404, or `private`) | `<owner>/<name> is not a public GitHub repository, so no agent can work on it.` |
-| no unit can exist (the free reading of `packages/runtime/src/unit-setup.ts` `readRepo`: no toolchain image for its language, or no tests) | `No agent can be launched on <owner>/<name>: <the reading's sentence, cut to fit>.` |
-| the same author already has an open link for the same repository | `You already have an open launch link for <owner>/<name>. It is in my earlier reply to you.` (once; later repeats are ignored) |
+| a repository a unit can exist on | `@<asker> Launch an agent on <owner>/<repo>. Connect a wallet and approve:` then the link on its own line |
+| no repository found | `I could not find a GitHub repository in this conversation. Reply to a tweet with a GitHub link.` |
+| not public or does not exist (GitHub API 404, or `private`) | `That repository is not public, so an agent cannot work on it.` |
+| no tests (the free reading of `packages/runtime/src/unit-setup.ts` `readRepo`) | `<owner>/<repo> has no tests, so changes to it cannot be verified. Try a repository with tests.` |
+| the same person asking again for the same repository while their link is open | no reply |
+| the reading says no unit can exist for another reason (no toolchain image for its language) | no reply: there is no approved sentence for it, and a link would send someone to pay for a launch that cannot work. Owner decision needed: a sentence, or the link anyway |
+| after the launch landed (optional second post, off by default) | `<Name> is live on <owner>/<repo>. Watch it work:` then `<app_url>/tokens/<mint>` |
 
-The free reading clones the repository at its head commit, so it is skipped above `read_max_kb`
-(GitHub's reported size); the link is then given without it, and the wizard and the runtime do their
-own checks. A GitHub API failure or rate limit also gives the link without the reading. Readings are
-cached per repository for `read_cache_hours`.
+The free reading clones the repository at its head commit into a scratch directory that is emptied
+after every reading. It is skipped above `read_max_kb` (GitHub's reported size); the link is then
+given without it, and the wizard and the runtime do their own checks. A GitHub API failure or rate
+limit also gives the link without the reading. Readings are cached per repository for
+`read_cache_hours`.
+
+Known limit of fixed wording: the "no repository" and "not public" sentences are the same text every
+time, and X refuses a post whose text it has just posted. When X answers 403 with a duplicate
+content message the mention stays unanswered and the service goes on (it does not stop). How often
+that happens is unproven until live.
 
 ## 3. X API
 
@@ -80,7 +94,22 @@ Read on 2026-10-12 from docs.x.com (page text fetched directly) unless marked.
   `note_tweet`, `includes.tweets`. Which the live API accepts was not tried (no call was made): the
   client has a `dialect` setting, tries the other one once on HTTP 400, and reads both shapes.
 - Authentication: mentions accept an app bearer token or a user token; `POST /2/tweets` needs user
-  context. The service signs both with OAuth 1.0a user context (four static values, no refresh).
+  context. The console gave the owner an OAuth 2.0 user token, so that is the primary path
+  (https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code and
+  `.../user-access-token`, read 2026-10-12): the access token "will only stay valid for two hours";
+  with the scope `offline.access` a refresh token is issued; a refresh is
+  `POST https://api.x.com/2/oauth2/token`, form encoded, `grant_type=refresh_token` and
+  `refresh_token=...`; a confidential client (Web App, Automated App or bot) authenticates it with
+  `Authorization: Basic base64(client_id:client_secret)`, a public client puts `client_id` in the
+  body. Those pages do not say whether the refresh token changes on a refresh; the service saves
+  whatever new refresh token the answer carries and never sends a spent one again. OAuth 1.0a (four
+  static values) stays supported.
+- Tokens as built (`src/tokens.ts`): the pair in the owner's file is the seed; the live pair is in
+  `tokens.json` in the state directory, mode 600, written with a rename before the new access token
+  is used, never printed. The access token is refreshed `refresh_margin_s` before it runs out, or
+  once after a 401 when its age is unknown (a seeded token). A refresh X refuses writes the `STOP`
+  file with the reason and is not tried again until the owner puts new tokens in the file and deletes
+  `STOP`. A dry run still saves a refreshed pair, because the old refresh token is spent.
 - Rate limits (https://docs.x.com/x-api/fundamentals/rate-limits): mentions 300 per 15 min per user,
   `POST /2/tweets` 100 per 15 min per user and 10,000 per 24 h per app. No monthly write cap found.
 - Reply rule (changelog, 2026-02-23): programmatic replies via `POST /2/tweets` "are now only
@@ -99,15 +128,14 @@ Read on 2026-10-12 from docs.x.com (page text fetched directly) unless marked.
 What follows from that, as built:
 
 - Replies are fixed sentences from `src/replies.ts`, never written by a model.
-- One reply per mention. The follow-up after the launch is the open point: it is a second automated
-  post for one interaction. `follow_up` is a setting: `own_reply` (default: a reply to the bot's own
-  first reply, so it continues its own thread and names nobody new), `mention` (a second reply to the
-  mention) or `off`. Whether X accepts and how it bills a reply to one's own reply is unproven.
-- Replies differ by repository and link, and each wording has variants picked by the mention id, so
-  two answers are not the same text.
+- One reply per mention. The second post after the launch is off by default (`follow_up: "off"`): it
+  would be a second automated post for one interaction. `own_reply` posts it as a reply to the bot's
+  own first reply (it continues its own thread), `mention` as a second reply to the mention. Whether
+  X accepts and how it bills a reply to one's own reply is unproven.
 - Kill switch: `enabled: false` in the config, or a file named `STOP` in the state directory
   (`touch` it to stop, delete it to resume). The service writes `STOP` itself when X answers 401 or
-  403 to a post, and ends the run on 429 until the reset time X gave. It posts nothing without
+  403 (other than duplicate content) or refuses a token refresh, and ends the run on 429 until the
+  reset time X gave. It posts nothing without
   `--send`: the default run is a dry run that prints what it would post.
 - Limits, all settings (the defaults are a cautious start, not measurements): `per_author_per_day`
   2, `global_per_hour` 20, `global_per_day` 100, `min_seconds_between_posts` 20, `max_mention_age_hours`
@@ -128,8 +156,10 @@ What follows from that, as built:
   table for the purge.
 - The bot reads `GET /v1/tweet-launches/:id` for each open request and posts the follow-up only when
   the launch's repository equals the request's and Core registered the launch after the bot made the
-  link. Then the request is closed. The follow-up text has the agent's page
-  (`<app_url>/agents/<agent>/profile`) and nothing typed by the launcher.
+  link. Then the request is closed, and with `follow_up` on the second post goes out: the coin's name
+  as the market lists it (`GET <market_url>/tokens/<mint>`), the repository and the coin's page
+  `<app_url>/tokens/<mint>`. A name the safety list refuses, or one with a tag or a link in it, is
+  never posted: the request closes without the second post.
 - An open request expires after `link_hours`; the page still works after that, only no follow-up is
   posted. If the person closes the tab before Core has read the launch, no follow-up is posted.
 
@@ -145,7 +175,7 @@ What follows from that, as built:
 - Spam: the limits above, per author and global; one answer per mention id (kept in the state file,
   written before the post is sent, so a crash cannot answer twice); retweets and the bot's own posts
   are skipped; `stop` list.
-- Offensive text: the bot never repeats a name, ticker or vibe in a reply. They only travel in the
+- Offensive text: the first reply never repeats a name, ticker or vibe. They only travel in the
   link, after the wizard's own coin rules (name at most 32 bytes, ticker `A-Z0-9` up to 10) and
   `textSafety` (real people, price talk, harassment). A repository whose `owner/name` fails
   `textSafety` gets no reply. That check is a short conservative list, not a profanity filter:
@@ -160,30 +190,40 @@ saved. A systemd oneshot with a timer (`units-tweet-launch.{service,timer}`), in
 enabled, like the fee keeper.
 
 - Credentials: a file the owner creates, `~/.config/units/x.env` on this machine and
-  `/etc/units-tweet-launch/x.env` on the server, mode 600, never in the repository, never printed:
-  `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (`X_BEARER_TOKEN` may be
-  there; it is not used). The file is refused when its mode lets others read it. With no credentials
-  the service runs only against `--mock`.
-- State: one JSON file in `state_dir` (since id, answered mention ids, requests, counters, readings,
-  stop list), written with a rename.
+  `/etc/units-tweet-launch/x.env` on the server, mode 600, never in the repository, never printed.
+  OAuth 2.0: `X_ACCESS_TOKEN`, `X_REFRESH_TOKEN`, `X_CLIENT_ID`, `X_CLIENT_SECRET`. OAuth 1.0a, used
+  when neither `X_CLIENT_ID` nor `X_REFRESH_TOKEN` is there: `X_API_KEY`, `X_API_SECRET`,
+  `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`. `X_BEARER_TOKEN` may be there; it is not used. The file
+  is refused when its mode lets others read it. Real credentials are only ever sent to
+  `https://api.x.com`. With no credentials the service runs only against `--mock`.
+- State: `state.json` in `state_dir` (since id, answered mention ids, requests, counters, readings,
+  stop list; no secret) and `tokens.json`, both mode 600, written with a rename.
 - Config: `config/tweet-launch.example.json`.
 
 ## 7. What the owner provides
 
-- A developer app in console.x.com for @unitsdotgg with user authentication set to Read and Write,
-  the four OAuth 1.0a values generated after that setting (the access token must be @unitsdotgg's
-  own), credits and a spending limit.
+- A developer app in console.x.com for @unitsdotgg with read and write access, its OAuth 2.0 user
+  token for @unitsdotgg itself (scopes `tweet.read tweet.write users.read offline.access`) with the
+  client id and secret, credits and a spending limit.
 - The Automated label on the account, and a read of the automation rules page.
-- The decision on `follow_up` (section 3).
+- Two decisions: `follow_up` (section 3), and what to say when a unit cannot exist for a reason
+  other than missing tests (section 2).
 - Then: the runbook section "Launch from a tweet" in `docs/MAINNET-RUNBOOK.md`.
 
 ## 8. Proven and unproven
 
-Proven here, against a mock X API over HTTP (the real client code, OAuth 1.0a signatures checked by
-the mock) and a real Core in tests: the parser, refusals, limits, kill switch, dry run, the link
-round trip (mention in, reply with link out, launch handed to Core, follow-up out), and headless
-that the filled launch page shows the repository and sends nothing.
+Proven here, against a mock X API over HTTP (the real client code; the mock checks OAuth 1.0a
+signatures, bearer tokens and their expiry, the refresh with Basic client authentication and a
+refresh token that works once) and a real Core in tests: the parser, refusals, limits, kill switch,
+dry run, token refresh and a refused refresh, and the link round trip.
+`bun scripts/tweet-launch/proof.ts` (18/18, `scripts/tweet-launch/PROOF-LAST.json`) runs the real
+CLI against the mock: mention in, reply with the link out, the free reading of a real repository,
+headless Chromium at 1280 and 390 showing the launch page with repository, name and ticker filled
+and sending nothing but chain reads, a launch registered on a local simulated Core, the page's
+hand-in through the web server, and the second post in the thread.
 
-Unproven: every call to the real X API (field dialect, the summoned-reply rule as enforced, the
-price of a reply with a link, a reply to the bot's own reply), the systemd unit on the server, and
-the round trip with a real launch on mainnet.
+Unproven: every call to the real X API (field naming, the summoned-reply rule as enforced, the price
+of a reply with a link, duplicate-content refusals of the fixed sentences, a reply to the bot's own
+reply, a real token refresh and whether the refresh token changes), the systemd unit on the server,
+and the round trip with a real launch on mainnet (in the proof the page's hand-in was made by a
+script from the page, not by a launch).

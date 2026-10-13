@@ -94,7 +94,7 @@ describe("texts", () => {
     const longest = "o".repeat(39) + "/" + "r".repeat(100);
     for (const t of [linkReply("a".repeat(15), longest, link), followUpReply("n".repeat(32), longest, link), noTestsReply(longest), NO_REPO, NOT_PUBLIC]) {
       expect(xLength(t)).toBeLessThanOrEqual(X_MAX);
-      expect(t).not.toContain("—");
+      expect(t).not.toContain(String.fromCharCode(0x2014));
     }
   });
 });

@@ -80,7 +80,7 @@ export class XClient implements XApi {
   private async call(method: string, path: string, what: string, body?: unknown): Promise<Raw> {
     const url = `${this.o.base}${path}`;
     const send = async () =>
-      this.o.fetch(url, { method, headers: { authorization: await this.auth(method, url), ...(body === undefined ? {} : { "content-type": "application/json" }) }, body: body === undefined ? undefined : JSON.stringify(body) });
+      this.o.fetch(url, { signal: AbortSignal.timeout(30_000), method, headers: { authorization: await this.auth(method, url), ...(body === undefined ? {} : { "content-type": "application/json" }) }, body: body === undefined ? undefined : JSON.stringify(body) });
     let res = await send();
     // an access token X no longer takes: one refresh, one more try, never a loop
     if (res.status === 401 && this.o.tokens?.canRefresh) {

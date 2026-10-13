@@ -10,6 +10,7 @@
 // credentials and never reads the credentials file. Without credentials and without --mock it does
 // not run. Exit status: 0 done, 2 stopped or refused (kill switch, STOP file, no credentials), 1 any
 // other error.
+import { join } from "node:path";
 import { loadConfig, loadCredentials, publicConfig, X_BASE, type Creds } from "./config.ts";
 import { readRepoFree } from "./github.ts";
 import { runOnce } from "./service.ts";
@@ -53,7 +54,7 @@ async function main(): Promise<number> {
   const x = new XClient({ base, creds, tokens, fetch, dialect: cfg.dialect, max_results: cfg.poll_max_results, max_pages: cfg.poll_max_pages });
   say(send ? "SEND" : "dry run (nothing is posted; pass --send to post)");
   say(`${mock ? "mock X API" : "X API"}, ${creds.kind === "oauth2" ? "OAuth 2.0 user context" : "OAuth 1.0a user context"}; config ${JSON.stringify(publicConfig(cfg))}`);
-  const report = await runOnce(cfg, { x, store, fetch, readRepo: readRepoFree, now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), log: say }, { send });
+  const report = await runOnce(cfg, { x, store, fetch, readRepo: readRepoFree(join(cfg.state_dir, "read")), now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), log: say }, { send });
   if (has("--json")) console.log(JSON.stringify(report, null, 2));
   else {
     if (report.halted) say(`NOT RUN: ${report.halted}`);

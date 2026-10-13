@@ -73,7 +73,7 @@ export class TokenStore {
     const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
     if (this.creds.client_secret) headers.authorization = `Basic ${Buffer.from(`${this.creds.client_id}:${this.creds.client_secret}`).toString("base64")}`;
     else body.set("client_id", this.creds.client_id);
-    const res = await this.o.fetch(`${this.o.base}/2/oauth2/token`, { method: "POST", headers, body: body.toString() });
+    const res = await this.o.fetch(`${this.o.base}/2/oauth2/token`, { signal: AbortSignal.timeout(30_000), method: "POST", headers, body: body.toString() });
     const j = (await res.json().catch(() => null)) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; error?: unknown } | null;
     if (!res.ok || !j || typeof j.access_token !== "string" || !j.access_token) throw new RefreshRefused(res.status, typeof j?.error === "string" ? j.error : null);
     const now = this.o.now();

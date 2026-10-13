@@ -375,6 +375,63 @@ sent, and no buy is sent between completion and migration; the builders trade `c
 coins. Not proven on mainnet: nothing was sent there. Exit status 2 means refused, 3 a transaction
 still unconfirmed (the next run settles it).
 
+## Launch from a tweet
+
+Owner, 2026-10-12: reply to a GitHub link with `@unitsdotgg launch` and get a link to the launch page
+filled in for that repository. Design and limits: `docs/plans/TWEET-LAUNCH.md`. The bot
+(`packages/tweet-launch`) launches nothing and holds no wallet: it answers a mention with one fixed
+sentence and a link, and the person approves the launch with their own wallet on the page. Installed
+with every release, NOT enabled. Nothing has been posted to X and no call to the real X API has been
+made from this repository.
+
+What the owner provides:
+
+- An app in console.x.com for @unitsdotgg with credits and a spending limit. X bills per use (read
+  2026-10-12, https://docs.x.com/x-api/getting-started/pricing): a mention read 0.001 USD, a reply
+  0.010 USD when summoned, 0.200 USD for a post with a URL. Which of the two a summoned reply with a
+  link costs is not stated: plan on 0.200 USD a link reply.
+- The credentials file, mode 600, `KEY=value` lines. OAuth 2.0 user context (what the console
+  gives): `X_ACCESS_TOKEN`, `X_REFRESH_TOKEN`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, with the scopes
+  `tweet.read tweet.write users.read offline.access`. Or OAuth 1.0a: `X_API_KEY`, `X_API_SECRET`,
+  `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`. The token must be @unitsdotgg's own: the service checks
+  the account and refuses another one.
+- The Automated label on the account.
+
+On the server, once:
+
+```
+sudo /opt/units/current/scripts/deploy/tweet-launch-setup.sh
+sudo install -m 640 -o root -g units-tweet-launch /opt/units/current/config/tweet-launch.example.json /etc/units-tweet-launch/config.json
+sudo install -m 600 -o units-tweet-launch -g units-tweet-launch /dev/null /etc/units-tweet-launch/x.env   # then fill it in
+```
+
+First a dry run (reads the mentions, prints what it would post, posts nothing):
+
+```
+sudo -u units-tweet-launch env HOME=/var/lib/units/tweet-launch bun /opt/units/current/packages/tweet-launch/src/main.ts --config /etc/units-tweet-launch/config.json
+```
+
+Then set `"enabled": true` in the config and `systemctl enable --now units-tweet-launch.timer` (a
+pass every 2 minutes). Check the first real replies by hand: the field naming X accepts, the price
+of a link reply on the invoice, and that a reply is accepted (section 8 of the plan lists what is
+unproven).
+
+- Stop at once: `touch /var/lib/units/tweet-launch/STOP` (or `"enabled": false`, or
+  `systemctl disable --now units-tweet-launch.timer`). Resume: delete the file.
+- The service writes `STOP` itself, with the reason, when X refuses its credentials or a post (401,
+  403) or refuses a token refresh. It does not try again until the file is deleted.
+- OAuth 2.0: the access token lasts two hours and every refresh gives a new refresh token. The live
+  pair is in `/var/lib/units/tweet-launch/tokens.json` (mode 600), not in `x.env`, which is only the
+  seed. After a refused refresh put a new access and refresh token in `x.env` (a changed file
+  replaces the saved pair) and delete `STOP`. Do not use the same refresh token anywhere else: its
+  first use spends it.
+- The second post after a launch (`follow_up`) is off. `own_reply` turns it on; X's automation rules
+  allow one automated reply per interaction, so read section 3 of the plan first.
+- Limits (`per_author_per_day`, `global_per_hour`, `global_per_day`, `min_seconds_between_posts`) are
+  settings in the config.
+- Exit status 2 means not run (kill switch, STOP file or no credentials); the journal says which:
+  `journalctl -u units-tweet-launch -n 50`.
+
 ## Later admin actions
 
 Every onchain admin action is in `scripts/mainnet/admin.ts` `adminActions` and goes through propose,

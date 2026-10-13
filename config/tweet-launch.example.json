@@ -1,0 +1,22 @@
+{
+  "note": "Launch from a tweet (docs/plans/TWEET-LAUNCH.md). Copy to /etc/units-tweet-launch/config.json. No secret belongs here: the X credentials are in credentials_file. Every number is a setting. enabled false: nothing is posted, even with --send.",
+  "enabled": false,
+  "handle": "unitsdotgg",
+  "app_url": "https://app.units.gg",
+  "state_dir": "/var/lib/units/tweet-launch",
+  "credentials_file": "/etc/units-tweet-launch/x.env",
+  "follow_up": "off",
+  "per_author_per_day": 2,
+  "global_per_hour": 20,
+  "global_per_day": 100,
+  "min_seconds_between_posts": 20,
+  "max_mention_age_hours": 24,
+  "poll_max_results": 50,
+  "poll_max_pages": 3,
+  "link_hours": 72,
+  "read_repos": true,
+  "read_max_kb": 50000,
+  "read_cache_hours": 24,
+  "refresh_margin_s": 300,
+  "dialect": "tweet"
+}

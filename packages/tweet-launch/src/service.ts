@@ -212,7 +212,7 @@ export async function runOnce(cfg: Config, d: Deps, o: { send: boolean }): Promi
       }
       // a link that was never posted (dry run, or the post failed) has nothing to follow up
       if (!r.reply_id && o.send) continue;
-      const res = await d.fetch(`${cfg.core_url}/tweet-launches/${r.ref}`, { headers: { accept: "application/json" } }).catch(() => null);
+      const res = await d.fetch(`${cfg.core_url}/tweet-launches/${r.ref}`, { signal: AbortSignal.timeout(20_000), headers: { accept: "application/json" } }).catch(() => null);
       if (!res || !res.ok) continue;
       const c = (await res.json().catch(() => null)) as { agent?: unknown; mint?: unknown; repo?: unknown; launched_at?: unknown } | null;
       if (!c || typeof c.agent !== "string" || typeof c.mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(c.agent)) continue;
@@ -233,7 +233,7 @@ export async function runOnce(cfg: Config, d: Deps, o: { send: boolean }): Promi
       }
       if (limited(s, cfg, null, d.now())) continue; // over a limit: tried again on the next run
       // the coin's name as the market lists it; until it is listed the follow-up waits, and a name the safety list refuses is never posted
-      const tok = await d.fetch(`${cfg.market_url}/tokens/${r.mint}`, { headers: { accept: "application/json" } }).then((x) => (x.ok ? x.json() : null)).catch(() => null) as { name?: unknown; token?: { name?: unknown } } | null;
+      const tok = await d.fetch(`${cfg.market_url}/tokens/${r.mint}`, { signal: AbortSignal.timeout(20_000), headers: { accept: "application/json" } }).then((x) => (x.ok ? x.json() : null)).catch(() => null) as { name?: unknown; token?: { name?: unknown } } | null;
       const name = typeof tok?.name === "string" ? tok.name.trim() : typeof tok?.token?.name === "string" ? tok.token.name.trim() : "";
       if (!name) continue;
       if (textSafety(name).length || /[@\n\r]|https?:/i.test(name)) {
