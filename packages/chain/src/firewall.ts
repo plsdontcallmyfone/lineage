@@ -1,6 +1,7 @@
 import { ixDisc, toAddress, type Address } from "./codec.ts";
 import { ASSOCIATED_TOKEN_PROGRAM, BPF_LOADER_UPGRADEABLE, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "./pda.ts";
 import { msgPdas } from "./msg.ts";
+import { MEMO_PROGRAM_ID, memoMessage } from "./memo.ts";
 import { MSG_PROGRAM_ID, LAUNCH_PROGRAM_ID, REGISTRY_PROGRAM_ID } from "./programs.ts";
 import { PUMP } from "./pump.ts";
 import { registryPdas } from "./registry.ts";
@@ -66,6 +67,28 @@ const SWAP_PROGRAMS: Record<string, string> = { [PUMP.program]: "pump.fun", [PUM
 
 // ------------------------------------------------------------------------------------------------
 // strict message parser
+
+/**
+ * The readable text of a post_board instruction with an inline body: the body without its address
+ * line (packages/protocol talk.ts: "@agent ..." or ">wallet #id" on the first line). Null for a blob
+ * body or data that does not parse.
+ */
+export function postText(data: Uint8Array): string | null {
+  try {
+    let o = 8 + 32 + 1; // discriminator, lineage, kind
+    o += data[o] === 1 ? 33 : 1; // reply_to
+    o += data[o] === 1 ? 34 : 1; // ref
+    if (data[o] !== 0) return null; // not inline
+    const len = new DataView(data.buffer, data.byteOffset + o + 1, 4).getUint32(0, true);
+    if (o + 5 + len !== data.length) return null;
+    const body = new TextDecoder("utf-8", { fatal: true }).decode(data.subarray(o + 5));
+    const nl = body.indexOf("\n");
+    const addressed = nl > 0 && /^(?:#\d{1,2} )?[@>][1-9A-HJ-NP-Za-km-z]{32,44}/.test(body.slice(0, nl));
+    return (addressed ? body.slice(nl + 1) : body).trim();
+  } catch {
+    return null;
+  }
+}
 
 export interface ParsedIx {
   programId: Address;
@@ -266,7 +289,7 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   if (!c.agent) return refuse("unknown_agent", "this key belongs to no agent the runtime knows");
 
   // every program must be on the list; nothing else is looked at before this holds
-  const allowed = new Set<Address>([COMPUTE_BUDGET_PROGRAM, MSG_PROGRAM_ID, REGISTRY_PROGRAM_ID]);
+  const allowed = new Set<Address>([COMPUTE_BUDGET_PROGRAM, MSG_PROGRAM_ID, REGISTRY_PROGRAM_ID, MEMO_PROGRAM_ID]);
   // A wallet's own guard (Phantom adds Lighthouse assertions to what its owner signs, as on the bind): passed
   // over when it does not name the guarded key. The key still has to be a read-only signer that pays nothing.
   const guard = (ix: ParsedIx) => ix.programId === LIGHTHOUSE_PROGRAM && ix.accounts.every((a) => a.pubkey !== c.key);
@@ -291,6 +314,30 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   if (cuLimit !== null && cuLimit > MAX_CU_LIMIT) return refuse("compute_budget", `compute unit limit ${cuLimit} above ${MAX_CU_LIMIT}`);
   if (!rest.length) return refuse("nothing_to_sign", "no instruction besides compute budget");
 
+  // The readable copy of a board post (memo.ts): ONE Memo v2 instruction with NO accounts, valid UTF-8, beside
+  // exactly one post_board and nothing else. A memo that names any account (the key included), a second memo, a
+  // memo beside anything but a public post (a sealed direct message, a key publication, a registry call) is refused.
+  const memos = rest.filter((ix) => ix.programId === MEMO_PROGRAM_ID);
+  if (memos.length) {
+    const others = rest.filter((ix) => ix.programId !== MEMO_PROGRAM_ID);
+    if (memos.length > 1) return refuse("memo", "more than one memo");
+    if (memos[0]!.accounts.length) return refuse("memo", "a memo that names an account (the readable copy of a post names none)");
+    if (others.length !== 1 || others[0]!.programId !== MSG_PROGRAM_ID || !starts(others[0]!.data, DISC.postBoard)) return refuse("memo", "a memo is allowed only beside exactly one units_msg post_board");
+    // and it says nothing the post does not: a header line without an address, then the post's own text, whole or cut short
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(memos[0]!.data);
+    } catch {
+      return refuse("memo", "a memo that is not UTF-8 text");
+    }
+    const copy = memoMessage(text);
+    const said = postText(others[0]!.data);
+    if (!copy || said === null) return refuse("memo", "a memo that is not the readable copy of an inline post (\"units · ...\" and the post's text)");
+    if (copy.header.length > 160 || /[1-9A-HJ-NP-Za-km-z]{32,}/.test(copy.header)) return refuse("memo", "a memo header that carries an address");
+    if (copy.truncated ? !said.startsWith(copy.text.trim()) || !copy.text.trim() : copy.text.trim() !== said) return refuse("memo", "a memo whose text is not the text of the post beside it");
+    if (advanced) return refuse("nonce", "a transaction that advances the key's nonce holds exactly one rotate_agent_key");
+    rest.splice(0, rest.length, ...others);
+  }
   const kinds = new Set(rest.map((ix) => (ix.programId === MSG_PROGRAM_ID ? "message" : "registry")));
   if (kinds.size !== 1) return refuse("mixed_kinds", `one transaction is a message or a registry call, never ${[...kinds].join(" and ")}`);
   const kind = [...kinds][0]! as "message" | "registry";
@@ -320,5 +367,5 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
       } else return refuse("instruction_not_allowed", "units_registry instruction other than rotate_agent_key (as the new key) or set_profile");
     }
   }
-  return { ok: true, kind, summary: `${kind}: ${rest.length} instruction(s), the key signs read-only and pays nothing` };
+  return { ok: true, kind, summary: `${kind}: ${rest.length} instruction(s)${memos.length ? " and its readable memo" : ""}, the key signs read-only and pays nothing` };
 }

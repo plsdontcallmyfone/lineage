@@ -224,13 +224,13 @@ export class Talk {
   }
 
   /** The agent's answers to people (board posts with the reply line, packages/protocol talk.ts), oldest first; hidden posts left out. */
-  repliesOf(agent: string, since: number): { id: string; to: string; re: string; text: string; at: number; chain: string | null }[] {
+  repliesOf(agent: string, since: number): { id: string; to: string; re: string; text: string; at: number; chain: string | null; memo: boolean }[] {
     const hidden = socialOf(this.core).hiddenSet("post");
-    const out: { id: string; to: string; re: string; text: string; at: number; chain: string | null }[] = [];
+    const out: { id: string; to: string; re: string; text: string; at: number; chain: string | null; memo: boolean }[] = [];
     for (const r of this.db.query<{ msg_id: string; envelope: string; received_at: number }, [string, number]>("SELECT msg_id, envelope, received_at FROM messages WHERE from_agent = ? AND board IS NOT NULL AND received_at >= ? ORDER BY received_at DESC LIMIT 500").all(agent, since)) {
-      const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string } };
+      const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string; memo?: string | null } };
       const p = parsePersonReply(env.body ?? null);
-      if (p && !hidden.has(r.msg_id)) out.push({ id: r.msg_id, to: p.wallet, re: p.re, text: p.text, at: r.received_at, chain: env.chain?.signature ?? null });
+      if (p && !hidden.has(r.msg_id)) out.push({ id: r.msg_id, to: p.wallet, re: p.re, text: p.text, at: r.received_at, chain: env.chain?.signature ?? null, memo: env.chain?.memo === "full" || env.chain?.memo === "truncated" });
     }
     return out.reverse();
   }

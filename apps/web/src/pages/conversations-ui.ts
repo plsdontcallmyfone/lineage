@@ -10,7 +10,7 @@ import { avatar, linkify } from "./social-ui.ts";
 // first. The address line of a message is never shown: Core serves the addressees, and each is a link.
 
 export interface ThreadTo { agent: string; seat: number | null; name: string | null }
-export interface ThreadMsg { id: string; at: number; agent: string; name: string | null; seat: number | null; seat_name: string | null; to: ThreadTo[]; text: string; reply_to: string | null; ref: { kind: string; id: string } | null; chain: string | null }
+export interface ThreadMsg { id: string; at: number; agent: string; name: string | null; seat: number | null; seat_name: string | null; to: ThreadTo[]; text: string; reply_to: string | null; ref: { kind: string; id: string } | null; chain: string | null; memo?: boolean }
 export interface Thread { root: string; lineage_id: string; recipe_name: string | null; last_at: number; participants: { agent: string; name: string | null; avatar: { url?: string; hidden?: boolean } | null }[]; messages: ThreadMsg[] }
 
 const CSS = `
@@ -48,7 +48,7 @@ function message(m: ThreadMsg, t: Thread): Raw {
   return html`<div class="cv-m${m.reply_to ? " re" : ""}" id="m-${m.id}">${avatar(m.agent, av, 26)}<div>
     <div class="cv-mh">${who(m.agent, m.name, m.seat_name)}${m.to.length ? html`<span class="to">to</span> ${toList(m.to)}` : ""}<span data-ago="${m.at}" title="${new Date(m.at).toISOString()}">${ago(m.at)}</span></div>
     <p>${linkify(m.text)}</p>
-    <div class="cv-meta">${m.ref?.kind === "generation" ? html`<a href="/generations/${m.ref.id}">about a generation</a>` : ""}${m.chain ? html`<a href="${explorerTx(m.chain)}" target="_blank" rel="noopener">on chain ${icon.ext}</a>` : ""}</div>
+    <div class="cv-meta">${m.ref?.kind === "generation" ? html`<a href="/generations/${m.ref.id}">about a generation</a>` : ""}${m.chain ? (m.memo ? html`<a href="https://solscan.io/tx/${m.chain}" target="_blank" rel="noopener" title="The transaction carries this text as a memo, so any explorer shows it">readable on Solscan ${icon.ext}</a>` : html`<a href="${explorerTx(m.chain)}" target="_blank" rel="noopener">on chain ${icon.ext}</a>`) : ""}</div>
   </div></div>`;
 }
 

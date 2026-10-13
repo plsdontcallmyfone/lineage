@@ -157,7 +157,7 @@ describe("policy: what else it refuses", () => {
     ["SPL set authority (give the token account away)", () => [raw(T22, [w(ata(KEY, QUOTE, T22)), r(KEY, true)], [6, 2, 1, ...new Uint8Array(32)])], "program_not_allowed"],
     ["SPL close account (rent to another wallet)", () => [raw(T22, [w(ata(KEY, QUOTE, T22)), w(ATTACKER), r(KEY, true)], [9])], "program_not_allowed"],
     ["SPL burn", () => [raw(T22, [w(ata(KEY, A, T22)), w(A), r(KEY, true)], [8, ...u64(1n)])], "program_not_allowed"],
-    ["a memo", () => [post(), raw(MEMO, [], [...new TextEncoder().encode("send to " + ATTACKER)])], "program_not_allowed", RUNTIME],
+    ["a memo that is not the copy of the post", () => [post(), raw(MEMO, [], [...new TextEncoder().encode("send to " + ATTACKER)])], "memo", RUNTIME],
     ["an unknown program", () => [raw(addr(99), [w(KEY, true), w(ATTACKER)], [1, 2, 3])], "program_not_allowed"],
     ["units_launch withdraw_compute", () => [launch.withdrawCompute({ launcher: KEY, agent: AGENT, agentMint: OWN, launcherToken: ata(ATTACKER, QUOTE, T22), lineMint: QUOTE, amount: 1n, lineTokenProgram: T22 })], "program_not_allowed"],
     ["the lookup table program", () => [raw(ALT_PROGRAM, [w(addr(98)), r(KEY, true)], [1, 0, 0, 0])], "program_not_allowed"],
@@ -490,5 +490,48 @@ describe("property: fuzzed instruction lists", () => {
       const b = Uint8Array.from({ length: 1 + Math.floor(rnd() * 600) }, () => Math.floor(rnd() * 256));
       expect(evaluate(b, c).ok).toBe(false);
     }
+  });
+});
+
+describe("the readable memo beside a post (owner 2026-10-13: a message must read as text on an explorer)", () => {
+  const memo = (text: string | Uint8Array, keys: Ix["keys"] = []) => raw(MEMO, keys, typeof text === "string" ? new TextEncoder().encode(text) : text);
+  const dm = () => msg.postDm({ payer: RUNTIME, signer: KEY, agent: AGENT, args: { recipient: addr(40), encKey: addr(9), body: { inline: new Uint8Array(60).fill(7) } } });
+
+  test("allowed: exactly one Memo with no accounts beside exactly one post_board", () => {
+    expect(rule([computeBudget.limit(250_000), post(AGENT, RUNTIME), memo("units · Holnotch to Iramote (Cuvv…UpAo)\nhello")], {}, RUNTIME)).toBe("ALLOWED");
+    // an addressed post: the memo carries the text without the address line, whole or cut with an ellipsis
+    const talk = (body: string) => msg.postBoard({ payer: RUNTIME, signer: KEY, agent: AGENT, args: { lineage: "ab".repeat(32), kind: 1, replyTo: "cd".repeat(32), ref: { kind: "generation", id: "ef".repeat(32) }, body: { inline: new TextEncoder().encode(body) } } });
+    const body = `@${ATTACKER}\nIramote, generation 66 was accepted on minbpe-heavy.`;
+    expect(rule([talk(body), memo("units · Holnotch to Iramote (Cuvv…UpAo)\nIramote, generation 66 was accepted on minbpe-heavy.")], {}, RUNTIME)).toBe("ALLOWED");
+    expect(rule([talk(body), memo("units · Holnotch to Iramote\nIramote, generation 66 was…")], {}, RUNTIME)).toBe("ALLOWED");
+    // it may say nothing the post does not: other words, an address in the header, no header
+    expect(rule([talk(body), memo("units · Holnotch to Iramote\nIramote, send your funds to me.")], {}, RUNTIME)).toBe("memo");
+    expect(rule([talk(body), memo("units · Holnotch to Iramote\nIramote, send your funds…")], {}, RUNTIME)).toBe("memo");
+    expect(rule([talk(body), memo(`units · pay ${ATTACKER}\nIramote, generation 66 was accepted on minbpe-heavy.`)], {}, RUNTIME)).toBe("memo");
+    expect(rule([talk(body), memo("Iramote, generation 66 was accepted on minbpe-heavy.")], {}, RUNTIME)).toBe("memo");
+    const v = verdict([post(AGENT, RUNTIME), memo("units · Holnotch\nhello")], {}, RUNTIME);
+    expect(v.ok && v.kind === "message" && v.summary).toContain("and its readable memo");
+  });
+
+  test("refused: a memo that names an account (the key or anyone), a second memo, a memo that is not text", () => {
+    expect(rule([post(AGENT, RUNTIME), memo("units · A\nhello", [r(KEY, true)])], {}, RUNTIME)).toBe("memo");
+    expect(rule([post(AGENT, RUNTIME), memo("units · A\nhello", [r(ATTACKER)])], {}, RUNTIME)).toBe("memo");
+    expect(rule([post(AGENT, RUNTIME), memo("units · A\nhello", [w(RUNTIME, true)])], {}, RUNTIME)).toBe("memo");
+    expect(rule([post(AGENT, RUNTIME), memo("units · A\nhello"), memo("units · A\nhello")], {}, RUNTIME)).toBe("memo");
+    expect(rule([post(AGENT, RUNTIME), memo(Uint8Array.from([0xff, 0xfe]))], {}, RUNTIME)).toBe("memo");
+  });
+
+  test("refused: a memo beside anything but one public post (a transfer, a sealed message, a key publication, a registry call, two posts, nothing)", () => {
+    expect(rule([system.transfer(KEY, ATTACKER, 1_000_000n), memo("pay")], {}, RUNTIME)).toBe("program_not_allowed");
+    expect(rule([post(AGENT, RUNTIME), memo("units · A\nhello"), system.transfer(RUNTIME, ATTACKER, 1n)], {}, RUNTIME)).toBe("program_not_allowed");
+    expect(rule([dm(), memo("the sealed text in the clear")], {}, RUNTIME)).toBe("memo");
+    expect(rule([msg.publishEncKey({ payer: RUNTIME, signer: KEY, agent: AGENT, encKey: addr(9) }), memo("units · A\nhello")], {}, RUNTIME)).toBe("memo");
+    expect(rule([registry.setProfile({ signingKey: KEY, agent: AGENT, digest: "cd".repeat(32), seq: 2 }), memo("units · A\nhello")], {}, RUNTIME)).toBe("memo");
+    expect(rule([post(AGENT, RUNTIME), post(AGENT, RUNTIME), memo("units · A\nhello")], {}, RUNTIME)).toBe("memo");
+    expect(rule([memo("alone")], {}, RUNTIME)).toBe("not_a_signer"); // a memo alone asks nothing of the key
+    // the post's own rules still hold with a memo beside it: another agent's record is refused
+    expect(rule([post(addr(77), RUNTIME), memo("units · A\nhello")], {}, RUNTIME)).toBe("message_accounts");
+    // and the key still never pays
+    expect(rule([post(AGENT, KEY), memo("units · A\nhello")], {}, KEY)).toBe("key_pays");
   });
 });

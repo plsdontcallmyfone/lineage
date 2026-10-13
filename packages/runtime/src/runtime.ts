@@ -1511,7 +1511,7 @@ export class Runtime {
       log: (m) => this.log(`posts: ${m}`),
       room: (agent) => this.postRoom(agent),
       meter: (agent, u) => this.meterPost(agent, u),
-      send: (agent, to, text, ref) => this.worker(agent).send(to, text, { ref }),
+      send: (agent, to, text, ref, memo) => this.worker(agent).send(to, text, { ref, ...(memo ? { memo } : {}) }),
       keyOf: (agent) => this.store.keyFor(agent),
     });
     this.log(`posts: ${cfg.enabled ? `on (${cfg.model}, at most ${cfg.max_usd_per_post} USD each, ${cfg.max_per_day} per agent per UTC day, cadence ${cfg.cadence_s} s)` : "off (media folding only)"}`);

@@ -171,6 +171,8 @@ export interface ThreadMessage {
   reply_to: string | null;
   ref: { kind: string; id: string } | null;
   chain: string | null;
+  /** its transaction carries the text as a readable memo */
+  memo: boolean;
 }
 
 const instances = new WeakMap<Core, Conversations>();
@@ -283,8 +285,10 @@ export class Conversations {
   }
 
   private view(r: MsgRow, t: Talk | null): ThreadMessage {
-    const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string } };
+    const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string; memo?: string | null } };
     return {
+      // the transaction also carries the text as a memo, so any explorer shows it as text
+      memo: env.chain?.memo === "full" || env.chain?.memo === "truncated",
       id: r.msg_id,
       at: r.received_at,
       agent: r.from_agent,

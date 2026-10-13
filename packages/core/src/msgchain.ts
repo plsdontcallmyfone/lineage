@@ -1,4 +1,7 @@
 import {
+  memoBeside,
+  memoMessage,
+  memoUnits,
   fetchMsgEvents,
   msg,
   MSG_MAX_INLINE,
@@ -17,6 +20,7 @@ import { CoreClient, type SigningKey } from "./client.ts";
 import type { Core } from "./core.ts";
 import { ApiError, conflict } from "./errors.ts";
 import { messageEnvelope, type Envelope } from "./messages.ts";
+import { parsePersonReply, parseTalk } from "@units/protocol";
 import { H, sha256Hex, signStatement, type AgentKey } from "./protocol.ts";
 import { seal, type EncryptionKey } from "./seal.ts";
 
@@ -121,7 +125,8 @@ export class MsgChain {
         const to = e.type === "board" ? `board:${e.lineage}` : e.recipient;
         const env: Envelope & { chain: unknown } = {
           ...messageEnvelope({ from: e.agent, to, thread: e.replyTo, ref: e.ref, body, ciphertext, enc_key: e.type === "dm" ? e.encKey : null, sent_at: e.at * 1000, nonce }),
-          chain: { program: MSG_PROGRAM_ID, signature: e.signature, slot: e.slot, seq: e.seq.toString(), signer: e.signer, kind: e.kind, fee_payer: e.feePayer, blob },
+          // memo: whether the transaction also carries the text as a memo any explorer shows ("full", "truncated"; "differs" is not a copy)
+          chain: { program: MSG_PROGRAM_ID, signature: e.signature, slot: e.slot, seq: e.seq.toString(), signer: e.signer, kind: e.kind, fee_payer: e.feePayer, blob, memo: e.type === "board" ? memoState(e.memo, body) : null },
         };
         const now = this.c.now();
         let state = "delivered";
@@ -241,11 +246,30 @@ export function useChain(what: string): never {
 // ------------------------------------------------------------------------------------------------
 // Posting side
 
+/**
+ * The readable copy of a board post, sent as an SPL Memo in the same transaction so that any explorer
+ * shows the message as text (packages/chain memo.ts): a header line ("units · Holnotch to Iramote
+ * (Cuvv…UpAo)") and the text without the address line.
+ */
+export interface ReadableMemo {
+  header: string;
+  text: string;
+}
+
+/** How a post's memo relates to the post: the same text, the text cut short to fit the packet, or something else (never shown as a copy). */
+export function memoState(memo: string | null | undefined, body: string | null): "full" | "truncated" | "differs" | null {
+  if (!memo) return null;
+  const m = memoMessage(memo);
+  if (!m || body === null) return "differs";
+  const text = (parseTalk(body)?.text ?? parsePersonReply(body)?.text ?? body).trim();
+  return !m.truncated && m.text.trim() === text ? "full" : m.truncated && text.startsWith(m.text.trim()) ? "truncated" : "differs";
+}
+
 /** What a worker needs to send messages; the worker's own C2 path is used when none is given. */
 export interface Messenger {
   publishKey(k: EncryptionKey): Promise<void>;
   /** `kind`: the units_msg application kind byte (0 a note, 1 a conversation message; packages/protocol talk.ts) */
-  send(to: string, text: string, o?: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number }): Promise<string | null>;
+  send(to: string, text: string, o?: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number; memo?: ReadableMemo }): Promise<string | null>;
 }
 
 /** Lamports a fee payer spent on one message transaction (fee, plus the sender state's rent the first time). */
@@ -283,10 +307,10 @@ export class ChainMessenger implements Messenger {
   async publishKey(k: EncryptionKey): Promise<void> {
     const st = await readMsgState(this.o.rpc, this.o.agent);
     if (st?.encKey === k.public) return;
-    await this.sendIx("enc_key", msg.publishEncKey({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, encKey: k.public }));
+    await this.sendIx("enc_key", [msg.publishEncKey({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, encKey: k.public })]);
   }
 
-  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number } = {}): Promise<string | null> {
+  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number; memo?: ReadableMemo } = {}): Promise<string | null> {
     try {
       return await this.sendInner(to, text, o);
     } catch (e) {
@@ -295,7 +319,7 @@ export class ChainMessenger implements Messenger {
     }
   }
 
-  private async sendInner(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number }): Promise<string | null> {
+  private async sendInner(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string; kind?: number; memo?: ReadableMemo }): Promise<string | null> {
     const board = to.startsWith("board:");
     const cfg = await readMsgConfig(this.o.rpc);
     if (!cfg) throw new Error("units_msg is not initialized on this cluster");
@@ -332,14 +356,17 @@ export class ChainMessenger implements Messenger {
     const ix = board
       ? msg.postBoard({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, args: { lineage: to.slice(6), ...common } })
       : msg.postDm({ payer: this.o.payer.id, signer: this.o.key.id, agent: this.o.agent, args: { recipient: to, encKey: encKey!, ...common } });
-    const ev = await this.sendIx(board ? "board" : "dm", ix);
+    // a public post carries its text again as a memo with no accounts, whole or cut to what the packet has left; a sealed message never does
+    const memo = board && o.memo ? memoBeside(this.o.payer.id, ix, o.memo.header, o.memo.text) : null;
+    if (board && o.memo && !memo) this.log("messages: no room for a readable memo beside this post; the post goes alone");
+    const ev = await this.sendIx(board ? "board" : "dm", memo ? [ix, memo.ix] : [ix], memo ? memoUnits(memo.ix.data.length) : 0);
     return ev ? H("msg", this.o.agent, `chain-${ev}`) : null;
   }
 
   /** Sends one instruction; reports the payer's spend; returns the message seq from the emitted event. */
-  private async sendIx(what: ChainFee["what"], ix: ReturnType<typeof msg.postBoard>): Promise<string | null> {
+  private async sendIx(what: ChainFee["what"], ixs: ReturnType<typeof msg.postBoard>[], extraUnits = 0): Promise<string | null> {
     const signers = this.o.key.id === this.o.payer.id ? [] : [this.o.key];
-    const r = await sendAndConfirm(this.o.rpc, this.o.payer, [ix], { signers, computeUnits: this.o.computeUnits ?? 60_000, log: this.log });
+    const r = await sendAndConfirm(this.o.rpc, this.o.payer, ixs, { signers, computeUnits: (this.o.computeUnits ?? 60_000) + extraUnits, log: this.log });
     const tx = await this.o.rpc.call<(RawTx & { meta: { preBalances: number[]; postBalances: number[] } }) | null>("getTransaction", [
       r.signature,
       { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 },

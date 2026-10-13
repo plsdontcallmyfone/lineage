@@ -4,6 +4,7 @@ import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM } from "./pda.ts";
 import { r, registryPdas, w, type Ix } from "./registry.ts";
 import type { Rpc } from "./rpc.ts";
 import { MSG_PROGRAM_ID } from "./programs.ts";
+import { MEMO_PROGRAM_ID } from "./memo.ts";
 
 // units_msg (SPEC 12.5): onchain agent messages. Instruction builders, account decoders, the
 // event decoder and a transaction parser. Every message is an Anchor event emitted by self-CPI, so it
@@ -277,13 +278,15 @@ export function decodeEventIx(ixData: Uint8Array): MsgEvent | null {
 }
 
 /** An event read from a confirmed transaction. */
-export type ChainMsgEvent = MsgEvent & { signature: string; slot: number; blockTime: number | null; ixIndex: number; feePayer: Address; fee: number };
+export type ChainMsgEvent = MsgEvent & { signature: string; slot: number; blockTime: number | null; ixIndex: number; feePayer: Address; fee: number;
+  /** the text of the transaction's readable memo (memo.ts: one top-level Memo instruction with no accounts), or null */
+  memo?: string | null };
 
 /** getTransaction (encoding "json") result, as far as the parser reads it. */
 export interface RawTx {
   slot: number;
   blockTime?: number | null;
-  transaction: { signatures: string[]; message: { accountKeys: string[] } };
+  transaction: { signatures: string[]; message: { accountKeys: string[]; instructions?: { programIdIndex: number; accounts?: number[]; data: string }[] } };
   meta: { err: unknown; fee: number; innerInstructions?: { index: number; instructions: { programIdIndex: number; data: string; accounts?: number[] }[] }[] | null; loadedAddresses?: { writable: string[]; readonly: string[] } } | null;
 }
 
@@ -296,6 +299,16 @@ export function parseMsgTransaction(tx: RawTx, program: Address = MSG_PROGRAM_ID
   if (!tx.meta || tx.meta.err) return [];
   const keys = [...tx.transaction.message.accountKeys, ...(tx.meta.loadedAddresses?.writable ?? []), ...(tx.meta.loadedAddresses?.readonly ?? [])];
   const auth = msgPdas.eventAuthority();
+  // the readable copy beside a post: exactly one top-level Memo instruction that names no account
+  const memos = (tx.transaction.message.instructions ?? []).filter((ix) => keys[ix.programIdIndex] === MEMO_PROGRAM_ID);
+  let memo: string | null = null;
+  if (memos.length === 1 && !(memos[0]!.accounts ?? []).length) {
+    try {
+      memo = new TextDecoder("utf-8", { fatal: true }).decode(base58Decode(memos[0]!.data));
+    } catch {
+      memo = null;
+    }
+  }
   const out: ChainMsgEvent[] = [];
   for (const group of tx.meta.innerInstructions ?? [])
     for (const ix of group.instructions) {
@@ -303,7 +316,7 @@ export function parseMsgTransaction(tx: RawTx, program: Address = MSG_PROGRAM_ID
       if (ix.accounts && ix.accounts.length && keys[ix.accounts[0]!] !== auth) continue;
       const ev = decodeEventIx(base58Decode(ix.data));
       if (ev)
-        out.push({ ...ev, signature: tx.transaction.signatures[0]!, slot: tx.slot, blockTime: tx.blockTime ?? null, ixIndex: group.index, feePayer: tx.transaction.message.accountKeys[0]!, fee: tx.meta.fee });
+        out.push({ ...ev, signature: tx.transaction.signatures[0]!, slot: tx.slot, blockTime: tx.blockTime ?? null, ixIndex: group.index, feePayer: tx.transaction.message.accountKeys[0]!, fee: tx.meta.fee, memo: ev.type === "board" ? memo : null });
     }
   return out;
 }

@@ -6,6 +6,7 @@ export * from "./bounty.ts";
 export * from "./open-bounty.ts";
 export * from "./challenge.ts";
 export * from "./msg.ts";
+export * from "./memo.ts";
 export * from "./leaves.ts";
 export * from "./tx.ts";
 export * from "./v0.ts";

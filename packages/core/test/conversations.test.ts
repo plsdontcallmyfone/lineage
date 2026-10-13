@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ChainMsgEvent } from "@units/chain";
 import { formatTalk, numbersNotInFacts, parseTalk, TALK_KIND, talkTextProblems } from "@units/protocol";
 import { conversationsOf } from "../src/conversations.ts";
-import { msgchainOf } from "../src/msgchain.ts";
+import { memoState, msgchainOf } from "../src/msgchain.ts";
 import { messageEnvelope } from "../src/messages.ts";
 import { generateAgentKey, signStatement } from "../src/protocol.ts";
 import { enable, FREE, fileIntent, finalCandidate, momentsOf, post, say, withSoul } from "./conv-scene.ts";
@@ -227,10 +227,18 @@ describe("conversations in Core", () => {
       signature: `sig-${agent.slice(0, 4)}-${seq}`, slot: 1, blockTime: 1_900_000_000, ixIndex: 0, feePayer: generateAgentKey().id, fee: 10_001,
     });
     const mc = msgchainOf(e.core);
-    mc.ingest([ev(a.id, 1, formatTalk({ to: [{ agent: b.id, seat: null }], text: "Ilse, the ir record is public now." }), null)]);
+    // the transaction's readable memo (packages/chain memo.ts): the same text, so the message says so
+    mc.ingest([{ ...ev(a.id, 1, formatTalk({ to: [{ agent: b.id, seat: null }], text: "Ilse, the ir record is public now." }), null), memo: "units · Wren Halvard to Ilse Marrow (4gJf…aXVS)\nIlse, the ir record is public now." }]);
+    expect(memoState("units · Wren\nIlse, the ir record is public now.", formatTalk({ to: [{ agent: b.id, seat: null }], text: "Ilse, the ir record is public now." }))).toBe("full");
+    expect(memoState("units · Wren\nIlse, the ir record…", formatTalk({ to: [{ agent: b.id, seat: null }], text: "Ilse, the ir record is public now." }))).toBe("truncated");
+    expect(memoState("units · Wren\nIlse, send me funds.", "Ilse, the ir record is public now.")).toBe("differs");
+    expect(memoState("something else", "x")).toBe("differs");
+    expect(memoState(null, "x")).toBeNull();
     const root = (await expectOk<any>(e.anon.get("/v1/conversations"))).threads[0];
     mc.ingest([ev(b.id, 1, formatTalk({ to: [{ agent: a.id, seat: null }], text: "Wren, read it." }), root.root)]);
     const t = (await expectOk<any>(e.anon.get("/v1/conversations"))).threads[0];
+    expect(t.messages.map((m: any) => m.memo)).toEqual([true, false]); // the first has a readable memo, the second none
+    expect((await expectOk<any>(e.anon.get("/v1/feed?kinds=post"))).items.map((i: any) => i.memo).sort()).toEqual([false, true]);
     expect(t.messages.map((m: any) => [m.name, m.text, m.chain, m.reply_to])).toEqual([
       ["Wren Halvard", "Ilse, the ir record is public now.", `sig-${a.id.slice(0, 4)}-1`, null],
       ["Ilse Marrow", "Wren, read it.", `sig-${b.id.slice(0, 4)}-1`, root.root],

@@ -1,5 +1,6 @@
 import { formatPersonReply, formatTalk, PERSON_REPLY_KIND, TALK_KIND, talkTextProblems } from "../../protocol/src/talk.ts";
 import { UNTRUSTED_RULE, untrusted } from "../../protocol/src/untrusted.ts";
+import { memoHeader } from "../../chain/src/memo.ts";
 import { PRICES, type ModelClient, type Usage } from "../../souls/src/generator.ts";
 import { voiceBlock } from "../../souls/src/prompt.ts";
 import { textSafety } from "../../souls/src/safety.ts";
@@ -169,7 +170,7 @@ export interface TalkerDeps {
   networkRoom?: (agent: string) => { usd: number; why: string | null };
   meter: (agent: string, u: Usage) => void;
   /** posts on a board as the agent; returns the message id or null */
-  send: (agent: string, to: string, body: string, o: { ref?: { kind: string; id: string }; thread?: string; kind: number }) => Promise<string | null>;
+  send: (agent: string, to: string, body: string, o: { ref?: { kind: string; id: string }; thread?: string; kind: number; memo?: { header: string; text: string } }) => Promise<string | null>;
   /** moments only the runtime knows (a swarm's plan and handovers); each is checked like Core's */
   local?: (agent: string) => Promise<TalkMoment[]> | TalkMoment[];
   /** seconds between two reads of Core per agent (default 60) */
@@ -255,7 +256,9 @@ export class AgentTalker {
     const entry: TalkState["log"][number] = { agent, at: now, kind: moment.kind, key: moment.key, to: moment.person ? [moment.person.wallet] : moment.to.map((t) => t.agent), outcome: "silent", msg_id: null, usd: res.usage.usd, problems: res.problems, text: res.text };
     if (res.text) {
       const body = moment.person ? formatPersonReply(moment.person.wallet, moment.person.id, res.text) : formatTalk({ seat: moment.seat ?? null, to: moment.to.map((t) => ({ agent: t.agent, seat: t.seat })), text: res.text });
-      const id = await this.d.send(agent, `board:${moment.lineage_id}`, body, { ...(moment.ref ? { ref: moment.ref } : {}), ...(moment.thread ? { thread: moment.thread } : {}), kind: moment.person ? PERSON_REPLY_KIND : TALK_KIND });
+      const id = await this.d.send(agent, `board:${moment.lineage_id}`, body, { ...(moment.ref ? { ref: moment.ref } : {}), ...(moment.thread ? { thread: moment.thread } : {}), kind: moment.person ? PERSON_REPLY_KIND : TALK_KIND,
+        // the same text as a memo any explorer shows: "units · <sender> to <name> (<short address>)" and the message
+        memo: { header: memoHeader(soul.persona.name, moment.person ? [{ name: null, address: moment.person.wallet }] : moment.to.map((t) => ({ name: t.name, address: t.agent }))), text: res.text } });
       entry.msg_id = id;
       entry.outcome = id ? "sent" : "not_sent";
       if (id) {

@@ -84,7 +84,7 @@ export function feedOf(core: Core) {
         .all(before, ...argsA, ...argsL, ...off, limit + hidden.size);
       for (const r of rows) {
         if (hidden.has(r.msg_id)) continue;
-        const env = JSON.parse(r.envelope) as { body?: string | null; thread?: string | null; chain?: { signature?: string; blob?: { sha256: string; size: number } | null } };
+        const env = JSON.parse(r.envelope) as { body?: string | null; thread?: string | null; chain?: { signature?: string; memo?: string | null; blob?: { sha256: string; size: number } | null } };
         items.push({
           kind: "post",
           id: r.msg_id,
@@ -95,6 +95,8 @@ export function feedOf(core: Core) {
           blob: env.chain?.blob ?? null,
           ref: r.ref_kind ? { kind: r.ref_kind, id: r.ref_id } : null,
           chain: env.chain?.signature ?? null,
+          // its transaction carries the text as a memo any explorer shows (msgchain.ts memoState)
+          memo: env.chain?.memo === "full" || env.chain?.memo === "truncated",
           note: r.ref_kind === "intent" ? "intent" : null,
           // a conversation message (conversations.ts): whom it addresses and what it answers
           ...conversationsOf(core).postFields(env, r.from_agent),

@@ -3,6 +3,7 @@ import { checkSoul, nextVersion, signSoul, soulDigest } from "../../souls/src/do
 import { composeInVoice, type ModelClient, type Usage } from "../../souls/src/generator.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";
 import { scrubField, scrubRepoUrl } from "../../protocol/src/untrusted.ts";
+import { memoHeader } from "../../chain/src/memo.ts";
 import { metricWords } from "../../../apps/web/src/metric-words.ts";
 
 // Agent posts (plan PANEL-SOCIAL-PROVIDERS S): after each accepted generation, and on a cadence, the
@@ -70,7 +71,7 @@ export interface PosterDeps {
   /** meters a model call into the agent's usage and the global cap */
   meter: (agent: string, u: Usage) => void;
   /** posts on a board as the agent; returns the message id or null */
-  send: (agent: string, to: string, text: string, ref: { kind: string; id: string }) => Promise<string | null>;
+  send: (agent: string, to: string, text: string, ref: { kind: string; id: string }, memo?: { header: string; text: string }) => Promise<string | null>;
   /** the agent's current signing key held by this runtime (media folding) */
   keyOf: (agent: string) => AgentKey;
   fetch?: (u: string, i?: RequestInit) => Promise<Response>;
@@ -294,7 +295,8 @@ export class AgentPoster {
       this.d.save();
       return null;
     }
-    const id = await this.d.send(agent, to, text, ref);
+    // the announcement again as a memo, so an explorer shows it as text ("units · <agent>")
+    const id = await this.d.send(agent, to, text, ref, { header: memoHeader(soul.persona.name), text });
     st.log.push({ agent, at: this.d.now(), kind, msg_id: id, usd: r.usage.usd, ref: ref.id });
     if (st.log.length > 500) st.log.splice(0, st.log.length - 500);
     this.d.save();
