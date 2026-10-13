@@ -34,7 +34,19 @@ async function toAgentStep(page: Page) {
   await expect(page.locator("#lz-nav .lz-step", { hasText: "The agent" })).toBeEnabled();
 }
 
-/** The first listed coin, served with the swarm's agent id (the swarm run only). */
+/** A read of Core through the app, waited out when the site's gate asks (it limits reads per address). */
+async function core(page: Page, path: string): Promise<any> {
+  for (let i = 0; ; i++) {
+    const r = await page.request.get(path, { headers: { accept: "application/json" } });
+    if (r.ok()) return r.json();
+    if (i >= 5 || ![429, 502, 503].includes(r.status())) throw new Error(`GET ${path}: HTTP ${r.status()}`);
+    await page.waitForTimeout(1000 * Math.min(20, Number(r.headers()["retry-after"] ?? 5)));
+  }
+}
+/** The swarm's own coin where the market lists it (a real swarm); else the first listed coin stands in for it (the local proof). */
+const coinOf = (tokens: any[]): string => (tokens.find((t) => t.agent === SWARM) ?? tokens[0]).mint as string;
+
+/** A listed coin served with the swarm's agent id (the swarm run only). */
 async function asSwarmCoin(page: Page, mint: string) {
   const swap = async (route: import("@playwright/test").Route, f: (j: any) => void) => {
     const res = await route.fetch();
@@ -88,25 +100,57 @@ test.describe("swarms are off (the default): the pages are what they were", () =
 test.describe("swarms are on: one coin, several agents", () => {
   test.skip(!SWARM, "set UI_SWARM_AGENT to run against a Core with swarms on (scripts/swarms/proof.ts --serve)");
 
-  test("the coin page's Computers view: one large screen, tiles, a row per agent, the record", async ({ page, data }) => {
+  test("the coin page: a toggle per agent's computer, its screen and its own line, the rows and the record", async ({ page, data }) => {
     const tokens = await data.tokens();
     test.skip(!tokens.length, NO_COINS);
-    const mint = tokens[0].mint as string;
+    const mint = coinOf(tokens);
     await asSwarmCoin(page, mint);
-    const sw = await page.request.get(`/api/agents/${SWARM}/swarm`).then((r) => r.json());
+    const sw = await core(page, `/api/agents/${SWARM}/swarm`);
     expect(sw.size).toBeGreaterThanOrEqual(2);
+    const narrow = (page.viewportSize()?.width ?? 1280) <= 640;
     await page.goto(`/tokens/${mint}`);
     await expect(page.locator(".mk-buildpanel h2")).toHaveText("What the swarm is building");
-    const b = page.locator('.tk-view [data-view-b="computer"]');
-    await expect(b).toHaveText("Computers");
-    await b.click();
+    // the control: Chart, then one button per agent's computer; the chart is shown first
+    const seg = page.locator(".tk-view");
+    const comps = seg.locator('[data-view-b="computer"]');
+    await expect(comps).toHaveCount(sw.size);
+    await expect(seg.locator('[data-view-b="chart"]')).toHaveAttribute("aria-pressed", "true");
     const pane = page.locator("#mk-swarm");
-    await expect(pane).toBeVisible();
-    // one large screen (the lead's by default) and a tile for every other agent
-    await expect(pane.locator("#sw-live .lp-stage, #sw-live .lp")).not.toHaveCount(0);
-    await expect(pane.locator(".sw-tile")).toHaveCount(sw.size - 1);
-    const lead = sw.seats.find((s: any) => s.seat === sw.lead);
-    await expect(pane.locator("#sw-now")).toContainText(lead.name);
+    await expect(pane).toBeHidden();
+    for (const s of sw.seats) {
+      const b = comps.nth(s.seat - 1);
+      // the word is left out on a narrow screen (the number stays); the accessible name is whole either way
+      expect((await b.innerText()).trim()).toBe(narrow ? String(s.seat) : `Computer ${s.seat}`);
+      await expect(b).toHaveAttribute("aria-label", `Computer ${s.seat}: ${s.name}`);
+    }
+    // the control stays inside its panel (no overflow at 390)
+    const fits = await seg.evaluate((e) => {
+      const p = e.closest(".panel")!.getBoundingClientRect(), r = e.getBoundingClientRect();
+      return r.left >= p.left - 1 && r.right <= p.right + 1 && e.scrollWidth <= e.clientWidth + 1;
+    });
+    expect(fits, "the view control fits its panel").toBe(true);
+    const shows = async (s: any) => {
+      await expect(comps.nth(s.seat - 1)).toHaveAttribute("aria-pressed", "true");
+      await expect(seg.locator('[aria-pressed="true"]')).toHaveCount(1);
+      await expect(pane).toBeVisible();
+      // one screen (that agent's), or its resting line in words when the vault does not carry it; never an empty box, no tiles
+      const view = (await core(page, `/api/agents/${SWARM}/swarm`)).seats.find((x: any) => x.seat === s.seat);
+      if (view?.runtime?.state === "paused") await expect(pane.locator("#sw-live .sw-rest, #sw-live .lp-stage, #sw-live .lp").first()).toBeVisible();
+      else await expect(pane.locator("#sw-live .lp-stage, #sw-live .lp, #sw-live .sw-rest")).not.toHaveCount(0);
+      await expect(pane.locator("#sw-live")).not.toBeEmpty();
+      await expect(pane.locator(".sw-tile")).toHaveCount(0);
+      // its own line: name, role, model, and its last final result (or that it has none)
+      const now = pane.locator("#sw-now");
+      await expect(now).toContainText(s.name);
+      await expect(now).toContainText(s.role === "lead" ? "Lead" : "Builder");
+      await expect(now).toContainText(s.model.id);
+      await expect(now.locator(".sw-nres")).toHaveText(/Accepted: |Rejected: |Expired: |No final result yet/);
+      await expect(pane.locator('#sw-seats > li[aria-current="true"]')).toHaveCount(1);
+      await expect(pane.locator('#sw-seats > li[aria-current="true"]')).toContainText(s.name);
+    };
+    const first = sw.seats[0], second = sw.seats[1];
+    await comps.nth(0).click();
+    await shows(first);
     // a row per agent: name, role, model, and its counts from Core
     const rows = pane.locator("#sw-seats > li");
     await expect(rows).toHaveCount(sw.size);
@@ -124,24 +168,51 @@ test.describe("swarms are on: one coin, several agents", () => {
       await expect(rec.first()).toContainText(`by ${sw.record[0].name}`);
       await expect(rec.first()).toContainText(sw.record[0].model);
     } else await expect(rec.first()).toContainText("No accepted change yet");
-    // a tile becomes the large screen
-    const tile = pane.locator(".sw-tile").first();
-    const name = (await tile.locator(".sw-tl span").first().innerText()).trim();
-    await tile.click();
-    await expect(pane.locator("#sw-now")).toContainText(name);
-    await expect(pane.locator(".sw-tile")).toHaveCount(sw.size - 1);
-    await expect(pane.locator(`#sw-seats > li[aria-current="true"]`)).toContainText(name);
-    expect(await monoChrome(page), "monospace on the Computers view").toEqual([]);
+    // the other computer's toggle, and a row as a second way to the same choice
+    await comps.nth(1).click();
+    await shows(second);
+    await rows.nth(0).click();
+    await shows(first);
+    await comps.nth(1).click();
+    await shows(second);
+    expect(await monoChrome(page), "monospace on a computer's view").toEqual([]);
     await cleanPage(page);
-    await page.screenshot({ path: test.info().outputPath("computers.png"), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath("computer-2.png"), fullPage: true });
+    // the choice is kept for this coin in this session, and the chart is where it falls back to
+    await page.reload();
+    await shows(second);
+    await seg.locator('[data-view-b="chart"]').click();
+    await expect(pane).toBeHidden();
+    await expect(page.locator("#sw-live")).toBeEmpty();
+    await page.reload();
+    await expect(seg.locator('[data-view-b="chart"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#mk-swarm")).toBeHidden();
+  });
+
+  test("the agent profile's Desktop panel has the same toggle per agent's computer", async ({ page }) => {
+    const sw = await core(page, `/api/agents/${SWARM}/swarm`);
+    await page.goto(`/agents/${SWARM}/profile`);
+    const seg = page.locator("#pf-seats");
+    await expect(seg).toBeVisible();
+    const b = seg.locator('[data-view-b="computer"]');
+    await expect(b).toHaveCount(sw.size);
+    // it opens on the lead's computer
+    await expect(b.nth(sw.lead - 1)).toHaveAttribute("aria-pressed", "true");
+    const other = sw.seats.find((s: any) => s.seat !== sw.lead);
+    await b.nth(other.seat - 1).click();
+    await expect(b.nth(other.seat - 1)).toHaveAttribute("aria-pressed", "true");
+    await expect(seg.locator('[aria-pressed="true"]')).toHaveCount(1);
+    await expect(page.locator("#pf-live .lp-stage, #pf-live .lp")).not.toHaveCount(0);
+    await expect(b.nth(other.seat - 1)).toHaveAttribute("aria-label", `Computer ${other.seat}: ${other.name}`);
+    await cleanPage(page);
   });
 
   test("the Explorer card of a swarm says how many agents it has", async ({ page, data }) => {
     const tokens = await data.tokens();
     test.skip(!tokens.length, NO_COINS);
-    const mint = tokens[0].mint as string;
+    const mint = coinOf(tokens);
     await asSwarmCoin(page, mint);
-    const list = await page.request.get("/api/swarms").then((r) => r.json());
+    const list = await core(page, "/api/swarms");
     const mine = list.swarms.find((s: any) => s.agent === SWARM);
     await page.goto("/");
     const card = page.locator(`.ex-card[data-mint="${mint}"]`);
@@ -152,7 +223,7 @@ test.describe("swarms are on: one coin, several agents", () => {
     await card.screenshot({ path: test.info().outputPath("explorer-card.png") });
   });
 
-  test("the launch form: size, a row per agent, credits per agent and the cost before signing", async ({ page }) => {
+  test("the launch form: size, a row per agent, credits per agent and the cost before signing", async ({ page, guard }) => {
     test.setTimeout(480_000); // the agent's soul is written before Funding opens (up to a few minutes)
     const cfg = await page.request.get("/api/swarms/config").then((r) => r.json());
     const net = await page.request.get("/api/config").then((r) => r.json());
@@ -196,6 +267,9 @@ test.describe("swarms are on: one coin, several agents", () => {
     await page.locator("#lz-nav .lz-step", { hasText: "The agent" }).click();
     await box.locator(`label.seg-b:has([name="l_sw_size"][value="${n}"])`).click();
     expect(await monoChrome(page), "monospace on the launch form").toEqual([]);
+    // the app's profile may have the fee route and repository pools on while the proof's Core has them off: the form asks
+    // both once, takes the 404 as "off" (wallet/fee-route-step.ts), and the browser logs the two misses
+    guard.errors.splice(0, guard.errors.length, ...guard.errors.filter((e) => !/\/api\/(fee-claims\/providers|pools\/config)\b/.test(e)));
     await cleanPage(page);
     await box.screenshot({ path: test.info().outputPath("wizard-agents.png") });
   });

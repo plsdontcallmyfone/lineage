@@ -1,18 +1,18 @@
-import { get, loadLineageNames } from "../api.ts";
+import { loadLineageNames } from "../api.ts";
 import { lineageName } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { providerLogo } from "../provider-logo.ts";
 import { seatPanelIO, swarmOf, type SeatView, type SwarmView } from "../swarm.ts";
-import { drawThumb, thumbModel, type ThumbModel } from "../../../../packages/embed/src/thumb.ts";
-import { palette } from "./explorer.ts";
 import { providerName } from "./social-ui.ts";
 
-// The coin page of a swarm (docs/plans/SWARMS.md 6): the centre panel's "Computers" view. One large
-// live screen (the existing live panel, given a seat), a row of thumbnail tiles for the other seats
-// (a click makes a tile the large one; only the large screen plays video), a row per seat in the
-// page's own row style (name, role, model, what it is on, its last final result), and the record of
-// accepted changes naming the seat and model of each. A solo coin never loads any of this.
+// The coin page of a swarm (docs/plans/SWARMS.md 6; owner 2026-10-13: "two toggles for computer 1 and
+// computer 2"). The centre panel's control reads Chart, Computer 1, Computer 2, ... (one button per
+// agent of the swarm). A computer's view is that agent's live screen (the existing live panel, given
+// a seat; only the shown one plays video), its own line under it (name, role, model, what it is on,
+// its last final result), a row per agent in the page's own row style with the shown one marked, and
+// the record of accepted changes naming the agent and model of each. The choice is kept per coin for
+// the browser session and falls back to Chart. A solo coin never loads any of this.
 //
 // What is shown per seat while it works is what its session and its intent already say (the unit and
 // the target). A seat's result is its newest FINAL candidate: Core names no seat on an open one.
@@ -22,16 +22,18 @@ const STYLE = `
 .sw-stage{padding:12px 12px 0}
 .sw-now{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 16px 0;font:500 13px/1.4 var(--sans);letter-spacing:-.01em;color:var(--ts)}
 .sw-now b{color:var(--tp);font-weight:500}
-.sw-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:12px}
-.sw-tile{display:flex;flex-direction:column;gap:6px;min-width:0;padding:6px;border:0;background:var(--bg3);border-radius:16px;corner-shape:squircle;cursor:pointer;text-align:left;color:inherit;font:inherit;transition:background .15s}
-.sw-tile:hover{background:var(--pill)}
-.sw-tile:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.sw-scr{--ex-scr-bg:#0a0908;--ex-scr-panel:#1a1c20;--ex-scr-fg:#e6e8ec;--ex-scr-muted:#7a808c;--ex-scr-accent:var(--ac);position:relative;aspect-ratio:16/10;background:var(--ex-scr-bg);border-radius:12px;corner-shape:squircle;overflow:hidden}
-.sw-scr canvas{display:block;width:100%;height:100%}
-.sw-tl{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;padding:0 4px 2px;font:500 12px/1.4 var(--sans);letter-spacing:-.01em}
-.sw-tl span:first-child{color:var(--tp);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.sw-tl .sw-st{color:var(--tt);white-space:nowrap}
+.sw-now{padding-bottom:12px}
+.sw-now .sw-st{color:var(--tt)}
+.sw-now .sw-nres{flex-basis:100%;color:var(--tt);font-size:12.5px}
+.sw-now .sw-nres.ok{color:var(--good)}
 .sw-st.working{color:var(--good)}
+.sw-rest{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;aspect-ratio:16/9;max-height:520px;padding:24px;text-align:center;font-family:var(--sans)}
+.sw-rest b{font-weight:600;font-size:18px;letter-spacing:-.01em;color:var(--tp)}
+.sw-rest p{margin:0;max-width:520px;font-size:14px;line-height:1.45;color:var(--ts)}
+.seg.sw-view{flex-wrap:nowrap;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg.sw-view::-webkit-scrollbar{display:none}
+.seg.sw-view button{flex:none;white-space:nowrap}
+.sw-profile-seg{margin-right:10px}
 .sw-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px 6px;border-top:1px solid var(--border);font:500 12px/1.4 var(--sans);letter-spacing:-.01em;color:var(--tt)}
 .sw-seats>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;cursor:pointer}
 .sw-profile{margin-top:16px}
@@ -50,7 +52,7 @@ const STYLE = `
 .sw-units li{font-size:13.5px;color:var(--tp);min-width:0}
 .sw-units li span{color:var(--tt)}
 @media (max-width:640px){
-  .sw-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .seg.sw-view .sw-vl{display:none}
   .sw-seats>li,.sw-record>li{grid-template-columns:minmax(0,1fr)}
   .sw-seats .sw-res,.sw-record .sw-when{grid-column:1;grid-row:auto;text-align:left}
 }`;
@@ -122,13 +124,41 @@ function recordRows(sw: SwarmView): Raw {
   )}`;
 }
 
-/** The markup of the Computers pane (the large screen is mounted by mountSwarmPane). */
+/**
+ * One button per agent of the swarm for a segmented control: "Computer 1", "Computer 2", ... On a
+ * narrow screen the word is left out and the number stays; the full label and the agent's name are
+ * the button's accessible name either way.
+ */
+export function seatButtons(sw: SwarmView, pressed: number | null): Raw {
+  injectStyle();
+  return html`${sw.seats.map((s) => html`<button type="button" data-view-b="computer" data-seat="${s.seat}" aria-pressed="${String(s.seat === pressed)}" aria-label="Computer ${s.seat}: ${s.name}" title="${s.name}"><span class="sw-vl">Computer </span>${s.seat}</button>`)}`;
+}
+
+const VIEW_KEY = (coin: string) => `units-coin-view:${coin}`;
+/** The view a coin page was last left on in this browser session: "chart", or a seat number. Chart when nothing is kept or storage is not there. */
+export function keptView(coin: string, sw: SwarmView): "chart" | number {
+  try {
+    const v = sessionStorage.getItem(VIEW_KEY(coin));
+    const n = v && /^computer:\d{1,2}$/.test(v) ? Number(v.slice(9)) : 0;
+    return n && sw.seats.some((s) => s.seat === n) ? n : "chart";
+  } catch {
+    return "chart";
+  }
+}
+export function keepView(coin: string, v: "chart" | number): void {
+  try {
+    sessionStorage.setItem(VIEW_KEY(coin), v === "chart" ? "chart" : `computer:${v}`);
+  } catch {
+    /* a private window: the choice lasts for this page only */
+  }
+}
+
+/** The markup of a computer's pane (the screen is mounted by mountSwarmPane). */
 export function swarmPane(sw: SwarmView): Raw {
   injectStyle();
   return html`<div class="sw-wrap" id="mk-swarm">
     <div class="sw-stage"><div id="sw-live" class="mk-live" style="padding:0"></div></div>
     <div class="sw-now" id="sw-now"></div>
-    <div class="sw-tiles" id="sw-tiles" role="group" aria-label="Other computers of this swarm"></div>
     <div class="sw-h"><span>${sw.size} agents, one coin, one vault</span><span>Last final result</span></div>
     <ul class="tk-rows sw-seats" id="sw-seats">${seatRows(sw, sw.lead)}</ul>
     <div class="sw-h"><span>Accepted changes</span><span class="num">${sw.record.length}</span></div>
@@ -158,75 +188,72 @@ export async function swarmSeatsPanel(agent: string): Promise<Raw> {
 }
 
 export interface SwarmPaneHandle {
-  /** called when the Computers view is shown: mounts the large screen the first time */
-  show(): void;
+  /** a computer's view is shown: mounts that agent's screen (the only one that plays) */
+  show(seat: number): void;
+  /** the chart is shown: no screen plays */
+  hide(): void;
   destroy(): void;
 }
 
-export function mountSwarmPane(root: HTMLElement, first: SwarmView, o: { agent: string; label?: string }): SwarmPaneHandle {
+/** The shown agent's own line under its screen: name, role, model, what it is on, its last final result. */
+function seatLine(s: SeatView): Raw {
+  const st = seatState(s);
+  const res = seatResult(s);
+  return html`<b>${s.name}</b><span class="b outline">${ROLE[s.role]}</span>${modelChip(s.model)}<span class="sw-st ${st.cls}">${seatNow(s)}</span><span class="sw-nres ${res.cls}">${res.text}</span>`;
+}
+
+export function mountSwarmPane(root: HTMLElement, first: SwarmView, o: { agent: string; label?: string; onSeat?: (seat: number) => void }): SwarmPaneHandle {
   let sw = first;
   let shown = first.lead;
   let live: LivePanelHandle | null = null;
+  let liveSeat = 0;
   let visible = false;
   let dead = false;
   const stage = root.querySelector<HTMLElement>("#sw-live")!;
-  const tiles = root.querySelector<HTMLElement>("#sw-tiles")!;
-  const thumbs = new Map<string, ThumbModel>();
 
-  const mountLive = () => {
+  const unmountLive = () => {
     live?.destroy();
+    live = null;
+    liveSeat = 0;
     stage.innerHTML = "";
+  };
+  const mountLive = () => {
+    unmountLive();
     const seat = sw.seats.find((s) => s.seat === shown) ?? sw.seats[0]!;
+    liveSeat = seat.seat;
+    // the live panel says a resting screen in words (the runtime's reason, "Paused: vault low"), never an empty box
     live = mountLivePanel(stage, { agent: o.agent, seat: seat.seat, io: seatPanelIO(o.agent, seat.seat), label: seat.name, list: false, frame: "none", caption: false });
   };
 
-  async function modelOf(s: SeatView): Promise<ThumbModel> {
-    const st = seatState(s);
-    const base: ThumbModel = { repo: s.name, file: null, lines: [], cursor: -1, caption: st.text, live: st.cls === "working", title: s.name };
-    if (!s.session) return base;
-    const hit = thumbs.get(s.session.session_id);
-    try {
-      const view = await get<any>(`sessions/${s.session.session_id}`);
-      const ev = [...(view.event_list ?? [])].reverse().find((e: any) => ["read", "edit", "write", "patch"].includes(e.kind) && e.path);
-      let text: string | null = null;
-      if (ev) text = (await get<any>(`lineages/${view.lineage_id}/file?gen=${view.gen_id}&path=${encodeURIComponent(ev.path)}`).catch(() => null))?.text ?? null;
-      const m = thumbModel(view, typeof text === "string" ? text : null);
-      thumbs.set(s.session.session_id, m);
-      return m.lines.length ? m : { ...m, title: s.name };
-    } catch {
-      return hit ?? base;
+  /** A seat that rests (its vault cannot carry it, or the swarm is asleep): said in words in place of a screen. */
+  const resting = (s: SeatView): Raw | null => {
+    const r = fresh(s);
+    if (r?.state === "paused") return html`<div class="sw-rest" data-rest="paused"><b>Paused: vault low</b><p>The vault cannot pay for this agent's next attempt beside the others', so its computer rests. It starts again when the vault is funded.</p></div>`;
+    if (r?.state === "asleep") return html`<div class="sw-rest" data-rest="asleep"><b>Asleep</b><p>The vault is below the wake threshold. The computer starts again when the vault is funded.</p></div>`;
+    return null;
+  };
+  /** The stage for the shown seat: its live screen, or its resting line. Only ever one screen. */
+  const stageFor = (cur: SeatView) => {
+    if (!visible) return;
+    const rest = resting(cur);
+    if (rest) {
+      if (live) unmountLive();
+      if (stage.dataset.rest !== `${cur.seat}:${rest.s.length}`) stage.innerHTML = rest.s;
+      stage.dataset.rest = `${cur.seat}:${rest.s.length}`;
+      return;
     }
-  }
-
-  async function paintTile(btn: HTMLElement, s: SeatView) {
-    const scr = btn.querySelector<HTMLElement>(".sw-scr");
-    const canvas = scr?.querySelector("canvas");
-    if (!scr || !canvas) return;
-    const m = await modelOf(s);
-    if (dead || !scr.isConnected) return;
-    const w = Math.max(120, Math.round(scr.clientWidth || 160));
-    const h = Math.max(75, Math.round(scr.clientHeight || 100));
-    const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-    const cs = getComputedStyle(scr);
-    drawThumb(ctx, m, w, h, palette(cs), cs.fontFamily || "sans-serif");
-  }
+    if (stage.dataset.rest) {
+      delete stage.dataset.rest;
+      stage.innerHTML = "";
+    }
+    if (!live || liveSeat !== shown) mountLive();
+  };
 
   const paint = () => {
     const cur = sw.seats.find((s) => s.seat === shown) ?? sw.seats[0]!;
-    const st = seatState(cur);
+    stageFor(cur);
     const now = root.querySelector<HTMLElement>("#sw-now");
-    if (now) now.innerHTML = html`<b>${cur.name}</b><span class="b outline">${ROLE[cur.role]}</span>${modelChip(cur.model)}<span class="sw-st ${st.cls}">${seatNow(cur)}</span>`.s;
-    const others = sw.seats.filter((s) => s.seat !== shown);
-    tiles.innerHTML = html`${others.map((s) => {
-      const x = seatState(s);
-      return html`<button type="button" class="sw-tile" data-seat="${s.seat}" aria-label="Show ${s.name}'s screen"><div class="sw-scr"><canvas aria-hidden="true"></canvas></div><div class="sw-tl"><span>${s.name}</span><span class="sw-st ${x.cls}">${x.text}</span></div></button>`;
-    })}`.s;
-    if (visible) for (const b of tiles.querySelectorAll<HTMLElement>(".sw-tile")) void paintTile(b, sw.seats.find((s) => String(s.seat) === b.dataset.seat)!);
+    if (now) now.innerHTML = seatLine(cur).s;
     const rows = root.querySelector<HTMLElement>("#sw-seats");
     if (rows) rows.innerHTML = seatRows(sw, shown).s;
     const rec = root.querySelector<HTMLElement>("#sw-record");
@@ -235,18 +262,16 @@ export function mountSwarmPane(root: HTMLElement, first: SwarmView, o: { agent: 
     if (units) units.outerHTML = swarmBuilding(sw).s;
   };
 
+  // a row is a second way to the same choice: the control above follows through onSeat
   const pick = (ev: Event) => {
     const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-seat]");
     if (!b || (ev.target as HTMLElement).closest("a")) return;
     const n = Number(b.dataset.seat);
     if (!n || n === shown) return;
-    shown = n;
-    if (visible) mountLive();
-    paint();
+    o.onSeat?.(n);
   };
   // unit names for the rows (Core's list of units, read once)
   void loadLineageNames().then(() => !dead && paint()).catch(() => undefined);
-  tiles.addEventListener("click", pick);
   root.querySelector("#sw-seats")?.addEventListener("click", pick);
   paint();
 
@@ -259,10 +284,16 @@ export function mountSwarmPane(root: HTMLElement, first: SwarmView, o: { agent: 
   }, 15_000);
 
   return {
-    show() {
+    show(seat) {
+      if (sw.seats.some((s) => s.seat === seat)) shown = seat;
       visible = true;
-      if (!live) mountLive();
       paint();
+    },
+    hide() {
+      if (!visible) return;
+      visible = false;
+      unmountLive();
+      delete stage.dataset.rest;
     },
     destroy() {
       dead = true;
@@ -270,4 +301,26 @@ export function mountSwarmPane(root: HTMLElement, first: SwarmView, o: { agent: 
       live?.destroy();
     },
   };
+}
+
+/**
+ * The agent profile's Desktop panel for a swarm: the same per-agent control ("Computer 1", "Computer 2")
+ * over the one screen there, starting on the lead. Returns the handle that replaces the solo panel's.
+ */
+export function mountSeatDesktop(seg: HTMLElement, liveEl: HTMLElement, agent: string, sw: SwarmView): { destroy(): void } {
+  let live: LivePanelHandle | null = null;
+  const show = (seat: number) => {
+    const s = sw.seats.find((x) => x.seat === seat) ?? sw.seats[0]!;
+    live?.destroy();
+    liveEl.innerHTML = "";
+    live = mountLivePanel(liveEl, { agent, seat: s.seat, io: seatPanelIO(agent, s.seat), label: s.name, list: false, frame: "none", caption: false });
+    seg.innerHTML = seatButtons(sw, s.seat).s;
+  };
+  seg.addEventListener("click", (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-seat]");
+    if (b && b.getAttribute("aria-pressed") !== "true") show(Number(b.dataset.seat));
+  });
+  seg.hidden = false;
+  show(sw.lead);
+  return { destroy: () => live?.destroy() };
 }

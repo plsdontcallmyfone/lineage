@@ -43,7 +43,7 @@ import { unreachable } from "./tokens.ts";
 import type { Page } from "./types.ts";
 import { walletPanel } from "./wallet-panel.ts";
 import { swarmOf } from "../swarm.ts";
-import { mountSwarmPane, swarmBuilding, swarmPane, type SwarmPaneHandle } from "./token-swarm.ts";
+import { keepView, keptView, mountSwarmPane, seatButtons, swarmBuilding, swarmPane, type SwarmPaneHandle } from "./token-swarm.ts";
 
 // One agent token (plan L3; APP-CONSOLIDATION.md amendment 2026-10-10 (2)). A head card with the
 // name, the mint and the figures (market cap, price, 24 h volume, 24 h change, holders), then three
@@ -176,7 +176,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       <div class="tk-center">
         <section class="panel mk-pricepanel tk-chartpanel" data-view="chart">
           <div class="panel-h">
-            <div class="seg tk-view" role="group" aria-label="Show"><button type="button" data-view-b="chart" aria-pressed="true">Chart</button><button type="button" data-view-b="computer" aria-pressed="false">${sw ? "Computers" : "Computer"}</button></div>
+            <div class="seg tk-view${sw ? " sw-view" : ""}" role="group" aria-label="Show"><button type="button" data-view-b="chart" aria-pressed="true">Chart</button>${sw ? seatButtons(sw, null) : html`<button type="button" data-view-b="computer" aria-pressed="false">Computer</button>`}</div>
             <div class="aside"><span class="faint hide-xs tk-unit">US dollars per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div><a class="link tk-agentlink" href="/agents/${t.agent}">Agent page</a></div>
           </div>
           <div class="tk-pane" data-pane-v="chart" id="mk-chart"></div>
@@ -208,7 +208,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       let tradeBox: { update?: (t: TokenDetail) => void; destroy?: () => void } | null = null;
       const chartEl = root.querySelector<HTMLElement>("#mk-chart")!;
       const liveEl = root.querySelector<HTMLElement>("#mk-live");
-      const swarm: SwarmPaneHandle | null = sw ? mountSwarmPane(root, sw, { agent: t.agent, label: t.name ?? t.symbol ?? undefined }) : null;
+      // a swarm: one button per agent's computer in the control; a row of the list picks the same way
+      const swarm: SwarmPaneHandle | null = sw ? mountSwarmPane(root, sw, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, onSeat: (n) => root.querySelector<HTMLElement>(`.tk-view [data-view-b="computer"][data-seat="${n}"]`)?.click() }) : null;
       const seatBy = sw ? (gen: string) => sw.record.find((r) => r.gen_id === gen) ?? null : null;
       const chart = mountTokenChart(chartEl);
       const label = (x: Data) => `${sym(x.t)} · ${x.tf}`;
@@ -295,11 +296,21 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         if (!b) return;
         const v = b.dataset.viewB!;
         chartPanel.dataset.view = v;
-        for (const x of chartPanel.querySelectorAll<HTMLElement>("[data-view-b]")) x.setAttribute("aria-pressed", String(x.dataset.viewB === v));
+        // a swarm has a button per agent's computer: the pressed one is that agent's
+        for (const x of chartPanel.querySelectorAll<HTMLElement>("[data-view-b]")) x.setAttribute("aria-pressed", String(x === b));
         for (const p of chartPanel.querySelectorAll<HTMLElement>("[data-pane-v]")) p.hidden = p.dataset.paneV !== v;
-        if (v === "computer" && swarm) swarm.show();
-        else if (v === "computer" && !live && liveEl) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none", caption: false });
+        if (swarm) {
+          const seat = Number(b.dataset.seat);
+          if (v === "computer" && seat) swarm.show(seat);
+          else swarm.hide();
+          keepView(t.mint, v === "computer" && seat ? seat : "chart");
+        } else if (v === "computer" && !live && liveEl) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none", caption: false });
       });
+      // a swarm's coin opens on the computer it was last left on in this session, else on the chart
+      if (sw) {
+        const kept = keptView(t.mint, sw);
+        if (kept !== "chart") chartPanel.querySelector<HTMLElement>(`.tk-view [data-view-b="computer"][data-seat="${kept}"]`)?.click();
+      }
 
       // the trade box (wallet bundle)
       const tradeEl = root.querySelector<HTMLElement>("#mk-trade")!;

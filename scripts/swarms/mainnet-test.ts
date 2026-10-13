@@ -280,18 +280,24 @@ async function main() {
         const errors: string[] = [];
         page.on("pageerror", (e: Error) => errors.push(e.message));
         await page.goto(`${BASE}/tokens/${mint}`, { waitUntil: "domcontentloaded" });
+        // a button per agent's computer in the centre panel's control ("Computer 1", "Computer 2"); a release before
+        // that change has one "Computers" button and a tile for every agent but the large screen
         const b = page.locator('.tk-view [data-view-b="computer"]');
-        await b.waitFor({ timeout: 60_000 }).catch(() => {});
-        const label = ((await b.innerText().catch(() => "")) as string).trim();
-        await b.click().catch(() => {});
+        await b.first().waitFor({ timeout: 60_000 }).catch(() => {});
+        const buttons = await b.count();
+        const labels = (await b.evaluateAll((els: HTMLElement[]) => els.map((e) => e.getAttribute("aria-label") ?? (e.textContent ?? "").trim()))) as string[];
+        const perSeat = buttons === n && labels.every((l, i) => l.startsWith(`Computer ${i + 1}`));
+        await b.nth(perSeat ? n - 1 : 0).click().catch(() => {});
         await page.locator("#mk-swarm #sw-seats > li").first().waitFor({ timeout: 30_000 }).catch(() => {});
         const rows = await page.locator("#mk-swarm #sw-seats > li").count();
         const tiles = await page.locator("#mk-swarm .sw-tile").count();
+        const marked = ((await page.locator('#mk-swarm #sw-seats > li[aria-current="true"]').getAttribute("data-seat").catch(() => null)) as string | null) ?? "";
         const head = ((await page.locator(".mk-buildpanel h2").innerText().catch(() => "")) as string).trim();
         const wide = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
         await page.screenshot({ path: join(OUT, `token-${width}.png`), fullPage: true }).catch(() => {});
-        check(`coin page at ${width} px: the Computers view has a row for each of the ${n} agents and a tile for every one but the large screen`, label === "Computers" && rows === n && tiles === n - 1 && head === "What the swarm is building" && !wide && errors.length === 0,
-          `button "${label}", ${rows} rows, ${tiles} tiles, heading "${head}"${wide ? ", the page scrolls sideways" : ""}${errors.length ? `, page errors: ${errors.slice(0, 2).join(" ; ")}` : ""}`);
+        const older = buttons === 1 && labels[0] === "Computers" && tiles === n - 1;
+        check(`coin page at ${width} px: a toggle for each of the ${n} agents' computers, a row for each agent with the shown one marked`, (perSeat ? marked === String(n) && tiles === 0 : older) && rows === n && head === "What the swarm is building" && !wide && errors.length === 0,
+          `${perSeat ? `toggles ${labels.join(" | ")}, row ${marked} marked` : older ? `the release before per-agent toggles: one "Computers" button, ${tiles} tiles` : `buttons ${JSON.stringify(labels)}, ${tiles} tiles`}, ${rows} rows, heading "${head}"${wide ? ", the page scrolls sideways" : ""}${errors.length ? `, page errors: ${errors.slice(0, 2).join(" ; ")}` : ""}`);
         if (width === 1280) {
           await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
           const card = page.locator(`.ex-card[data-agent="${agent}"]`);

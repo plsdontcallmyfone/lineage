@@ -13,7 +13,8 @@ import { providerLogo } from "../provider-logo.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
-import { swarmSeatsPanel } from "./token-swarm.ts";
+import { mountSeatDesktop, swarmSeatsPanel } from "./token-swarm.ts";
+import { swarmOf } from "../swarm.ts";
 import { followsPanel } from "./follows-section.ts";
 import { setupLine, spendPanel } from "./spend-section.ts";
 import { holdingChip } from "./holding-line.ts";
@@ -121,7 +122,8 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const desktopPanel = panel(
     "Desktop",
     html`<div id="pf-live" class="mk-live"></div>`,
-    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>` },
+    // a swarm: one button per agent's computer, filled at mount (token-swarm.ts mountSeatDesktop); hidden for a solo agent
+    { cls: "mk-livepanel", aside: html`<div class="seg sw-view sw-profile-seg" id="pf-seats" role="group" aria-label="Computer" hidden></div><a class="link" href="/agents/${id}">Agent page</a>` },
   );
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(
@@ -186,7 +188,15 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   wireSocial();
   // the desktop: the live panel in agent mode
   const liveEl = root.querySelector<HTMLElement>("#pf-live");
-  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none", caption: false }) : null;
+  let live: { destroy(): void } | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none", caption: false }) : null;
+  // a swarm: the one screen here follows a button per agent ("Computer 1", "Computer 2"), starting on the lead
+  const seg = root.querySelector<HTMLElement>("#pf-seats");
+  if (liveEl && seg)
+    void swarmOf(id).then((sw) => {
+      if (!sw || !liveEl.isConnected) return;
+      live?.destroy();
+      live = mountSeatDesktop(seg, liveEl, id, sw);
+    });
   // the price chart and token figures, refreshed in place every 15 s
   if (tok) {
     let t = tok;
@@ -231,7 +241,7 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
     const timer = setInterval(() => {
       if (!root.isConnected) {
         clearInterval(timer);
-        live.destroy();
+        live?.destroy();
       }
     }, 5000);
   }
