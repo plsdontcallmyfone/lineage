@@ -304,11 +304,15 @@ export class OpenBounties {
     const posted = this.c.db.query<{ posted_at: number | null; closed_at: number | null }, [number]>(
       "SELECT ce.posted_at, e.closed_at FROM epochs e LEFT JOIN chain_epochs ce ON ce.n = e.n WHERE e.n = ?").get(g.epoch);
     const ms = posted?.posted_at ?? posted?.closed_at ?? 0;
+    // the hold is the registry's own ChallengeConfig: where the chain has none, a claim waits for nothing
     let window = 0;
     try {
-      window = this.c.chainMode ? Number(challengesOf(this.core).configView().window_s) || 0 : 0;
+      const cv = this.c.chainMode ? challengesOf(this.core).configView() : null;
+      window = cv && cv.source === "chain" ? Number(cv.window_s) || 0 : 0;
     } catch { /* no challenge config: no hold */ }
-    return Math.ceil(ms / 1000) + window;
+    // Core's own record of the post is never earlier than the chain's posted_at, so this is never too early; whole seconds, rounded
+    // down like the clock it is compared with (rounding up held a just-posted epoch back for the rest of its second)
+    return Math.floor(ms / 1000) + window;
   }
 
   /**

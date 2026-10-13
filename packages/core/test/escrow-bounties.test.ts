@@ -100,6 +100,7 @@ describe("the escrow program's mirror", () => {
     const createdAt = BigInt(Math.floor(e.clock.now() / 1000) + 1); // the bounty is created after `small` was accepted
     e.clock.advance(60_000);
     const mid = await accept(e, a, "mid", 880); // height 2
+    e.clock.advance(500); // not on a whole second: an epoch closed a moment ago is claimable at once where no challenge window is set
     const big = await accept(e, b, "big", 800); // height 3
     const terms = { v: 1, kind: "improvement", lineage_id: e.lineage, metric: "ir", min_improvement_bps: 500, note: "faster encode" };
     O.sync(CONFIG, [
@@ -133,6 +134,8 @@ describe("the escrow program's mirror", () => {
     expect(v.bounty.note).toBe("faster encode");
     expect(v.generations.map((g: any) => [g.gen_id, g.after_open, g.meets, g.payable])).toEqual([[small.gen, false, true, true], [mid.gen, true, true, true], [big.gen, true, true, true]]);
     expect(v.next.action).toBe("claim");
+    // the bounty only the newest generation meets: its epoch closed within this same second, and it can be named now
+    expect((await expectOk(e.anon.get(`/v1/bounties/${addr(2)}/view`))).next).toEqual({ action: "claim", at: null, why: "a generation meets the terms" });
 
     // the claim proof: the winner first by the program's rule, each leaf proven against its epoch's root
     const c = await expectOk(e.anon.get(`/v1/bounties/${addr(1)}/claim`));
