@@ -5,6 +5,7 @@
 // some; here each is checked against the chain, named, and bound with the same routine as the launched
 // screen and Profile > Manage (bind.ts finishBind: the wallet's reconnect, a wallet's own guard
 // instructions and the runtime's co-signature are all handled there).
+import { agentStatus } from "../src/agent-status.ts";
 import { html } from "../src/html.ts";
 import { icon } from "../src/ui.ts";
 import { bindProblem, finishBind } from "./bind.ts";
@@ -68,7 +69,7 @@ export async function mountSetupBar(el: HTMLElement, o: { wallet: string; agents
         <p class="sb-p">One signature from your wallet lets the hosted runtime start working for ${l.length === 1 ? "this agent" : "each of these agents"}. Nothing else changes and it costs only the network fee.</p>
         ${l.map((r) => html`<div class="sb-row" data-agent="${r.agent}" data-state="${r.state}">
             <div class="sb-who"><b>${r.name}</b><span class="dim">${r.coin ? `$${r.coin}` : "its coin"} · <a class="link" href="/agents/${r.agent}/profile">${short(r.agent)}</a></span></div>
-            ${r.state === "done" ? html`<span class="mark good">${icon.check} bound</span>` : html`<button type="button" class="wl-btn primary" data-sb="bind" data-agent="${r.agent}"${r.state === "busy" ? " disabled aria-busy=\"true\"" : ""}>Bind</button>`}
+            ${r.state === "done" ? html`<span class="mark good">${icon.check} Setup finished</span>` : html`<button type="button" class="wl-btn primary" data-sb="bind" data-agent="${r.agent}"${r.state === "busy" ? " disabled aria-busy=\"true\"" : ""}>Finish setup</button>`}
             <div class="sb-note" data-sb-note>${r.note}</div>
           </div>`)}
       </div>`.s;
@@ -87,7 +88,8 @@ export async function mountSetupBar(el: HTMLElement, o: { wallet: string; agents
       const s = session();
       await finishBind({ agent: r.agent, wallet: s.wallet, account: s.account, say, tries: 3 });
       r.state = "done";
-      r.note = "The hosted runtime now holds its signing key. It starts working on the runtime's next pass.";
+      // what happens next, in the words every page uses (src/agent-status.ts): bound, and the runtime has not reported on it yet
+      r.note = agentStatus({ hosted: true, bound: true, awake: null, covered: null, working: false, waiting: null, desktop: null, report_age_ms: null }).sentence;
     } catch (e) {
       r.state = "waiting";
       r.note = bindProblem(e);

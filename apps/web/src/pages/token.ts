@@ -12,6 +12,7 @@ import { feeRouteChip, poolChip } from "./fee-route-line.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 import { feedPanel } from "./feed.ts";
 import { agentAvatar, agentTitle, buildingLine, hiddenNote, injectBuildingStyle, type DirToken } from "../building.ts";
+import { statusSlot } from "../agent-status.ts";
 import {
   addrLink,
   usdAmountFig,
@@ -126,7 +127,9 @@ function holdersTable(d: Data): Raw {
 /** What the agent is building: its live status or last verified improvement, the repository and the session link. */
 function buildingBody(t: TokenDetail): Raw {
   // the upstream it improves and its own repository, labelled (agent-repo.ts)
-  return html`<div class="panel-b mk-building">${buildingLine(t as unknown as DirToken, { full: true })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", t.agent, (t as any).building?.repo ?? (t as any).repo_url ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(t.mint)}${tweetOriginSlot(t.agent)}</div></div>`;
+  // first the one status line (agent-status.ts): what is happening to the agent, in the launcher's words
+  const status = statusSlot(t.agent, { hosted: t.hosted, awake: t.awake, covered: (t as any).state === "covered", live: !!(t as any).building?.live, mint: t.mint, onCoin: true });
+  return html`<div class="panel-b mk-building">${status}${buildingLine(t as unknown as DirToken, { full: true })}<div class="sub" style="margin-top:8px">${repoPairSlot("agent", t.agent, (t as any).building?.repo ?? (t as any).repo_url ?? null)}</div><div class="sub" style="margin-top:6px">${coinLinksSlot(t.mint)}${tweetOriginSlot(t.agent)}</div></div>`;
 }
 
 // ------------------------------------------------------------------------------------------------

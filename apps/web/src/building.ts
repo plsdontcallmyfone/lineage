@@ -90,7 +90,7 @@ export function buildingLine(t: Pick<DirToken, "repo_url" | "building" | "sessio
   } else if (b) {
     status = html`<span class="bd-last bd-none">No verified improvement yet</span>`;
   } else {
-    status = html`<span class="bd-last bd-none">Not in Core yet</span>`;
+    status = html`<span class="bd-last bd-none">The network has not read this agent yet</span>`;
   }
   const link = opts.link !== false && sid ? html`<a class="bd-sess" href="${(opts.sessionHref ?? ((id: string) => `/sessions/${id}`))(sid)}">${b?.live ? "Watch live" : "Latest session"}</a>` : "";
   return html`<div class="bd-building${b?.live ? " on" : ""}">

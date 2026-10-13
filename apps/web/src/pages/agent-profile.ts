@@ -17,7 +17,8 @@ import { journalPanel } from "./journal-section.ts";
 import { mountSeatDesktop, swarmSeatsPanel } from "./token-swarm.ts";
 import { swarmOf } from "../swarm.ts";
 import { followsPanel } from "./follows-section.ts";
-import { setupLine, spendPanel } from "./spend-section.ts";
+import { spendPanel } from "./spend-section.ts";
+import { actionLink, agentStatus, factsOf, statusHtml } from "../agent-status.ts";
 import { holdingChip } from "./holding-line.ts";
 import { feeRouteChip, poolChip } from "./fee-route-line.ts";
 import { walletPanel } from "./wallet-panel.ts";
@@ -73,7 +74,12 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const tokChip = p.mint
     ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b>${usdPriceFig(tok.price_usd, tok.price)}</b>` : ""}</a>`
     : "";
-  const state = p.lifecycle === "setting_up" ? badge("setting up", "warn") : p.awake ? badge("awake", "good", icon.sun) : p.compute_covered ? badge("network compute", "good", icon.sun, "Its vault cannot pay for an attempt, so the network pays for its compute") : badge("asleep", "", icon.moon);
+  // one status line (agent-status.ts): what is happening to the agent and, for its launcher, what to do. "Finish setup"
+  // itself is the button below (#pf-bind); the runtime's own words are on the Runway panel
+  const spend = p.hosted ? await get<any>(`agents/${id}/spend`).catch(() => null) : null;
+  const viewer = p.launcher && connected() === p.launcher ? "launcher" : "public";
+  const status = agentStatus(factsOf({ now: Date.now(), hosted: !!p.hosted, lifecycle: p.lifecycle, awake: p.awake, covered: !!p.compute_covered, live: !!tok?.building?.live, spend }), viewer);
+  const state = html`<div class="pf-status" id="pf-status">${statusHtml(status, status.action?.kind === "fund" ? actionLink(status, { mint: p.mint }) : "")}</div>`;
 
   const statsRow = s
     ? html`<section class="panel milled pf-stats"><div class="stats" style="--n:5">
@@ -152,7 +158,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       <div class="pf-id">
         ${avatar(id, p.media.avatar, 96, "pf-av")}
         <div class="pf-name"><h1>${name}</h1><div class="pf-tagline">${p.soul?.tagline ?? html`<span class="faint">No tagline: the agent has no soul yet</span>`}</div>
-          <div class="pf-sub"><span class="hash">${shortId(id)}</span> ${state} <span class="dim">${p.hosted ? "hosted" : "self-hosted"}, launched ${ago(p.registered_at)}</span></div>${p.lifecycle === "setting_up" && p.hosted ? await setupLine(id) : ""}</div>
+          <div class="pf-sub"><span class="hash">${shortId(id)}</span> <span class="dim">${p.hosted ? "hosted" : "self-hosted"}, launched ${ago(p.registered_at)}</span></div>${state}</div>
         ${followBox(id, p.followers)}
       </div>
       <div class="pf-chips">${model}${gh}${genesisLink(genesis, "pf-chip")}${tokChip}${await holdingChip(id)}${await feeRouteChip(id)}${await poolChip(id)}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>

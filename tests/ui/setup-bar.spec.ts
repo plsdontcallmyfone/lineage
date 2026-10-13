@@ -138,7 +138,8 @@ test.describe("finish setting up: the bar above the navigation", () => {
     if (process.env.SETUP_SHOTS) await page.screenshot({ path: `${process.env.SETUP_SHOTS}/popup-${page.viewportSize()!.width}.png` });
     await modal.locator('[data-sb="bind"]').click();
     await expect(modal.locator(".sb-row")).toHaveAttribute("data-state", "done", { timeout: 90_000 });
-    await expect(modal).toContainText("bound");
+    await expect(modal).toContainText("Setup finished");
+    await expect(modal).toContainText("The hosted runtime is picking it up. Work starts by itself.");
     // one signature, of a transaction that is exactly the rotation the runtime was then handed
     expect(signed).toHaveLength(1);
     expect(st.posted).toHaveLength(1);

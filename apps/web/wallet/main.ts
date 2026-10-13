@@ -122,6 +122,8 @@ import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
 import { applyLaunchPrefill, reportTweetLaunch, tweetOriginRow } from "./tweet-ref.ts";
 import { repoCheckProblem, repoCheckView, watchRepoCheck, type RepoCheck } from "./repo-check.ts";
+import { actionLink, agentStatus, factsOf, statusHtml } from "../src/agent-status.ts";
+import { mountLaunchProgress } from "./launch-progress.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { loadSwarmCfg, onSwarmInput, swarmFields, swarmProblem, swarmReview, withSwarm } from "./swarm-step.ts";
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
@@ -1125,6 +1127,7 @@ async function renderLaunched() {
   set(
     "w-launch-out",
     html`<div class="panel-b">${banner("info", html`Launched. ${txLink(L.sig, "View the transaction")}`, html`Everything below was read back from ${netName()} after confirmation.`)}</div>
+      <div class="panel-b" id="w-progress"></div>
       <div class="eyebrow wl-sub">AgentLaunch ${addr(launchPdas.agentLaunch(L.mint))}</div>
       ${kv([
         ["Agent", addr(l.agent)],
@@ -1151,6 +1154,17 @@ async function renderLaunched() {
         <div class="wl-fine">The agent key exists only in this tab. ${l.hosted ? "Once bound, the hosted runtime's own key speaks for the agent and this key no longer does; keep the file to rotate back to it later." : "A self-hosted worker runs with it:"} <span class="num">${W} run --core &lt;core&gt; --key &lt;file&gt;</span>. Leaving the page drops it.</div>
       </div>`,
   );
+  // what happens next, ticking by itself (launch-progress.ts): launched, setup finished, measurement ready, first session, first result
+  const prog = S.root?.querySelector<HTMLElement>("#w-progress");
+  if (prog)
+    mountLaunchProgress(prog, {
+      agent: l.agent, mint: l.mint, hosted: l.hosted, repo: l.repoUrl,
+      chainBound: async () => {
+        const r = await reader.agent(l.agent);
+        return r ? !!r.signingKey && r.signingKey !== l.agent : null;
+      },
+      bindButton: btn("rt-bind", "Finish setup", { primary: true }),
+    });
   if (hasIdentityService(P.cfg)) showIdentity("w-gh-launch", l.agent, l.mint, false);
   if (L.deposit !== undefined) void showCorePrepay(l.agent, dec(), (r) => set("w-prepay-core", r));
   if (l.hosted) void bindHosted(l.agent);
@@ -2346,18 +2360,22 @@ function creditsHtml(l: AgentLaunch) {
   const sp = spendRows.get(l.agent);
   const r = sp?.spend ?? null;
   const rec = S.records.get(l.agent);
-  const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
-  const waiting = r?.waiting ?? (sp?.provider_balance_low ? "provider balance low" : null);
+  // one status line for the launcher (src/agent-status.ts): what is happening and, only when needed, what to do.
+  // The runtime's own figures stay below and on the agent's Runway panel
+  const row = mineRows.get(l.mint);
+  const status = agentStatus(factsOf({ now: Date.now(), hosted: l.hosted, awake: l.awake, covered: row?.state === "covered", live: !!row?.building?.live, bound: l.hosted && rec ? !!rec.signingKey && rec.signingKey !== l.agent : null, revoked: l.hosted && !!rec && rec.signingKey === null, spend: sp }));
+  const act = status.action?.kind === "bind" ? (S.manage === l.agent ? "" : btn("me-manage", status.action.label, { data: { agent: l.agent }, primary: true })) : actionLink(status, { mint: l.mint });
+  const nr = html`<span class="faint">not reported</span>`;
   return html`<div class="me-cr">
-      <div class="me-cr-st">${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}${mineRows.get(l.mint)?.hidden ? badge("hidden from listings", "") : ""}</div>${waiting ? html`<p class="me-cr-why">${String(waiting)}</p>` : ""}
+      <div class="me-cr-st" data-agent="${l.agent}">${statusHtml(status, act)}${row?.hidden ? html`<p class="me-cr-note">Hidden from listings.</p>` : ""}</div>
       <dl class="me-cr-k">
         <div><dt>Compute vault</dt><dd><b id="me-v-${l.agent}"><span class="faint">…</span></b>${r && typeof r.vault_usd === "number" ? html` <span class="faint">${usd(r.vault_usd)}</span>` : ""}</dd></div>
-        <div><dt>Burn</dt><dd>${tbaOr(r && typeof r.burn_usd_per_h === "number" ? `${usd(r.burn_usd_per_h)}/h` : null)}</dd></div>
-        <div><dt>Runway</dt><dd>${tbaOr(runwayText(r?.runway_h))}</dd></div>
-        <div><dt>Model</dt><dd>${tbaOr(r?.model?.id ?? null)}</dd></div>
+        <div><dt>Burn</dt><dd>${r && typeof r.burn_usd_per_h === "number" ? `${usd(r.burn_usd_per_h)}/h` : nr}</dd></div>
+        <div><dt>Runway</dt><dd>${runwayText(r?.runway_h) ?? nr}</dd></div>
+        <div><dt>Model</dt><dd>${r?.model?.id ?? nr}</dd></div>
         <div><dt>GitHub</dt><dd id="me-gh-${l.agent}"><span class="faint">…</span></dd></div>
       </dl>
-      <div class="me-cr-act">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent })}</div>
+      <div class="me-cr-act">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent && !act })}</div>
     </div>`;
 }
 function renderMine() {
@@ -2401,7 +2419,7 @@ async function fillMine(mine: AgentLaunch[]) {
   await Promise.all(
     mine.map(async (l) => {
       const id = hasIdentityService(P.cfg) ? await fetch(`/identity/agents/${l.agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
-      set(`me-gh-${l.agent}`, id ? html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a> ` : ""}<span class="dim">${String(id.status).replace(/_/g, " ")}</span>` : html`<span class="faint">TBA</span>`);
+      set(`me-gh-${l.agent}`, id ? html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a> ` : ""}<span class="dim">${String(id.status).replace(/_/g, " ")}</span>` : html`<span class="faint">none yet</span>`);
     }),
   );
 }
