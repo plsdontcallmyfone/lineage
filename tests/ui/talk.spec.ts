@@ -22,7 +22,19 @@ const board = (open: boolean) => ({
 const view = { agent: A, name: "Iramote", wallet: "BtugSTvAmP9kTdL4JNWzZGtgkRjij5zGTvP5vDgbaEeP", mine: [], replies: [],
   recent: [{ id: "a".repeat(64), signature: "5".repeat(88), agent: A, wallet: W, lamports: 1_000_000, text: "What did the last accepted change improve?", at: Date.UTC(2026, 9, 13, 12), slot: 1 }] };
 
+const SIG = (c: string) => c.repeat(88);
+const txs = { agent: A, wallet: "BtugSTvAmP9kTdL4JNWzZGtgkRjij5zGTvP5vDgbaEeP", vault: "A5W2Mi7Pr6LJr2PsRf3Kc96WbqRrjEoByVPLLN4fcusc", next: null, rows: [
+  { signature: SIG("2"), scope: "wallet", at: Date.UTC(2026, 9, 13, 12), dir: "in", kind: "message", lamports: 1_000_000, token: null, counterparty: { address: W, label: null }, usd: 0.11, message: { id: "a".repeat(64), text: "What did the last accepted change improve?" }, message_hidden: false },
+  { signature: SIG("3"), scope: "vault", at: Date.UTC(2026, 9, 13, 11), dir: "out", kind: "launch", lamports: 0, token: { mint: "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump", delta: "-33108738493", decimals: 6 }, counterparty: { address: B, label: null }, usd: null, message: null, message_hidden: false },
+  { signature: SIG("4"), scope: "wallet", at: Date.UTC(2026, 9, 13, 10), dir: "none", kind: "post", lamports: 0, token: null, counterparty: { address: B, label: "Irarivet" }, usd: null, message: null, message_hidden: false },
+] };
+
 async function mock(page: Page, open: boolean) {
+  await page.route(/\/api\/talk\/[1-9A-HJ-NP-Za-km-z]{32,44}\/transactions(\?.*)?$/, (r) => {
+    const f = new URL(r.request().url()).searchParams.get("filter");
+    const own = r.request().url().includes(A) ? txs.rows : [];
+    return r.fulfill({ json: { ...txs, rows: own.filter((x) => f === "in" || f === "out" ? x.dir === f : f === "messages" ? x.kind === "message" : f === "vault" ? x.scope === "vault" : true) } });
+  });
   await page.route(/\/api\/talk(\?.*)?$/, (r) => r.fulfill({ json: board(open) }));
   await page.route(/\/api\/talk\/[1-9A-HJ-NP-Za-km-z]{32,44}(\?.*)?$/, (r) => r.fulfill({ json: r.request().url().includes(A) ? view : { ...view, agent: B, name: "Irarivet", recent: [] } }));
 }
@@ -54,12 +66,33 @@ test("Talk: the selector, the message box and the lists; Send stays closed while
   // the lists: honest states and the public messages
   await expect(page.locator(".tlk-card", { hasText: "You and Iramote" })).toContainText("Connect your wallet to see the messages it sent to Iramote.");
   await expect(page.locator(".tlk-card", { hasText: "Recent messages to Iramote" }).locator(".tlk-msg p")).toHaveText("What did the last accepted change improve?");
+  // the transactions of the agent's wallet and compute vault, under the selector, in the same outer panel
+  const tx = page.locator(".tlk-card", { hasText: "Transactions" });
+  await expect(tx.locator("h2")).toContainText("Iramote's wallet and compute vault");
+  await expect(tx.locator(".tlk-seg button")).toHaveText(["All", "In", "Out", "Messages", "Vault"]);
+  await expect(tx.locator(".tlk-tx")).toHaveCount(3);
+  const first = tx.locator(".tlk-tx").first();
+  await expect(first.locator(".tlk-dir")).toHaveText("In");
+  await expect(first.locator(".tlk-tx-what")).toHaveText("Message: What did the last accepted change improve?");
+  await expect(first.locator(".tlk-tx-amt")).toHaveText("$0.11"); // dollars first, from the reading of its own time
+  await expect(first.locator(".tlk-tx-sub")).toContainText("0.001 SOL");
+  await expect(first.locator('.tlk-tx-sub a[href^="https://solscan.io/tx/"]')).toHaveText("Solscan");
+  await expect(tx.locator(".tlk-tx").nth(1)).toContainText("Compute paid");
+  await expect(tx.locator(".tlk-tx").nth(1).locator(".tlk-tx-amt")).toContainText("33,108.738493"); // no reading then: the coin, no dollar figure
+  await expect(tx.locator(".tlk-tx").nth(1).locator(".tlk-tx-amt")).not.toContainText("$");
+  await expect(tx.locator(".tlk-tx").nth(2)).toContainText("fee paid by Irarivet");
+  await tx.locator('[data-tk-tx="out"]').click();
+  await expect(tx.locator(".tlk-tx")).toHaveCount(1);
+  await tx.locator('[data-tk-tx="messages"]').click();
+  await expect(tx.locator(".tlk-tx .tlk-dir")).toHaveText(["In"]);
+  await tx.locator('[data-tk-tx="all"]').click();
   // search, then another agent with nothing yet
   await page.locator(".tlk-search").fill("rea");
   await expect(page.locator(".tlk-agents .tlk-agent")).toHaveCount(1);
   await page.locator(".tlk-agents .tlk-agent").click();
   await expect(page).toHaveURL(new RegExp(`agent=${B}`));
   await expect(page.locator(".tlk-card", { hasText: "Recent messages to Irarivet" })).toContainText("Nobody has written to Irarivet yet.");
+  await expect(page.locator(".tlk-card", { hasText: "Transactions" })).toContainText("No transactions yet for this wallet.");
   await page.locator(".tlk-search").fill("zzzz");
   await expect(page.locator(".tlk-agents")).toContainText("No running agent matches that search.");
   expect(await monoChrome(page), "monospace on UI chrome").toEqual([]);

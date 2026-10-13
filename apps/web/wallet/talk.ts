@@ -12,7 +12,7 @@ import { avatarSvg, svgDataUri } from "../../../packages/embed/src/pattern.ts";
 import { repoLabel } from "../src/fmt.ts";
 import { html, type Raw } from "../src/html.ts";
 import { fmtUsd, loadUsd, solToUsd } from "../src/usd.ts";
-import { buildAndSimulate, loadChainCfg, NET, signAndSend, sol } from "./chain.ts";
+import { buildAndSimulate, loadChainCfg, NET, qsym, signAndSend, sol, units } from "./chain.ts";
 import { talkIxs, tidy } from "./talk-tx.ts";
 import { connectWallet, onSession, restoreSession, session, startDiscovery } from "./standard.ts";
 
@@ -25,10 +25,15 @@ interface Msg { id: string; signature: string; wallet: string; lamports: number;
 interface Reply { id: string; to: string; text: string; at: number; chain: string | null }
 interface View { agent: string; name: string | null; wallet: string | null; recent: Msg[]; mine: Msg[]; replies: Reply[] }
 interface Cost { fee: bigint; units: number }
+interface TxRow { signature: string; scope: "wallet" | "vault"; at: number; dir: "in" | "out" | "none"; kind: string; lamports: number; token: { mint: string; delta: string; decimals: number } | null;
+  counterparty: { address: string; label: string | null } | null; usd: number | null; message: { id: string; text: string } | null; message_hidden: boolean }
+interface TxPage { agent: string; wallet: string | null; vault: string | null; rows: TxRow[]; next: string | null }
+const TX_FILTERS: [string, string][] = [["all", "All"], ["in", "In"], ["out", "Out"], ["messages", "Messages"], ["vault", "Vault"]];
 
 const T: { root: HTMLElement | null; board: Board | null; symbols: Map<string, string>; pick: string | null; q: string; text: string; view: View | null; cost: Cost | null; costFor: string | null; costErr: string | null;
-  busy: string | null; err: string | null; sent: string | null; loadErr: string | null } =
-  { root: null, board: null, symbols: new Map(), pick: null, q: "", text: "", view: null, cost: null, costFor: null, costErr: null, busy: null, err: null, sent: null, loadErr: null };
+  busy: string | null; err: string | null; sent: string | null; loadErr: string | null;
+  tx: TxPage | null; txFilter: string; txErr: string | null; txMore: boolean } =
+  { root: null, board: null, symbols: new Map(), pick: null, q: "", text: "", view: null, cost: null, costFor: null, costErr: null, busy: null, err: null, sent: null, loadErr: null, tx: null, txFilter: "all", txErr: null, txMore: false };
 
 const me = () => session().account?.address ?? null;
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
@@ -102,8 +107,72 @@ function compose(): Raw {
   </div></div>`;
 }
 
+const solscan = (sig: string) => `https://solscan.io/tx/${sig}${NET.p.explorer_cluster ? `?cluster=${NET.p.explorer_cluster}` : ""}`;
+const TX_WHAT: Record<string, [string, string, string]> = {
+  // kind: [in, out, neither]
+  post: ["Post on a unit board", "Post on a unit board", "Post on a unit board"],
+  trade: ["Trade", "Trade", "Trade"],
+  launch: ["Fees and credits in", "Compute paid", "Launch program"],
+  registry: ["Binding or key change", "Binding or key change", "Binding or key change"],
+  transfer: ["Transfer", "Transfer", "Transfer"],
+};
+const firstWords = (t: string, n = 7) => (t.split(" ").length > n ? `${t.split(" ").slice(0, n).join(" ")}...` : t);
+
+/** One transaction: In or Out, what it was and with whom, the amount (dollars first when there is a reading of its own time), the time, Solscan. */
+function txRow(r: TxRow): Raw {
+  const w = me();
+  const who = r.counterparty ? (r.counterparty.address === w ? "You" : (r.counterparty.label ?? short(r.counterparty.address))) : null;
+  const what = r.kind === "message"
+    ? (r.message ? html`<a href="#tlk-m-${r.message.id}" title="${r.message.text}">Message: ${firstWords(r.message.text)}</a>` : html`Message${r.message_hidden ? " (hidden from this site)" : ""}`)
+    : html`${(TX_WHAT[r.kind] ?? TX_WHAT.transfer!)[r.dir === "in" ? 0 : r.dir === "out" ? 1 : 2]}`;
+  const coin = r.token ? `${units(BigInt(r.token.delta.replace("-", "")), r.token.decimals)} ${T.symbols.get(r.token.mint) ?? (r.scope === "vault" ? qsym() : short(r.token.mint))}` : r.dir === "none" ? null : solText(Math.abs(r.lamports));
+  const amount = coin === null ? html`<span title="No funds of this wallet moved">no funds moved</span>` : r.usd !== null ? html`${fmtUsd(r.usd)}` : html`<span title="No dollar price was read at the time of this transaction">${coin}</span>`;
+  return html`<div class="tlk-tx"><span class="tlk-dir ${r.dir}">${r.dir === "in" ? "In" : r.dir === "out" ? "Out" : "Signed"}</span>
+    <span class="tlk-tx-what">${what}</span><span class="tlk-tx-amt">${amount}</span>
+    <span class="tlk-tx-sub"><span>${r.scope === "vault" ? "Compute vault" : "Wallet"}${who ? ` · ${r.dir === "in" ? "from" : r.dir === "out" ? "to" : "fee paid by"} ${who}` : ""}${r.usd !== null && coin ? ` · ${coin}` : ""}</span>
+      <span>${when(r.at)} · <a href="${solscan(r.signature)}" target="_blank" rel="noopener">Solscan</a></span></span></div>`;
+}
+
+/** The transactions of the selected agent's wallet and compute vault, under the selector. */
+function txPanel(): Raw {
+  const a = picked();
+  if (!a) return html``;
+  const p = T.tx && T.tx.agent === a.agent ? T.tx : null;
+  return html`<div class="tlk-card tlk-o4"><h2><b>Transactions</b> <small>${nameOf(a)}'s wallet and compute vault</small></h2>
+    <div class="tlk-pad" style="padding-bottom:8px"><div class="tlk-seg" role="group" aria-label="Show">${TX_FILTERS.map(([k, l]) => html`<button type="button" data-tk-tx="${k}" aria-pressed="${T.txFilter === k ? "true" : "false"}">${l}</button>`)}</div></div>
+    ${T.txErr ? html`<div class="tlk-empty">${T.txErr}</div>`
+      : !p ? html`<div class="tlk-empty">Loading.</div>`
+      : p.rows.length ? html`<div class="tlk-txs">${p.rows.map(txRow)}</div>${p.next ? html`<button type="button" class="tlk-more" data-tk-act="more" ${T.txMore ? "disabled" : ""}>${T.txMore ? "Loading" : "Show more"}</button>` : ""}`
+      : html`<div class="tlk-empty">${T.txFilter === "all" ? "No transactions yet for this wallet." : T.txFilter === "vault" ? "No movement of the compute vault yet." : T.txFilter === "messages" ? "No messages yet for this wallet." : `Nothing ${T.txFilter === "in" ? "came in" : "went out"} yet.`}</div>`}
+  </div>`;
+}
+
+async function loadTx(more = false) {
+  const a = T.pick;
+  if (!a) return;
+  const f = T.txFilter;
+  const before = more && T.tx?.next ? `&before=${encodeURIComponent(T.tx.next)}` : "";
+  try {
+    const x = await fetch(`/api/talk/${a}/transactions?filter=${f}&limit=8${before}`);
+    if (!x.ok) throw new Error(x.status === 404 ? "Transactions are not listed on this network yet." : `The transactions did not load (HTTP ${x.status}).`);
+    const p = (await x.json()) as TxPage;
+    if (T.pick !== a || T.txFilter !== f) return;
+    const next = { ...(more && T.tx ? { ...p, rows: [...T.tx.rows, ...p.rows] } : p), agent: a };
+    const changed = JSON.stringify(next) !== JSON.stringify(T.tx) || T.txErr !== null;
+    T.tx = next;
+    T.txErr = null;
+    T.txMore = false;
+    if (changed || more) render();
+  } catch (e) {
+    if (T.pick !== a) return;
+    T.txErr = (e as Error).message;
+    T.txMore = false;
+    render();
+  }
+}
+
 const msgHtml = (m: Msg, mine: boolean): Raw =>
-  html`<div class="tlk-msg"><div class="tlk-msg-h"><b>${mine ? "You" : short(m.wallet)}</b><span>${when(m.at)}</span><a href="${explorerTx(m.signature)}" target="_blank" rel="noopener">on chain</a></div><p>${m.text}</p></div>`;
+  html`<div class="tlk-msg" id="tlk-m-${m.id}"><div class="tlk-msg-h"><b>${mine ? "You" : short(m.wallet)}</b><span>${when(m.at)}</span><a href="${explorerTx(m.signature)}" target="_blank" rel="noopener">on chain</a></div><p>${m.text}</p></div>`;
 
 function lists(): Raw {
   const a = picked();
@@ -129,7 +198,7 @@ function render() {
   const focus = active?.dataset?.tk ?? null;
   const sel = focus && active instanceof HTMLTextAreaElement ? [active.selectionStart, active.selectionEnd] : focus && active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] : null;
   // one outer panel (the page's #tlk-root), the parts as inner cards: left the selector, right the composer, the conversation and the recent messages
-  T.root.innerHTML = html`<div class="tlk-cols"><div class="tlk-col">${agentList()}</div><div class="tlk-col">${compose()}${lists()}</div></div>`.s;
+  T.root.innerHTML = html`<div class="tlk-cols"><div class="tlk-col">${agentList()}${txPanel()}</div><div class="tlk-col">${compose()}${lists()}</div></div>`.s;
   if (focus) {
     const el = T.root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-tk="${focus}"]`);
     el?.focus();
@@ -183,6 +252,8 @@ async function loadView() {
 
 function choose(agent: string) {
   T.pick = agent;
+  T.tx = null;
+  T.txErr = null;
   T.view = null;
   T.err = null;
   T.sent = null;
@@ -191,6 +262,7 @@ function choose(agent: string) {
   history.replaceState(history.state, "", u);
   render();
   void loadView();
+  void loadTx();
   priceSoon();
 }
 
@@ -213,7 +285,7 @@ async function send() {
     T.cost = null;
     T.costFor = null;
     // Core reads the agent's wallet every few seconds: look for the message for two minutes
-    for (let i = 0; i < 24; i++) setTimeout(() => void loadView(), 5_000 * (i + 1));
+    for (let i = 0; i < 24; i++) setTimeout(() => (void loadView(), T.tx && T.tx.rows.length <= 8 && void loadTx()), 5_000 * (i + 1));
   } catch (e) {
     const m = (e as Error).message ?? String(e);
     T.err = /reject|denied|cancel/i.test(m) ? "You closed the wallet without signing. Nothing was sent." : m;
@@ -253,13 +325,16 @@ function wire(root: HTMLElement) {
     const act = t.closest<HTMLElement>("[data-tk-act]")?.dataset.tkAct;
     if (act === "connect") void connectWallet().catch((e) => ((T.err = (e as Error).message), render()));
     if (act === "send") void send();
+    if (act === "more" && !T.txMore) (T.txMore = true), render(), void loadTx(true);
+    const f = t.closest<HTMLElement>("[data-tk-tx]")?.dataset.tkTx;
+    if (f && f !== T.txFilter) (T.txFilter = f), (T.tx = null), (T.txErr = null), render(), void loadTx();
   });
 }
 
 let unsub: (() => void) | null = null;
 export async function mountTalk(root: HTMLElement): Promise<void> {
   T.root = root;
-  Object.assign(T, { board: null, view: null, cost: null, costFor: null, costErr: null, busy: null, err: null, sent: null, loadErr: null, q: "", text: "" });
+  Object.assign(T, { board: null, view: null, cost: null, costFor: null, costErr: null, busy: null, err: null, sent: null, loadErr: null, q: "", text: "", tx: null, txFilter: "all", txErr: null, txMore: false });
   render();
   wire(root);
   startDiscovery();
@@ -292,5 +367,5 @@ export async function mountTalk(root: HTMLElement): Promise<void> {
   const want = new URLSearchParams(location.search).get("agent");
   T.pick = T.board.agents.find((a) => a.agent === want)?.agent ?? null;
   render();
-  if (T.pick) void loadView();
+  if (T.pick) void loadView(), void loadTx();
 }

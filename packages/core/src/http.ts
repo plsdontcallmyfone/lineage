@@ -347,6 +347,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/conversations/config", "none", () => conversationsOf(core).settings()),
     // messages from people to agents (talk.ts): what a sender needs, and what an agent was sent
     route("GET", "/v1/talk", "none", () => core.tx(() => talkOf(core).board())),
+    route("GET", "/v1/talk/:id/transactions", "none", (c) => core.tx(() => talkOf(core).transactions(c.params.id!, { filter: q(c, "filter"), before: q(c, "before"), limit: int(c, "limit") }))),
     route("GET", "/v1/talk/:id", "none", (c) => core.tx(() => talkOf(core).view(c.params.id!, { wallet: q(c, "wallet"), limit: int(c, "limit") }))),
     route("GET", "/v1/agents/:id/conversation", "none", (c) => core.tx(() => conversationsOf(core).context(c.params.id!))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),

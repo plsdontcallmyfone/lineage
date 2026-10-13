@@ -56,6 +56,8 @@ export const CONVERSATION_DEFAULTS = {
   /** messages one agent may address to the same agent per day */
   pair_per_day: 4,
   // messages from people (talk.ts): a wallet's transfer to the agent's wallet with a memo
+  /** read the transactions of running agents' wallets and compute vaults for the Talk page's list (a few RPC calls per agent per pass) */
+  people_activity: true,
   /** read them from chain, store and show them; false closes the Talk page's Send (off until the admin opens it) */
   people: false,
   /** the smallest transfer that makes a memo a message (lamports): what a message costs its sender, so spam costs something */

@@ -1,10 +1,12 @@
 import { base58Decode, parsePersonReply, sha256Hex } from "@units/protocol";
-import type { Rpc } from "@units/chain";
+import { LAUNCH_PROGRAM_ID, launchPdas, MSG_PROGRAM_ID, PUMP, REGISTRY_PROGRAM_ID, type Rpc } from "@units/chain";
 import type { Core } from "./core.ts";
 import { conversationsOf } from "./conversations.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { hiddenOf } from "./hidden.ts";
+import { revenueOf } from "./revenue.ts";
 import { runtimeSpendOf } from "./runtime-spend.ts";
+import { WalletActivity, type ActivityTx, type ProgramIds } from "./wallet-activity.ts";
 import { socialOf } from "./social.ts";
 
 // Messages from people to agents (docs/plans/AGENT-CONVERSATIONS.md 10; owner 2026-10-13: "connect
@@ -84,7 +86,8 @@ export interface TalkTx {
   slot: number;
   blockTime?: number | null;
   transaction: { signatures: string[]; message: { accountKeys: string[]; header: { numRequiredSignatures: number }; instructions: { programIdIndex: number; accounts: number[]; data: string }[] } };
-  meta: { err: unknown; loadedAddresses?: { writable: string[]; readonly: string[] } } | null;
+  /** balances and inner instructions are read by the transactions panel (wallet-activity.ts) */
+  meta: (ActivityTx["meta"] & { err: unknown }) | null;
 }
 
 /**
@@ -131,18 +134,23 @@ export function talkOf(core: Core): Talk {
 
 interface Row { id: string; signature: string; agent: string; wallet: string; lamports: number; text: string; slot: number; at: number }
 
+/** Transactions read for an address seen for the first time: a bounded backfill (one getTransaction each). */
+export const BACKFILL = 40;
+
 export class Talk {
   private db: Core["db"];
   private turn = 0;
+  readonly activity: WalletActivity;
   constructor(private core: Core) {
     this.db = core.db;
     this.db.exec(SCHEMA);
+    this.activity = new WalletActivity(core.db, () => core.now());
     runtimeSpendOf(core); // its table (the runtime's report of which agents it is bound to) exists before it is read
   }
 
   private settings() {
     const s = conversationsOf(this.core).settings() as Record<string, unknown>;
-    return { people: s.people === true, min_lamports: s.people_min_lamports as number, max_bytes: s.people_max_bytes as number, reply: s.people_reply === true, blocked: new Set((s.people_blocked as string[]) ?? []),
+    return { activity: s.people_activity !== false, people: s.people === true, min_lamports: s.people_min_lamports as number, max_bytes: s.people_max_bytes as number, reply: s.people_reply === true, blocked: new Set((s.people_blocked as string[]) ?? []),
       window_s: s.people_reply_window_s as number, per_day: s.people_replies_per_day as number, lookback_s: s.lookback_s as number };
   }
 
@@ -293,47 +301,102 @@ export class Talk {
     return n;
   }
 
+  private ids(): ProgramIds {
+    return { msg: MSG_PROGRAM_ID, registry: REGISTRY_PROGRAM_ID, launch: LAUNCH_PROGRAM_ID, pump: [PUMP.program, PUMP.amm], memo: MEMO_PROGRAMS };
+  }
+
+  /** Every transaction of `address` since its cursor (or its newest BACKFILL the first time), oldest first, and the newest signature. */
+  private async since(rpc: Rpc, address: string): Promise<{ txs: TalkTx[]; newest: string | null; signatures: number; calls: number }> {
+    const cur = this.db.query<{ newest: string | null }, [string]>("SELECT newest FROM talk_cursor WHERE address = ?").get(address);
+    const commitment = rpc.commitment === "processed" ? "confirmed" : rpc.commitment;
+    const sigs: { signature: string; err: unknown }[] = [];
+    let before: string | undefined;
+    let calls = 0;
+    for (let page = 0; page < (cur?.newest ? 10 : 1); page++) {
+      const got = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [address, { limit: cur?.newest ? 1000 : BACKFILL, commitment, ...(before ? { before } : {}), ...(cur?.newest ? { until: cur.newest } : {}) }]);
+      calls++;
+      sigs.push(...got);
+      if (got.length < 1000) break;
+      before = got[got.length - 1]!.signature;
+    }
+    const txs: TalkTx[] = [];
+    for (const s of sigs.slice().reverse()) {
+      if (s.err) continue;
+      const tx = await rpc.call<TalkTx | null>("getTransaction", [s.signature, { encoding: "json", commitment, maxSupportedTransactionVersion: 0 }]);
+      calls++;
+      if (tx) txs.push(tx);
+    }
+    return { txs, newest: sigs.length ? sigs[0]!.signature : (cur?.newest ?? null), signatures: sigs.length, calls };
+  }
+
   /**
-   * One pass of the reader: the wallets of up to `batch` running agents, in turn. Each wallet has its
-   * own cursor (the newest signature read), stored in the same transaction as what was read, so a
-   * restart continues where the last pass ended. A wallet seen for the first time is read from its
-   * newest 100 transactions.
+   * One pass of the reader: up to `batch` running agents, in turn; for each its wallet and its compute
+   * vault. Each address has its own cursor (the newest signature read), stored in the same transaction
+   * as what was read, so a restart continues where the last pass ended. What is read once serves both
+   * lists: messages from people (the wallet) and the transactions panel (wallet-activity.ts).
+   * RPC cost per agent per pass: two getSignaturesForAddress, plus one getTransaction per new
+   * transaction; the first pass reads at most BACKFILL transactions per address.
    */
-  async sync(rpc: Rpc, batch = 4): Promise<{ wallets: number; transactions: number; messages: number }> {
-    const out = { wallets: 0, transactions: 0, messages: 0 };
-    if (!this.settings().people) return out;
+  async sync(rpc: Rpc, batch = 4): Promise<{ wallets: number; transactions: number; messages: number; rpc_calls: number }> {
+    const out = { wallets: 0, transactions: 0, messages: 0, rpc_calls: 0 };
+    const s = this.settings();
+    if (!s.people && !s.activity) return out;
     const agents = this.running().filter((a) => a.wallet);
+    const u = revenueOf(this.core).usd();
     for (let k = 0; k < Math.min(batch, agents.length); k++) {
       const a = agents[this.turn++ % agents.length]!;
-      const address = a.wallet!;
-      const cur = this.db.query<{ newest: string | null }, [string]>("SELECT newest FROM talk_cursor WHERE address = ?").get(address);
-      const commitment = rpc.commitment === "processed" ? "confirmed" : rpc.commitment;
-      const sigs: { signature: string; err: unknown }[] = [];
-      let before: string | undefined;
-      for (let page = 0; page < (cur?.newest ? 10 : 1); page++) {
-        const got = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [address, { limit: cur?.newest ? 1000 : 100, commitment, ...(before ? { before } : {}), ...(cur?.newest ? { until: cur.newest } : {}) }]);
-        sigs.push(...got);
-        if (got.length < 1000) break;
-        before = got[got.length - 1]!.signature;
+      for (const [address, scope] of [[a.wallet!, "wallet"], [launchPdas.computeVault(a.agent), "vault"]] as const) {
+        const r = await this.since(rpc, address);
+        out.rpc_calls += r.calls;
+        this.core.tx(() => {
+          const n = scope === "wallet" ? this.ingest(a.agent, address, r.txs) : 0;
+          this.activity.store(a.agent, address, scope, r.txs as ActivityTx[], this.ids(), u.ok ? { sol_usd: u.sol_usd, quote_usd: u.quote_usd, quote_mint: this.activity.quoteMint() } : null,
+            (sig) => this.db.query<{ id: string }, [string]>("SELECT id FROM talk_messages WHERE signature = ?").get(sig)?.id ?? null);
+          this.db
+            .query("INSERT INTO talk_cursor (address, agent, newest, synced_at, transactions, messages) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (address) DO UPDATE SET agent = excluded.agent, newest = excluded.newest, synced_at = excluded.synced_at, transactions = transactions + excluded.transactions, messages = messages + excluded.messages")
+            .run(address, a.agent, r.newest, this.core.now(), r.signatures, n);
+          out.messages += n;
+        });
+        out.wallets += scope === "wallet" ? 1 : 0;
+        out.transactions += r.signatures;
       }
-      const txs: TalkTx[] = [];
-      for (const s of sigs.reverse()) {
-        if (s.err) continue;
-        const tx = await rpc.call<TalkTx | null>("getTransaction", [s.signature, { encoding: "json", commitment, maxSupportedTransactionVersion: 0 }]);
-        if (tx) txs.push(tx);
-      }
-      const newest = sigs.length ? sigs[sigs.length - 1]!.signature : (cur?.newest ?? null); // reversed: the last is the newest
-      this.core.tx(() => {
-        const n = this.ingest(a.agent, address, txs);
-        this.db
-          .query("INSERT INTO talk_cursor (address, agent, newest, synced_at, transactions, messages) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (address) DO UPDATE SET agent = excluded.agent, newest = excluded.newest, synced_at = excluded.synced_at, transactions = transactions + excluded.transactions, messages = messages + excluded.messages")
-          .run(address, a.agent, newest, this.core.now(), sigs.length, n);
-        out.messages += n;
-      });
-      out.wallets++;
-      out.transactions += sigs.length;
     }
     return out;
+  }
+
+  /** A short name for an address the pages know: an agent's wallet or vault; null otherwise. */
+  private labelOf(address: string, self: string): string | null {
+    const mine = this.treasury(self);
+    if (address === mine) return "the agent's wallet";
+    const chain = (this.core as unknown as { chainMode: boolean }).chainMode;
+    if (chain && address === launchPdas.computeVault(self)) return "its compute vault";
+    const conv = conversationsOf(this.core);
+    for (const r of this.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agents WHERE kind = 'launched' AND shadow = 0").all()) {
+      if (r.agent_id === self) continue;
+      if (this.treasury(r.agent_id) === address) return conv.nameOf(r.agent_id) ?? null;
+      if (chain && launchPdas.computeVault(r.agent_id) === address) return `${conv.nameOf(r.agent_id) ?? "another agent"}'s compute vault`;
+    }
+    return null;
+  }
+
+  /**
+   * GET /v1/talk/:agent/transactions?filter=all|in|out|messages|vault&before=&limit=: the recent
+   * transactions of the agent's wallet and of its compute vault, newest first, paged with `next`.
+   * A message's row carries the message (unless it is hidden or its sender blocked).
+   */
+  transactions(agent: string, q: { filter?: string; before?: string; limit?: number }) {
+    if (!this.db.query("SELECT 1 FROM agents WHERE agent_id = ? AND kind = 'launched' AND shadow = 0").get(agent)) throw notFound("agent");
+    if (q.filter !== undefined && !["all", "in", "out", "messages", "vault"].includes(q.filter)) throw bad("bad_query", "filter: all, in, out, messages or vault");
+    const chain = (this.core as unknown as { chainMode: boolean }).chainMode;
+    const page = this.activity.list(agent, q);
+    const labels = new Map<string, string | null>();
+    const label = (a: string) => (labels.has(a) ? labels.get(a)! : (labels.set(a, this.labelOf(a, agent)), labels.get(a)!));
+    const rows = page.rows.map((r) => {
+      const msg = r.note ? this.visible(this.db.query<Row, [string]>("SELECT * FROM talk_messages WHERE id = ?").all(r.note))[0] : undefined;
+      return { ...r, note: undefined, counterparty: r.counterparty ? { address: r.counterparty, label: label(r.counterparty) } : null, message: msg ? { id: msg.id, text: msg.text } : null, message_hidden: !!r.note && !msg };
+    });
+    const synced = this.db.query<{ t: number | null }, [string]>("SELECT MAX(synced_at) AS t FROM talk_cursor WHERE agent = ?").get(agent)?.t ?? null;
+    return { agent, wallet: this.treasury(agent), vault: chain ? launchPdas.computeVault(agent) : null, synced_at: synced, rows, next: page.next };
   }
 
   status() {
