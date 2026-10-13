@@ -30,7 +30,7 @@ function agentLaunch(agent: string, mint: string, creator: string, graduated: bo
 const mintAcct = (supply: bigint) => { const d = new Uint8Array(82); d.set(u64(supply), 36); d[44] = 6; d[45] = 1; return d; };
 const tokenAcct = (mint: string, owner: string, amount: bigint) => cat(addressBytes(mint), addressBytes(owner), u64(amount), new Uint8Array(165 - 72));
 
-function setup(o: { creatorOverride?: string } = {}) {
+function setup(o: { creatorOverride?: string; a1Complete?: { left: bigint; raised: bigint; postQuote: bigint } } = {}) {
   const db = openDb(":memory:");
   const ins = db.prepare(`INSERT INTO tokens (mint, agent, launcher, launch_account, name, symbol, decimals, created_at, dbc_config, dbc_pool, dbc_base_vault,
     dbc_quote_vault, compute_vault, supply, venue, pump_creator) VALUES (?,?,?,?,?,?,6,?,?,?,?,?,?,?,?,?)`);
@@ -58,6 +58,16 @@ function setup(o: { creatorOverride?: string } = {}) {
     [pumpPdas.pool(A1, LINE)]: null,
     [PUMP.global]: b64(FX.accounts.global!), [PUMP.feeConfig]: b64(FX.accounts.fee_config!), [PUMP.ammFeeConfig]: b64(FX.accounts.amm_fee_config!),
   };
+  // A1's curve as the completing buy leaves it: complete, no real tokens, the raise in it; BV1 holds the coins the pool will open with
+  if (o.a1Complete) {
+    const c1 = b64(FX.accounts.a1_curve!);
+    c1[48] = 1;
+    c1.set(u64(0n), 24);
+    c1.set(u64(o.a1Complete.raised), 32);
+    c1.set(u64(o.a1Complete.postQuote), 158);
+    accounts[pumpPdas.bondingCurve(A1)] = c1;
+    accounts.BV1 = tokenAcct(A1, pumpPdas.bondingCurve(A1), o.a1Complete.left);
+  }
   // pool vaults: fixed test balances (the price check reads them back through the pool's virtual quote reserves)
   const pool = b64(FX.accounts.a2_pool!);
   accounts[toAddress(pool.subarray(139, 171))] = tokenAcct(A2, POOL2, 200_000_000_000_000n);
@@ -154,6 +164,27 @@ describe("ingest", () => {
     // the Meteora-era row keeps its stored price; its compute-side fields still refresh
     const m = db.query("SELECT spot_price, to_compute FROM tokens WHERE mint = ?").get(METEORA_MINT) as any;
     expect([m.spot_price, m.to_compute]).toEqual([0.25, "3"]);
+  });
+
+  test("a complete curve with no pool yet: not graduated, awaiting migration, priced where its pool will open; cleared once the pool exists", async () => {
+    const { db, ix } = setup({ a1Complete: { left: 201_900_000_000_000n, raised: 22_165_216_422_836n, postQuote: 548_915_711_314n } });
+    await ix.refreshState();
+    const t1 = db.query("SELECT graduated, migrated, curve_complete, spot_price, progress FROM tokens WHERE mint = ?").get(A1) as any;
+    expect([t1.graduated, t1.migrated, t1.curve_complete, t1.progress]).toEqual([0, 0, 1, 1]);
+    // the reserves pump.fun's migrate_v2 opened a pool with on the mainnet fork for exactly these curve values (scripts/mainnet/graduation-fork.ts)
+    expect(t1.spot_price).toBeCloseTo((22_165_216_422_836 + 548_915_711_314) / 201_900_000_000_000, 12);
+    const api = marketApi(db, () => ({ ok: true }), { now: () => 1791661200 });
+    const get = async (p: string) => (await (await api(new Request(`http://x${p}`))).json()) as any;
+    const d1 = await get(`/market/tokens/${A1}`);
+    expect([d1.phase, d1.awaiting_migration, d1.migrated, d1.curve_progress]).toEqual(["curve", true, false, 1]);
+    // the migrated coin and the Meteora-era row are not awaiting anything; neither counts A1 as graduated
+    expect([(await get(`/market/tokens/${A2}`)).awaiting_migration, (await get(`/market/tokens/${METEORA_MINT}`)).awaiting_migration]).toEqual([false, false]);
+    expect((await get("/market/tokens?state=graduated")).tokens.map((t: any) => t.mint)).toEqual([A2]);
+    // a coin on its curve is not awaiting
+    const fresh = setup();
+    await fresh.ix.refreshState();
+    expect((fresh.db.query("SELECT curve_complete FROM tokens WHERE mint = ?").get(A1) as any).curve_complete).toBe(0);
+    expect((fresh.db.query("SELECT curve_complete FROM tokens WHERE mint = ?").get(A2) as any).curve_complete).toBe(0);
   });
 
   test("API routes: venue and read_only, trades by venue, candles, fees with sweeps, alerts", async () => {

@@ -71,6 +71,8 @@ export function openDb(path: string): Database {
   if (!cols.has("pump_creator")) db.exec("ALTER TABLE tokens ADD COLUMN pump_creator TEXT");
   if (!cols.has("progress")) db.exec("ALTER TABLE tokens ADD COLUMN progress REAL");
   if (!cols.has("creator_fee_income")) db.exec("ALTER TABLE tokens ADD COLUMN creator_fee_income TEXT");
+  // 1 while the curve is complete and pump.fun's migration has not made the pool yet (no trade lands in between)
+  if (!cols.has("curve_complete")) db.exec("ALTER TABLE tokens ADD COLUMN curve_complete INTEGER NOT NULL DEFAULT 0");
   const tcols = new Set((db.query("PRAGMA table_info(trades)").all() as { name: string }[]).map((c) => c.name));
   if (!tcols.has("creator_fee_raw")) db.exec("ALTER TABLE trades ADD COLUMN creator_fee_raw TEXT");
   if (!tcols.has("completing")) db.exec("ALTER TABLE trades ADD COLUMN completing INTEGER NOT NULL DEFAULT 0");

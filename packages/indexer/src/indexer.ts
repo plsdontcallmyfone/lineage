@@ -190,8 +190,8 @@ export class Indexer {
 
   /** Re-reads every token's chain state in a few getMultipleAccounts calls, and checks pump.fun's watch list. */
   async refreshState(): Promise<void> {
-    const toks = this.db.query("SELECT mint, venue, launch_account, dbc_pool, damm_pool, compute_vault, pump_creator FROM tokens").all() as
-      { mint: string; venue: string; launch_account: string; dbc_pool: string; damm_pool: string | null; compute_vault: string; pump_creator: string | null }[];
+    const toks = this.db.query("SELECT mint, venue, launch_account, dbc_pool, dbc_base_vault, damm_pool, compute_vault, pump_creator FROM tokens").all() as
+      { mint: string; venue: string; launch_account: string; dbc_pool: string; dbc_base_vault: string; damm_pool: string | null; compute_vault: string; pump_creator: string | null }[];
     if (!toks.length || !this.lineMint) return;
     const line = this.lineMint;
     const pools = new Map(toks.filter((t) => t.venue === "pump").map((t) => [t.mint, t.damm_pool ?? pumpPdas.pool(t.mint, line)]));
@@ -225,6 +225,19 @@ export class Indexer {
         if (b && q) poolState.set(x.mint, { pool: x.p, base: readTokenAccount(b.data).amount, quote: readTokenAccount(q.data).amount });
       });
     }
+    // A complete curve whose pool pump.fun has not made yet: the price is the one the pool opens at, its reserves-to-be
+    // (every coin left in the curve's account against the raise, SYNTHETIC_MIGRATION.md), not the curve's end price, so the
+    // headline price does not step when the migration lands. Rare, so its one extra read is made only then.
+    const opening = new Map<string, bigint>();
+    const waiting = toks.filter((t) => {
+      const a = by.get(t.dbc_pool);
+      if (t.venue !== "pump" || !a || a.owner !== PUMP.program || poolState.has(t.mint)) return false;
+      try { return decodeBondingCurve(a.data).complete; } catch { return false; }
+    });
+    if (waiting.length) {
+      const left = await this.rpc.getMultipleAccounts(waiting.map((t) => t.dbc_base_vault));
+      waiting.forEach((t, i) => { if (left[i]) opening.set(t.mint, readTokenAccount(left[i]!.data).amount); });
+    }
     const now = this.now();
     // nothing below awaits: a token whose row went while the accounts were read (purged.ts) is skipped
     const held = new Set((this.db.query("SELECT mint FROM tokens").all() as { mint: string }[]).map((r) => r.mint));
@@ -250,6 +263,7 @@ export class Indexer {
       const poolAddr = pools.get(t.mint)!;
       let spot: number | null = null;
       if (ps && ps.base > 0n) spot = Number(ps.quote + ps.pool.virtualQuoteReserves) / 10 ** this.lineDecimals / (Number(ps.base) / 10 ** mint.decimals);
+      else if (c.complete && (opening.get(t.mint) ?? 0n) > 0n) spot = Number(c.realQuoteReserves + c.postCompleteQuoteIn) / 10 ** this.lineDecimals / (Number(opening.get(t.mint)!) / 10 ** mint.decimals);
       else if (c.virtualTokenReserves > 0n) spot = Number(c.virtualQuoteReserves) / 10 ** this.lineDecimals / (Number(c.virtualTokenReserves) / 10 ** mint.decimals);
       const graduated = l.graduated || ps !== null;
       const progress = graduated ? 1 : g && g.initialRealTokenReserves > 0n
@@ -258,9 +272,9 @@ export class Indexer {
         ? Number(c.initialVirtualQuoteReserves) / 10 ** this.lineDecimals / (Number(g.initialVirtualTokenReserves) / 10 ** mint.decimals) : null;
       const income = (this.db.query("SELECT creator_fee_raw AS c FROM trades WHERE mint = ? AND creator_fee_raw IS NOT NULL").all(t.mint) as { c: string }[])
         .reduce((n, r) => n + BigInt(r.c), 0n);
-      this.db.query(`UPDATE tokens SET graduated = ?, migrated = ?, quote_reserve = ?, migration_threshold = NULL, sqrt_start_price = NULL, sqrt_price = NULL,
+      this.db.query(`UPDATE tokens SET curve_complete = ?, graduated = ?, migrated = ?, quote_reserve = ?, migration_threshold = NULL, sqrt_start_price = NULL, sqrt_price = NULL,
         start_price = ?, spot_price = ?, progress = ?, damm_pool = ?, damm_base_vault = ?, damm_quote_vault = ?, pump_creator = ?, creator_fee_income = ?
-        WHERE mint = ?`).run(graduated ? 1 : 0, ps ? 1 : 0, c.realQuoteReserves.toString(), start, spot, progress, ps ? poolAddr : null,
+        WHERE mint = ?`).run(c.complete && !ps ? 1 : 0, graduated ? 1 : 0, ps ? 1 : 0, c.realQuoteReserves.toString(), start, spot, progress, ps ? poolAddr : null,
         ps?.pool.poolBaseTokenAccount ?? null, ps?.pool.poolQuoteTokenAccount ?? null, l.pumpCreator, income.toString(), t.mint);
       if (ps) this.db.query("INSERT OR IGNORE INTO sources (address, mint, kind) VALUES (?, ?, 'pool')").run(poolAddr, t.mint);
       watch.tokens.push({ mint: t.mint, expectedCreator: l.pumpCreator, curveCreator: c.creator, poolCoinCreator: ps ? ps.pool.coinCreator : null });

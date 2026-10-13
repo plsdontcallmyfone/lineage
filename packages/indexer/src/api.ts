@@ -60,7 +60,7 @@ interface TokRow {
   fees_claimed: string | null; to_compute: string | null; to_protocol: string | null; debited: string | null; withdrawn: string | null;
   supply: string | null; quote_reserve: string | null; migration_threshold: string | null; spot_price: number | null; start_price: number | null;
   compute_vault: string; compute_balance: string | null; holders: number | null; holders_source: string | null; holders_at: number | null; state_at: number | null;
-  venue: string; pump_creator: string | null; progress: number | null; creator_fee_income: string | null;
+  venue: string; pump_creator: string | null; progress: number | null; creator_fee_income: string | null; curve_complete: number;
 }
 
 // CORS for configured origins (embed kit, docs/EMBED.md): with UNITS_CORS_ORIGINS unset every answer
@@ -175,6 +175,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       read_only: !pump,
       phase: t.graduated ? "graduated" : "curve",
       migrated: t.migrated === 1,
+      // the curve is complete and its PumpSwap pool does not exist yet: every trade fails until pump.fun's migration
+      awaiting_migration: pump && !t.graduated && t.curve_complete === 1,
       price,
       market_cap: price != null && supply != null ? price * supply : null,
       volume_24h: vol.q,
