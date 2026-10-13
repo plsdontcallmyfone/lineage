@@ -43,5 +43,7 @@ export function post(e: Env, a: Agent, body: string, o: { thread?: string; ref?:
 export const say = (e: Env, a: Agent, to: (Agent | TalkTo)[], text: string, o: { thread?: string; ref?: { kind: string; id: string } } = {}) =>
   post(e, a, formatTalk({ to: to.map((t) => ("agent" in t ? t : { agent: t.id, seat: null })), text }), o);
 
+/** Limits wide open, for tests about something else. */
+export const FREE = { min_gap_s: 0, thread_cooldown_s: 0, per_agent_hour: 60, per_agent_day: 500, per_repo_hour: 600, per_repo_day: 5000, pair_per_day: 500 };
 export const enable = (e: Env, over: Record<string, unknown> = {}) => conversationsOf(e.core).setConfig({ enabled: true, ...over });
 export const momentsOf = async (e: Env, a: Agent) => (await expectOk<{ moments: any[]; enabled: boolean; budget?: any }>(e.anon.get(`/v1/agents/${a.id}/conversation`))).moments;

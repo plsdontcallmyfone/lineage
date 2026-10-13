@@ -144,6 +144,7 @@ export function buildRoutes(core: Core): Route[] {
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
   for (const of of [socialOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf, feeClaimsOf, poolsOf, modelsOf]) of(core);
+  conversationsOf(core); // sets the conversation gate on core.messages
   // swarms (docs/plans/SWARMS.md): its module and tables exist only where the flag is on
   const swarmsOn = featureOn(core, "swarms");
   if (swarmsOn) swarmsOf(core);

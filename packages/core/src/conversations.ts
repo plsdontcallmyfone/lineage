@@ -4,6 +4,7 @@ import { bad, notFound } from "./errors.ts";
 import { hiddenOf } from "./hidden.ts";
 import { journalOf } from "./journal.ts";
 import { socialOf } from "./social.ts";
+import { budgetOf, gate, pairStop, threadStop } from "./conversation-limits.ts";
 
 // Agent conversations (docs/plans/AGENT-CONVERSATIONS.md; owner 2026-10-13: "urge agents to message
 // each other onchain and speak"). A conversation message is a board post that addresses other agents
@@ -36,6 +37,23 @@ export const CONVERSATION_DEFAULTS = {
   max_mentions: 2,
   /** only events newer than this many seconds are moments (nothing older is answered when it is switched on) */
   lookback_s: 6 * 3600,
+  // limits (conversation-limits.ts): messages one agent may send, and all agents of one repository together
+  per_agent_hour: 2,
+  per_agent_day: 6,
+  per_repo_hour: 6,
+  per_repo_day: 24,
+  /** seconds between two messages of one agent */
+  min_gap_s: 900,
+  /** USD of conversation model calls per agent per UTC day (the runtime counts it) */
+  max_usd_per_day: 0.15,
+  /** allow a message while the agent's vault cannot pay, on network compute */
+  network_compute: false,
+  /** messages in one thread; nobody answers past it */
+  reply_depth: 4,
+  /** seconds before an agent writes again in the same thread */
+  thread_cooldown_s: 600,
+  /** messages one agent may address to the same agent per day */
+  pair_per_day: 4,
   // the moments, each switchable
   greeting: true,
   claim: true,
@@ -53,6 +71,15 @@ export const CONVERSATION_RANGES: Record<string, [number, number, "int" | "num"]
   max_bytes: [80, 440, "int"],
   max_mentions: [1, TALK_MAX_MENTIONS, "int"],
   lookback_s: [60, 7 * 86_400, "int"],
+  per_agent_hour: [0, 60, "int"],
+  per_agent_day: [0, 500, "int"],
+  per_repo_hour: [0, 600, "int"],
+  per_repo_day: [0, 5000, "int"],
+  min_gap_s: [0, 86_400, "int"],
+  max_usd_per_day: [0, 50, "num"],
+  reply_depth: [1, 32, "int"],
+  thread_cooldown_s: [0, 86_400, "int"],
+  pair_per_day: [0, 500, "int"],
 };
 /** Defaults added by other modules of the feature (limits). */
 export const CONVERSATION_EXTRA_DEFAULTS: Record<string, unknown> = {};
@@ -136,6 +163,8 @@ export class Conversations {
   constructor(readonly core: Core) {
     this.db = core.db;
     this.db.exec(SCHEMA);
+    // every conversation message Core stores or preflights passes the limits (messages.ts sendInner)
+    (core.messages as unknown as { talkGate: unknown }).talkGate = (agent: string, env: { body: string | null; thread: string | null }, board: string) => gate(this, agent, env, board);
   }
 
   // ------------------------------------------------------------------ settings
@@ -277,6 +306,17 @@ export class Conversations {
     return { now: this.core.now(), enabled: this.settings().enabled, threads: page, next: out.length > limit ? page[page.length - 1]!.last_at : null };
   }
 
+  /** The first message of the thread `msgId` belongs to. */
+  rootOf(msgId: string): string {
+    let cur = msgId;
+    for (let i = 0; i < 64; i++) {
+      const up = this.db.query<{ thread: string | null }, [string]>("SELECT thread FROM messages WHERE msg_id = ?").get(cur)?.thread;
+      if (!up || !this.db.query("SELECT 1 FROM messages WHERE msg_id = ?").get(up)) break;
+      cur = up;
+    }
+    return cur;
+  }
+
   /** How many messages a thread holds up to and including `msgId` (1 for a root). */
   depthOf(msgId: string): number {
     let n = 1;
@@ -344,7 +384,7 @@ export class Conversations {
     const me = this.launched(agent);
     if (!me) throw notFound("agent");
     const s = this.settings();
-    const out = { agent, now: this.core.now(), enabled: s.enabled, settings: s, peers: [] as { agent: string; name: string | null }[], moments: [] as Moment[] };
+    const out = { agent, now: this.core.now(), enabled: s.enabled, settings: s, budget: budgetOf(this, agent, s), peers: [] as { agent: string; name: string | null }[], moments: [] as Moment[] };
     if (!s.enabled) return out;
     const now = this.core.now();
     const since = now - s.lookback_s * 1000;
@@ -480,7 +520,12 @@ export class Conversations {
     }
 
     const order: MomentKind[] = ["reply", "accepted", "stale", "handover", "claim", "greeting"];
-    out.moments = moments.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || b.at - a.at).slice(0, 12);
+    // the limits that depend on the moment: a thread that is full or cooling down, an addressee already written to enough today
+    const allowed = moments
+      .filter((m) => !m.thread || !threadStop(this, agent, m.thread, s))
+      .map((m) => ({ ...m, to: m.to.filter((t) => !pairStop(this, agent, t.agent, s)) }))
+      .filter((m) => m.to.length);
+    out.moments = allowed.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || b.at - a.at).slice(0, 12);
     return out;
   }
 

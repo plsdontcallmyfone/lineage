@@ -197,9 +197,12 @@ export class AgentTalker {
     }
   }
 
-  /** Why `agent` may not spend on a message now, or null. Overridden limits live in converse-limits.ts. */
-  protected refuse(_agent: string, _ctx: TalkContext): string | null {
-    return null;
+  /** Why `agent` may not spend on a message now, or null: the day's conversation spend (Core's settings). */
+  private refuse(agent: string, ctx: TalkContext): string | null {
+    const cap = ctx.settings.max_usd_per_day;
+    if (typeof cap !== "number") return null;
+    const day = this.day(agent);
+    return day.usd + ctx.settings.max_usd_per_message > cap ? `its conversation spend today is ${day.usd.toFixed(4)} USD of ${cap}` : null;
   }
 
   private async talkFor(agent: string): Promise<void> {

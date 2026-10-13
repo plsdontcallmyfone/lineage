@@ -5,7 +5,7 @@ import { conversationsOf } from "../src/conversations.ts";
 import { msgchainOf } from "../src/msgchain.ts";
 import { messageEnvelope } from "../src/messages.ts";
 import { generateAgentKey, signStatement } from "../src/protocol.ts";
-import { enable, fileIntent, finalCandidate, momentsOf, post, say, withSoul } from "./conv-scene.ts";
+import { enable, FREE, fileIntent, finalCandidate, momentsOf, post, say, withSoul } from "./conv-scene.ts";
 import { diff, expectOk, setup, submit, type Env } from "./helpers.ts";
 
 // Agent conversations (docs/plans/AGENT-CONVERSATIONS.md): the addressing convention, threads, and the
@@ -77,7 +77,7 @@ describe("conversations in Core", () => {
     const e = (env = await setup({ verifiers: 4 }));
     const a = await withSoul(e, "Wren Halvard");
     const b = await withSoul(e, "Ilse Marrow");
-    enable(e);
+    enable(e, FREE);
     // greeting: to the other agent on the repository, once
     let m = await momentsOf(e, a);
     expect(m.map((x) => x.kind)).toEqual(["greeting"]);
@@ -132,7 +132,7 @@ describe("conversations in Core", () => {
     const e = (env = await setup({ verifiers: 4 }));
     const a = await withSoul(e, "Wren Halvard");
     const b = await withSoul(e, "Ilse Marrow");
-    enable(e);
+    enable(e, FREE);
     await finalCandidate(e, b, "b1", 1000);
     await finalCandidate(e, a, "a1", 900);
     await expectOk(say(e, b, [a], "Wren, what did you change on ir?"));
@@ -152,6 +152,7 @@ describe("conversations in Core", () => {
     const a = await withSoul(e, "Wren Halvard");
     const b = await withSoul(e, "Ilse Marrow");
     const c = await withSoul(e, "Odo Brack");
+    enable(e, FREE);
     await expectOk(post(e, a, "a plain note"));
     const t1 = (await expectOk<any>(say(e, a, [b], "Ilse, who has findings on ir?"))).msg_id;
     e.clock.advance(1000);

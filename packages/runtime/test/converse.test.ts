@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { parseTalk } from "@units/protocol";
-import { enable, finalCandidate, post, say, withSoul } from "../../core/test/conv-scene.ts";
+import { enable, FREE, finalCandidate, post, say, withSoul } from "../../core/test/conv-scene.ts";
 import { expectOk, setup, type Agent, type Env } from "../../core/test/helpers.ts";
 import { outsideUntrusted, untrustedSpans } from "../../protocol/src/untrusted.ts";
 import { newSoul } from "../../souls/src/doc.ts";
@@ -68,14 +68,14 @@ describe("the conversation call", () => {
 });
 
 describe("the talker against a real Core", () => {
-  function talker(e: Env, agents: Record<string, Agent>, say: (user: string) => string, over: { room?: number } = {}) {
+  function talker(e: Env, agents: Record<string, Agent>, say: (user: string) => string, over: { room?: number; net?: number } = {}) {
     const state: TalkState = emptyTalkState();
     const s = scripted(say);
     const log: string[] = [];
     const metered: number[] = [];
     const t = new AgentTalker({
       core: e.base, client: s.client, state: () => state, save: () => undefined, now: () => e.clock.now(), log: (m) => log.push(m), poll_s: 0,
-      room: () => over.room ?? 1, meter: (_a, u) => metered.push(u.usd),
+      room: () => over.room ?? 1, networkRoom: () => over.net ?? 0, meter: (_a, u) => metered.push(u.usd),
       send: async (agent, to, body, o) => {
         const r = await post(e, agents[agent]!, body, { thread: o.thread, ref: o.ref });
         return r.status < 300 ? (r.body.msg_id as string) : null;
@@ -102,7 +102,7 @@ describe("the talker against a real Core", () => {
     const a = await withSoul(e, "Wren Halvard");
     const b = await withSoul(e, "Ilse Marrow");
     const agents = { [a.id]: a, [b.id]: b };
-    enable(e);
+    enable(e, FREE);
     const x = talker(e, agents, (user) =>
       user.includes("Greet the other agents") ? "Ilse, I am Wren. I work on example/fx too and would like to compare notes."
       : user.includes("accepted on a target another agent tried") ? "Ilse, ir is 10.00 percent lower on the fx unit, reproduced by 2 independent replays. Happy to say what the record shows."
@@ -150,5 +150,34 @@ describe("the talker against a real Core", () => {
     expect(x.state.log[0]!.problems).toContain("the number 12 is not in the facts");
     expect((await expectOk<any>(e.anon.get("/v1/conversations"))).threads).toEqual([]);
     void say;
+  });
+
+  test("limits hold in the runtime: Core's budget, the day's spend cap, and network compute only when the setting allows it", async () => {
+    const e = (env = await setup({ verifiers: 0 }));
+    const a = await withSoul(e, "Wren Halvard");
+    const b = await withSoul(e, "Ilse Marrow");
+    const agents = { [a.id]: a, [b.id]: b };
+    enable(e); // defaults: 900 s between two messages of one agent
+    const x = talker(e, agents, (user) => (user.includes("Greet") ? "Ilse, I am Wren. I would like to compare notes on example/fx." : "Wren, good to meet you."));
+    await x.t.tick([a.id]);
+    await x.t.tick([b.id]); // b owes a reply and answers once
+    expect(x.calls.length).toBe(2);
+    // a is addressed again by hand, inside the thread's cool-down and a's gap: a is offered nothing and makes no call
+    await x.t.tick([a.id]);
+    expect(x.calls.length).toBe(2);
+    // the day's spend cap: 0.004 USD a call, a cap that leaves room for no further call
+    enable(e, { ...FREE, max_usd_per_day: 0.03, max_usd_per_message: 0.03 });
+    e.clock.advance(3600_000);
+    await x.t.tick([a.id]);
+    expect(x.calls.length).toBe(2);
+    expect(x.log.join()).toContain("its conversation spend today is 0.0040 USD of 0.03");
+    // an empty vault: no call, unless network compute is allowed and has room
+    const y = talker(e, agents, () => "Ilse, thanks. I read it.", { room: 0, net: 1 });
+    await y.t.tick([a.id]);
+    expect(y.calls.length).toBe(0);
+    enable(e, { network_compute: true });
+    y.state.polled = {};
+    await y.t.tick([a.id]);
+    expect(y.calls.length).toBe(1);
   });
 });
