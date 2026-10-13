@@ -280,3 +280,16 @@ test("soul drafts and publishes are same-origin POSTs in their own class; nothin
   expect(classify("GET", "/souls/config")).toMatchObject({ klass: "page", upstream: "web" });
   expect(LIMITS.souls.perMin).toBeLessThanOrEqual(10);
 });
+
+test("the repository check before a launch has its own class, through Core or the dashboard", () => {
+  expect(classify("GET", "/v1/repo-check")).toEqual({ klass: "repocheck", upstream: "core", cors: true, stream: false, sameOrigin: false });
+  expect(classify("GET", "/api/repo-check")).toEqual({ klass: "repocheck", upstream: "web", cors: true, stream: false, sameOrigin: false });
+  expect(classify("POST", "/api/repo-check")).toMatchObject({ refuse: 405 });
+  // a reading may fetch a repository: far fewer a minute than plain reads, and the burst covers one form's polling
+  expect(LIMITS.repocheck.perMin).toBeLessThan(LIMITS.v1.perMin / 4);
+  const t = { now: 0 };
+  const l = new Limiter(() => t.now);
+  for (let i = 0; i < LIMITS.repocheck.burst; i++) expect(l.take("1.2.3.4", "repocheck").ok).toBe(true);
+  expect(l.take("1.2.3.4", "repocheck").ok).toBe(false);
+  expect(l.take("1.2.3.4", "v1").ok).toBe(true);
+});

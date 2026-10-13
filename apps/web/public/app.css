@@ -1148,6 +1148,14 @@ a.eco-btn { text-decoration: none; }
 .lz-drop-t b { font: 500 14px/1.2 var(--display); letter-spacing: -.01em; color: var(--tp); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lz-avrow { display: flex; align-items: center; gap: 12px; }
 .lz-work .banner { margin-bottom: 0; }
+/* the repository check's one line (wallet/repo-check.ts): whether agents can work on it */
+.lz-rc { margin: 0 0 10px; font-size: 13.5px; line-height: 1.5; color: var(--ts); overflow-wrap: anywhere; }
+.lz-rc[data-kind="ready"], .lz-rc[data-kind="setup"] { color: var(--tp); }
+.lz-rc[data-kind="ready"]::before, .lz-rc[data-kind="setup"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--good); vertical-align: 1px; }
+.lz-rc[data-kind="cannot"] { color: var(--tp); padding: 10px 12px; border: 1px solid var(--warn); border-radius: 8px; }
+.lz-rc[data-kind="checking"] { color: var(--tt); }
+.lz-anyway { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; color: var(--tp); cursor: pointer; }
+.lz-anyway input { margin-top: 3px; flex: none; accent-color: var(--ac); }
 .lz-rec { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--bg); }
 .lz-rec + .lz-rec { margin-top: 8px; }
 .lz-rec-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

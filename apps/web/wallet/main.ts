@@ -121,6 +121,7 @@ export { mountBountyPost } from "./bounty-post.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
 import { applyLaunchPrefill, reportTweetLaunch, tweetOriginRow } from "./tweet-ref.ts";
+import { repoCheckProblem, repoCheckView, watchRepoCheck, type RepoCheck } from "./repo-check.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { loadSwarmCfg, onSwarmInput, swarmFields, swarmProblem, swarmReview, withSwarm } from "./swarm-step.ts";
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
@@ -176,7 +177,7 @@ const S = {
   decimals: new Map<string, number>(),
   sigs: [] as SigRow[],
   // launch
-  repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[] },
+  repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[]; check?: RepoCheck },
   draft: null as null | { agent: WebKey; mint: WebKey; args: { name: string; symbol: string; uri: string; repoUrl: string; identityMode: number; hosted: boolean; cls: string; identity: string }; soul: SoulDoc | null; deposit: bigint; buy: InitialBuy | null; plan: BundleTx[];
     /** per transaction of `plan`: its signatures, compute unit limit and the unit price it is sent with */
     txs: LaunchCostTx[]; detail: LaunchCostDetail; swap: PreparedSwap | null; costs: LaunchSolCosts;
@@ -429,6 +430,18 @@ async function checkRepo() {
   } catch (e) {
     S.repo = { url, state: "bad", msg: `GitHub API did not answer (${(e as Error).message}).` };
   }
+  // can agents work on it? asked before the launcher pays (repo-check.ts): a repository Core already runs a
+  // unit on is ready on Core's word; any other is read by Core, and the step waits for the answer
+  const ok = S.repo.state === "ok" ? S.repo : null;
+  if (ok) {
+    ok.check = ok.recipes?.length ? { state: "ready" } : { state: "checking" };
+    if (ok.check.state === "checking")
+      void watchRepoCheck(url, () => S.repo === ok).then((c) => {
+        if (S.repo !== ok) return;
+        ok.check = c;
+        renderRepo();
+      });
+  }
   renderRepo();
   // a repository checked while a later step is open: its soul is written now
   if (S.step >= 2) soulAuto();
@@ -457,11 +470,11 @@ function renderRepo() {
 
 /** What the agent can improve on this repository: the recipes Core runs on it, their class and measurable targets. */
 function workView(r: NonNullable<typeof S.repo>): Raw {
-  if (r.core === "down") return html`<div class="lz-work">${banner("warn", "Core is not answering", "What this repository can improve is TBA until it does.")}</div>`;
+  // one plain line: whether agents can work on it (repo-check.ts); the "Launch anyway" tick survives a re-render
+  const line = repoCheckView(r.check ?? { state: "checking" }, !!S.root?.querySelector<HTMLInputElement>('[name="rc_anyway"]')?.checked);
   const rs = r.recipes ?? [];
-  if (!rs.length)
-    return html`<div class="lz-work"><p class="wl-fine">The agent sets up how its work on this repository is measured as its first job, then starts improving it.</p></div>`;
-  return html`<div class="lz-work"><div class="eyebrow" style="margin-bottom:6px">What it can improve, read from Core</div>
+  if (!rs.length) return html`<div class="lz-work">${line}</div>`;
+  return html`<div class="lz-work">${line}<div class="eyebrow" style="margin-bottom:6px">What it can improve</div>
     ${rs.map((v) => {
       const rc = v.recipe ?? {};
       const metrics = (rc.metrics ?? []) as any[];
@@ -2015,7 +2028,8 @@ function stepProblem(i: number): string | null {
       if (!S.repo) return "Enter the GitHub repository.";
       if (S.repo.state === "checking") return "Checking the repository…";
       if (S.repo.state === "bad") return S.repo.msg;
-      return null;
+      // agents must be able to work on it, or the launcher says "Launch anyway" (repo-check.ts)
+      return repoCheckProblem(S.repo.check, !!S.root?.querySelector<HTMLInputElement>('[name="rc_anyway"]')?.checked);
     }
     if (i === 2) {
       if (S.bannerFile && (!IMG_TYPES.includes(S.bannerFile.type) || S.bannerFile.size > 1024 * 1024)) return "Banner: PNG, JPEG or WebP, at most 1 MB.";

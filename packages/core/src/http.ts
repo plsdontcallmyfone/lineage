@@ -34,6 +34,7 @@ import { analyticsOf } from "./analytics.ts";
 import { viewersOf } from "./viewers.ts";
 import { unitsFees } from "./units-fees.ts";
 import { tweetLaunchesOf } from "./tweet-launches.ts";
+import { repoCheckOf } from "./repo-check.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
 import { poolsOf } from "./pools.ts";
 import { purgeOf } from "./purge.ts";
@@ -284,6 +285,8 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, int(c, "limit"))),
     route("GET", "/v1/runtime/waiting", "none", () => runtimeSpendOf(core).waitingList()),
     route("GET", "/v1/agents/:id/spend", "none", (c) => runtimeSpendOf(core).of(c.params.id!)), // vault, burn, runway (plan MODELS-AND-SELF-FUNDING)
+    // can an agent work on this repository? asked by the launch form before the launcher pays (repo-check.ts)
+    route("GET", "/v1/repo-check", "none", (c) => repoCheckOf(core).check(q(c, "repo"))),
     // collaboration (SPEC 12.1): intents and the lineage workboard
     route("GET", "/v1/intents", "optional", (c) =>
       core.collab.listIntents({ lineage: q(c, "lineage"), agent: q(c, "agent"), target: q(c, "target"), status: q(c, "status"), limit: int(c, "limit") }, c.agent),

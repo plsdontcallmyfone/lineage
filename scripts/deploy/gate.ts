@@ -38,6 +38,8 @@
 //                             address per hour), and publishing a soul the agent key signed (Core checks
 //                             it against the digest on chain); same origin only; own class; anything
 //                             else under /souls is refused
+//   GET  /v1/repo-check, /api/repo-check   whether an agent can work on a repository (the launch form, before the
+//                             launcher pays): Core may fetch the repository to read it; own class
 //   GET  /gate/viewers        distinct viewers per live desktop session and in total (counts only), served to
 //                             loopback callers without a forwarded header; Core samples it once a minute
 //   GET  /desktops/<session>/live.m3u8, init.mp4, seg-<n>.m4s   an agent desktop's live stream (SPEC 17.7),
@@ -54,7 +56,7 @@
 //   [--bind http://127.0.0.1:9666]      the bind service for /runtime/bind/*, /runtime/unbound/* and /runtime/bind/health
 //   [--upstream-wait-ms 15000]  a refused upstream connection (a restart during a deploy) is retried this long
 
-export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop";
+export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop" | "repocheck";
 export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   v1: { perMin: 120, burst: 60 },
   api: { perMin: 240, burst: 120 },
@@ -71,6 +73,9 @@ export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   souls: { perMin: 6, burst: 6 },
   // one viewer polls the playlist and fetches a segment every 2 s (about 60 a minute); a few tabs fit
   desktop: { perMin: 240, burst: 60 },
+  // the launch form asks once per repository typed and again every few seconds while a reading runs (Core bounds
+  // the readings themselves, packages/core/src/repo-check.ts); this keeps one address from asking for many
+  repocheck: { perMin: 20, burst: 12 },
 };
 export const DESKTOP_VIEWERS = 50;
 export const DESKTOP_VIEWERS_TOTAL = 300;
@@ -169,6 +174,8 @@ export function classify(method: string, path: string): Route | { refuse: number
     if (!DESKTOP_PATH.test(path)) return { refuse: 404, why: "desktop" };
     return { klass: "desktop", upstream: "runtime", cors: true, stream: false, sameOrigin: false };
   }
+  // the repository check before a launch: a reading may fetch the repository, so it has a class of its own
+  if (path === "/v1/repo-check" || path === "/api/repo-check") return { klass: "repocheck", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false };
   if (path.startsWith("/v1/")) {
     if (path.startsWith("/v1/admin")) return { refuse: 404, why: "admin" };
     return { klass: "v1", upstream: "core", cors: true, stream: path === "/v1/events", sameOrigin: false };

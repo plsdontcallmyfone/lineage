@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentKey, Recipe } from "@units/protocol";
@@ -90,94 +90,11 @@ const emptySetup = (): RepoSetup => ({ head: null, class: null, screened_at: 0, 
 // ---------------------------------------------------------------------------------------------
 // Reading a repository (free: no model)
 
-const SKIP_DIRS = new Set([".git", "node_modules", "vendor", "third_party", "target", "dist", "build", ".venv", "venv", "__pycache__", "zig-cache", ".zig-cache"]);
-const CLASS_OF_EXT: Record<string, Recipe["class"]> = { py: "python", rs: "rust", go: "go", zig: "zig", c: "cpp", cc: "cpp", cpp: "cpp", cxx: "cpp", h: "cpp", hpp: "cpp" };
-export const CLASS_LABEL: Record<string, string> = { python: "Python", rust: "Rust", go: "Go", zig: "Zig", cpp: "C and C++", solana: "Solana program", cuda: "CUDA" };
-
-function walk(root: string, max = 20_000): string[] {
-  const out: string[] = [];
-  const go = (rel: string) => {
-    if (out.length >= max) return;
-    for (const e of readdirSync(join(root, rel), { withFileTypes: true })) {
-      if (out.length >= max) return;
-      const p = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) {
-        if (!SKIP_DIRS.has(e.name)) go(p);
-      } else if (e.isFile()) out.push(p);
-    }
-  };
-  go("");
-  return out;
-}
-
-const readSmall = (file: string, max = 512 * 1024): string => {
-  try {
-    return statSync(file).size <= max ? readFileSync(file, "utf8") : "";
-  } catch {
-    return "";
-  }
-};
-
-export type TreeReading = { class: Recipe["class"]; tests: number; impossible: null } | { class: Recipe["class"] | null; tests: number; impossible: string };
-
-/**
- * Pure reading of a checkout: the class is the language with the most source files among those with
- * a toolchain image (a Rust repository with Anchor.toml is a Solana program); tests are counted by
- * each language's own convention. Without a class or without one test the repository cannot have a
- * unit, and the sentence says which. A GPU is only noted beside missing tests; a repository with
- * tests that may need one is left to the drafter, which tries them in the sandbox.
- */
-export function readTree(tree: string): TreeReading {
-  const files = walk(tree);
-  const count: Record<string, number> = {};
-  const exts: Record<string, number> = {};
-  for (const f of files) {
-    const m = /\.([A-Za-z0-9]+)$/.exec(f);
-    if (!m) continue;
-    const ext = m[1]!.toLowerCase();
-    exts[ext] = (exts[ext] ?? 0) + 1;
-    const c = CLASS_OF_EXT[ext];
-    if (c) count[c] = (count[c] ?? 0) + (ext === "h" || ext === "hpp" ? 0.5 : 1);
-  }
-  let cls = (Object.entries(count).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null) as Recipe["class"] | null;
-  if (!cls) {
-    const code = Object.entries(exts).filter(([e]) => !["md", "txt", "json", "yml", "yaml", "toml", "lock", "png", "jpg", "jpeg", "gif", "svg", "ipynb", "cfg", "ini", "csv", "pdf"].includes(e)).sort((a, b) => b[1] - a[1])[0];
-    return { class: null, tests: 0, impossible: `there is no toolchain image for its language (${code ? `mostly .${code[0]} files` : "no source files found"}); images exist for Python, Rust, Go, C and C++, Zig and Solana programs` };
-  }
-  if (cls === "rust" && files.includes("Anchor.toml")) cls = "solana";
-  const src = (re: RegExp) => files.filter((f) => re.test(f));
-  const grep = (list: string[], re: RegExp, max = 3000) => list.slice(0, max).filter((f) => re.test(readSmall(join(tree, f))));
-  let tests = 0;
-  if (cls === "python") {
-    const py = src(/\.py$/);
-    const byName = py.filter((f) => /(^|\/)(test_[^/]*|[^/]*_test|tests?)\.py$/.test(f) || /(^|\/)tests?\/.*\.py$/.test(f));
-    tests = byName.length || grep(py, /\bunittest\b|^\s*def test_|doctest\.testmod|^\s*import pytest/m).length;
-  } else if (cls === "rust" || cls === "solana") {
-    const rs = src(/\.rs$/);
-    tests = rs.filter((f) => /(^|\/)tests\/.*\.rs$/.test(f)).length || grep(rs, /#\[(tokio::)?test\]|#\[cfg\(test\)\]/).length;
-  } else if (cls === "go") tests = src(/_test\.go$/).length;
-  else if (cls === "zig") tests = grep(src(/\.zig$/), /^\s*test\s+("|[A-Za-z_])/m).length;
-  else if (cls === "cpp") {
-    tests = src(/(^|\/)(tests?|unittests?)\/.*\.(c|cc|cpp|cxx)$/i).length + src(/(^|\/)[^/]*test[^/]*\.(c|cc|cpp|cxx)$/i).length || grep(src(/(^|\/)(CMakeLists\.txt|Makefile|meson\.build)$/), /add_test|enable_testing|gtest|catch2|doctest|^check:|^test:/im).length;
-  }
-  if (tests > 0) return { class: cls, tests, impossible: null };
-  let why = "it has no tests, and a unit needs the repository's own tests to check every change";
-  if (cls === "python") {
-    const gpu = grep(src(/\.py$/), /torch\.cuda\.|device\s*=\s*["']cuda|\.cuda\(\)|device_type\s*=\s*["']cuda/).sort().slice(0, 3);
-    if (gpu.length) why += `; its code also calls CUDA (a GPU) in ${gpu.join(" and ")}, and units are measured on CPUs`;
-  }
-  return { class: cls, tests: 0, impossible: why };
-}
+// the rules of the reading live in repo-reading.ts (Core's free repository check reads with the same ones)
+import { CLASS_LABEL, REPO_URL, readTree, repoLabel, type TreeReading } from "./repo-reading.ts";
+export { CLASS_LABEL, readTree, repoLabel, type TreeReading };
 
 export type Reading = { ok: true; commit: string; class: Recipe["class"] } | { ok: false; commit: string | null; class: Recipe["class"] | null; impossible: string };
-
-const REPO_URL = /^https:\/\/(github\.com|gitlab\.com|codeberg\.org)\/([\w.-]+)\/([\w.-]+)$/;
-
-/** owner/name of a repository URL, for sentences. */
-export function repoLabel(repo: string): string {
-  const m = REPO_URL.exec(repo);
-  return m ? `${m[2]}/${m[3]}` : repo.replace(/^https?:\/\//, "").slice(0, 80);
-}
 
 /** Reads a public repository at its head commit. Throws when it cannot be read now (network, not public): the caller tries again later. */
 export async function readRepo(repo: string): Promise<Reading> {

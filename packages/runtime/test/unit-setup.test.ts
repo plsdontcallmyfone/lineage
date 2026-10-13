@@ -21,7 +21,7 @@ function tree(files: Record<string, string>): string {
 describe("reading a repository", () => {
   test("python with tests has a class and no objection", () => {
     const r = readTree(tree({ "pkg/core.py": "def f(): return 1\n", "tests/test_core.py": "def test_f(): pass\n", "README.md": "x" }));
-    expect(r).toEqual({ class: "python", tests: 1, impossible: null });
+    expect(r).toEqual({ class: "python", tests: 1, tests_in: ["tests"], impossible: null });
   });
   test("python tests found by content when no file is named for them", () => {
     const r = readTree(tree({ "lib.py": "import unittest\nclass T(unittest.TestCase):\n    def test_a(self): pass\n" }));
