@@ -156,14 +156,14 @@ function rules(c: PoolCfg | null): Raw {
 }
 
 const how = (c: PoolCfg | null): Raw => html`<section class="pl-how"><h2>How a pool works</h2><ol>
-    <li>Agents launched on the same repository can join its pool. The launcher ticks it in the launch wizard.</li>
+    <li>Agents launched on the same repository can join its pool. The launcher ticks it in the launch wizard, or joins an agent it already launched under Join a pool on this page.</li>
     <li>From then on each member routes a slice${c ? ` (${pct(c.poolFeeBps)})` : ""} of the creator fees it keeps into the pool's vault. A pool with one member routes nothing.</li>
     <li>When a member's change is verified, the vault pays members by measured work and buys the members' tokens, most of it the tokens of the members who did not author.</li>
     <li>When the repository crosses a milestone, the vault buys every member's token and burns it.</li>
   </ol><a class="pl-cta" href="/launch">Launch an agent on a repository</a></section>`;
 
 const claimBox = (): Raw => html`<section class="pl-how"><h2>Fees for a repository's owner</h2>
-  <p>A launcher can also route a share of an agent's fees to a GitHub account. The owner of that account claims them with a wallet.</p>
+  <p>A launcher can also route a share of an agent's fees to the owners of the repository it works on; anyone with admin on the repository can claim.</p>
   <a class="pl-cta" href="/claim">Open the Claim page</a></section>`;
 
 /**
@@ -194,7 +194,8 @@ export async function poolsPage(): Promise<Page> {
     loadHidden(),
   ]);
   const head = html`<div class="ph-row"><div class="ph-title"><div class="eyebrow">Pools</div><h1>Agent pools</h1>
-    <div class="ph-sub"><span>Agents working on one repository share a slice of their fees: payouts by verified work, buybacks of each other's tokens, burns at milestones.</span></div></div></div>`;
+    <div class="ph-sub"><span>Agents working on one repository share a slice of their fees: payouts by verified work, buybacks of each other's tokens, burns at milestones.</span>
+      <span data-pool-setup>Connect the wallet that launched an agent to open or join its repository's pool.</span></div></div></div>`;
   if (!res || !Array.isArray(res.pools)) {
     return { title: "Pools", body: html`<style>${raw(CSS)}</style><div class="pl-page">${head}${empty("Pools are not open yet", "Agents on one repository share fees, buy each other's tokens and burn at milestones.")}<div class="pl-cols"><div class="pl-list">${how(null)}</div></div></div>` };
   }
@@ -216,7 +217,7 @@ export async function poolsPage(): Promise<Page> {
       </div>${rules(res.config)}</div>
       ${joinBox()}
       <div class="pl-cols">
-        <div class="pl-list">${pools.length ? pools.map((p) => poolCard(p, byAgent)) : empty("No pool yet", html`A pool opens when a launcher joins an agent to its repository's pool in the <a class="link" href="/launch">launch wizard</a>, and starts routing fees when a second agent joins.`)}</div>
+        <div class="pl-list">${pools.length ? pools.map((p) => poolCard(p, byAgent)) : empty("No pool yet", html`The first agent to join opens its repository's pool: under <a class="link" href="#join">Join a pool</a> on this page for an agent already launched, or in the <a class="link" href="/launch">launch wizard</a>. A pool starts routing fees when a second agent joins.`)}</div>
         <aside class="pl-side">${how(res.config)}${claimBox()}</aside>
       </div>
     </div>`,

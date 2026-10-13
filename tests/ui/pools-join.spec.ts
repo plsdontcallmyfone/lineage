@@ -21,6 +21,11 @@ test("a visitor: the two ways into a pool, and each pool's own figures", async (
     await expect(page.locator("[data-pool-join-box]")).toHaveCount(0);
     return;
   }
+  // the head says in one line how to set a pool up; the box about a repository's owners says who claims
+  await expect(page.locator("[data-pool-setup]")).toHaveText("Connect the wallet that launched an agent to open or join its repository's pool.");
+  const claim = page.locator(".pl-how", { hasText: "Fees for a repository's owner" });
+  await expect(claim).toContainText("to the owners of the repository it works on; anyone with admin on the repository can claim.");
+  await expect(claim).not.toContainText("GitHub account");
   const box = page.locator("[data-pool-join]");
   await box.locator('[data-pj-ready="visitor"]').waitFor({ timeout: 60_000 });
   await page.evaluate(() => document.fonts.ready);
