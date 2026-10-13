@@ -239,7 +239,7 @@ function lookupCard(): Raw {
 }
 
 const STYLE = `<style>
-.cl-page{max-width:880px;margin:0 auto;display:grid;gap:16px}
+.cl-page{max-width:calc(1440px - 2 * var(--pad-x));margin:0 auto;display:grid;gap:16px}
 .cl-page .panel{margin:0}
 .cl-page textarea.cl-proof{width:100%;font:inherit;font-size:12.5px;line-height:1.45;resize:vertical;margin:8px 0}
 .cl-page details.cl-gist>summary{cursor:pointer;font-weight:550}
@@ -294,7 +294,7 @@ export async function mountClaim(root: HTMLElement) {
     if (NET.p.features?.github_fee_claims !== true) throw Object.assign(new Error("off"), { code: "feature_off" });
     C.providers = await api<Providers>("fee-claims/providers");
   } catch (e) {
-    C.off = (e as { code?: string }).code === "feature_off" ? "GitHub fee routing is built and switched off. It opens with the product launch." : `Core did not answer: ${(e as Error).message}`;
+    C.off = (e as { code?: string }).code === "feature_off" ? "Repository owners claim their share here once claims open." : `Core did not answer: ${(e as Error).message}`;
     render();
     return;
   }

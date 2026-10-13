@@ -30,7 +30,7 @@ const sum = (xs: string[]) => xs.reduce((a, x) => a + BigInt(x), 0n).toString();
 const tokens = (base: string) => (BigInt(base) === 0n ? "0" : int(Number(BigInt(base) / 1_000_000n)));
 
 const CSS = `
-.pl-page{display:grid;gap:20px}
+.pl-page{display:grid;gap:20px;max-width:calc(1440px - 2 * var(--pad-x));margin-left:auto;margin-right:auto}
 .pl-top{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .pl-rules{display:flex;flex-wrap:wrap;gap:6px 18px;padding:11px 16px;border-top:1px solid var(--border);background:var(--bg2);font-size:12.5px;color:var(--ts)}
 .pl-rules b{font-weight:500;color:var(--tp);font-variant-numeric:tabular-nums}
